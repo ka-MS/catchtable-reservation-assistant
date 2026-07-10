@@ -69,9 +69,13 @@ export class OpenRunOrchestrator {
       const at = this.dependencies.clock.now();
       this.dependencies.emit({ at, serverAt: offsetMs === null ? null : at + offsetMs, runId, kind, message, data });
     };
-    const transition = (state: RunState, reason: string, extra: { error?: string; userStopped?: boolean } = {}) => {
-      machine.transition(state, reason, extra);
-      emit("state", reason, { state });
+    const transition = (
+      state: RunState,
+      reason: string,
+      extra: { error?: string; userStopped?: boolean; data?: RunEvent["data"] } = {},
+    ) => {
+      machine.transition(state, reason, { error: extra.error, userStopped: extra.userStopped });
+      emit("state", reason, { state, ...extra.data });
     };
     const finish = (): RunResult => ({ runId, state: machine.state });
     const stopOrTimeout = (result: "ready" | "timed_out" | "stopped"): RunResult | null => {
@@ -265,7 +269,9 @@ export class OpenRunOrchestrator {
           transition("REFRESHING_SLOTS", "슬롯이 사라져 날짜 토글을 재개합니다.");
           continue;
         }
-        transition("SLOT_SELECTED", `${candidate.label} 슬롯을 한 번 클릭했습니다.`);
+        transition("SLOT_SELECTED", `${candidate.label} 시간 선택을 완료했습니다.`, {
+          data: { openDeltaMs: Math.round(serverClock.now() - config.openAtMs) },
+        });
         if (!config.postSlotEnabled) {
           transition("HANDED_OFF", "후속 선택 자동 진행이 꺼져 있어 슬롯 선택까지만 완료했습니다.");
           return finish();
@@ -292,9 +298,6 @@ export class OpenRunOrchestrator {
             postSlotStage: inspection.kind,
             postSlotStatus: action.status,
           };
-          if (inspection.kind === "menu" && action.completed) {
-            actionData.openDeltaMs = Math.round(serverClock.now() - config.openAtMs);
-          }
           emit("action", action.message, actionData);
           if (action.status === "blocked") {
             transition("HANDED_OFF", action.message);

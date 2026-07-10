@@ -105,7 +105,10 @@ test("actual mode clicks one slot and hands off at the reservation form", async 
   const result = await h.orchestrator.start(config({ dryRun: false }));
   assert.equal(result.state, "HANDED_OFF");
   assert.equal(h.slotClicks, 1);
-  assert.equal(h.events.some((event) => event.data?.state === "SLOT_SELECTED"), true);
+  const slotSelected = h.events.find((event) => event.data?.state === "SLOT_SELECTED");
+  assert.equal(typeof slotSelected?.data?.openDeltaMs, "number");
+  assert.equal(slotSelected?.data?.openDeltaMs, slotSelected?.serverAt - 1_000);
+  assert.match(slotSelected?.message ?? "", /시간 선택을 완료/);
   assert.equal(h.events.some((event) => event.data?.state === "ADVANCING_RESERVATION"), true);
   assert.equal(h.events.at(-1)?.data?.state, "HANDED_OFF");
 });
@@ -146,7 +149,7 @@ test("optional post-slot stages are advanced in observed order", async () => {
       advance: (stage) => {
         actions.push(stage.kind);
         index += 1;
-        return { status: "acted", message: `${stage.kind} 처리`, completed: true };
+        return { status: "acted", message: `${stage.kind} 처리` };
       },
     },
   });
@@ -155,9 +158,7 @@ test("optional post-slot stages are advanced in observed order", async () => {
 
   assert.equal(result.state, "HANDED_OFF");
   assert.deepEqual(actions, ["table_type", "menu", "deposit"]);
-  const menuCompletion = h.events.find((event) => event.data?.postSlotStage === "menu");
-  assert.equal(typeof menuCompletion?.data?.openDeltaMs, "number");
-  assert.equal(menuCompletion?.data?.openDeltaMs, menuCompletion?.serverAt - 1_000);
+  assert.equal(h.events.some((event) => event.data?.postSlotStage === "menu" && "openDeltaMs" in event.data), false);
   assert.match(h.events.at(-1)?.message ?? "", /예약 폼/);
 });
 
