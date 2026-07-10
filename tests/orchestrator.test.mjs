@@ -25,11 +25,13 @@ function harness({ slotAfterCycles = 1, clickResult = true } = {}) {
   let cycles = 0;
   let slotClicks = 0;
   const dateClicks = [];
+  const dateClickTimes = [];
   const events = [];
   const calendar = {
     inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: "2026-07-29" }),
     clickDate: (date) => {
       dateClicks.push(date);
+      dateClickTimes.push({ date, at: now });
       if (date === "2026-07-30") cycles += 1;
       return true;
     },
@@ -43,7 +45,14 @@ function harness({ slotAfterCycles = 1, clickResult = true } = {}) {
   };
   const orchestrator = new OpenRunOrchestrator({
     clock: { now: () => now },
-    syncClock: async () => ({ offsetMs: 0, sampleCount: 3, spreadMs: 2, fallback: false }),
+    syncClock: async () => ({
+      offsetMs: 0,
+      sampleCount: 3,
+      spreadMs: 2,
+      fallback: false,
+      method: "boundary",
+      precisionMs: 20,
+    }),
     calendar,
     slots,
     sleep: async (ms, signal) => {
@@ -57,6 +66,7 @@ function harness({ slotAfterCycles = 1, clickResult = true } = {}) {
   return {
     orchestrator,
     dateClicks,
+    dateClickTimes,
     events,
     get slotClicks() { return slotClicks; },
     get now() { return now; },
@@ -69,6 +79,7 @@ test("dry-run detects a prioritized slot without clicking", async () => {
   assert.equal(result.state, "DRY_RUN_COMPLETED");
   assert.equal(h.slotClicks, 0);
   assert.deepEqual(h.dateClicks, ["2026-07-29", "2026-07-30", "2026-07-29", "2026-07-30"]);
+  assert.equal(h.dateClickTimes.filter((click) => click.date === "2026-07-30").at(-1)?.at, 1_000);
   assert.deepEqual(h.events.filter((event) => event.kind === "state").map((event) => event.data?.state), [
     "CONFIGURED",
     "VALIDATING",
@@ -90,6 +101,52 @@ test("actual mode clicks one slot and immediately hands off", async () => {
   assert.equal(h.events.at(-1)?.data?.state, "HANDED_OFF");
 });
 
+test("long waits resynchronize the server clock shortly before opening", async () => {
+  let now = 0;
+  let syncCalls = 0;
+  let targetClicks = 0;
+  const orchestrator = new OpenRunOrchestrator({
+    clock: { now: () => now },
+    syncClock: async () => {
+      syncCalls += 1;
+      return {
+        offsetMs: syncCalls === 1 ? 25 : 40,
+        sampleCount: 9,
+        spreadMs: 10,
+        fallback: false,
+        method: "boundary",
+        precisionMs: 15,
+      };
+    },
+    calendar: {
+      inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: "2026-07-29" }),
+      clickDate: (date) => {
+        if (date === "2026-07-30") targetClicks += 1;
+        return true;
+      },
+    },
+    slots: {
+      readAvailableSlots: () => targetClicks > 0 ? [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }] : [],
+      clickSlot: () => true,
+    },
+    sleep: async (ms) => {
+      now += ms;
+      return true;
+    },
+    emit: () => undefined,
+    runId: () => "run-final-sync",
+  });
+
+  const result = await orchestrator.start(config({
+    openAtMs: 10_000,
+    stopAtMs: 12_000,
+    dryRun: true,
+  }));
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(syncCalls, 2);
+});
+
 test("monitoring terminates at stop time without slot clicks", async () => {
   const h = harness({ slotAfterCycles: Number.POSITIVE_INFINITY });
   const result = await h.orchestrator.start(config({ stopAtMs: 1_500 }));
@@ -105,7 +162,14 @@ test("deadline wins over a slot that appears during target-date settling", async
   let clicks = 0;
   const orchestrator = new OpenRunOrchestrator({
     clock: { now: () => now },
-    syncClock: async () => ({ offsetMs: 0, sampleCount: 3, spreadMs: 1, fallback: false }),
+    syncClock: async () => ({
+      offsetMs: 0,
+      sampleCount: 3,
+      spreadMs: 1,
+      fallback: false,
+      method: "boundary",
+      precisionMs: 20,
+    }),
     calendar: {
       inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: "2026-07-29" }),
       clickDate: (date) => {
@@ -140,7 +204,14 @@ test("missing adjacent date hands control to the user", async () => {
   const h = harness();
   h.orchestrator = new OpenRunOrchestrator({
     clock: { now: () => 0 },
-    syncClock: async () => ({ offsetMs: 0, sampleCount: 3, spreadMs: 1, fallback: false }),
+    syncClock: async () => ({
+      offsetMs: 0,
+      sampleCount: 3,
+      spreadMs: 1,
+      fallback: false,
+      method: "boundary",
+      precisionMs: 20,
+    }),
     calendar: { inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: null }), clickDate: () => false },
     slots: { readAvailableSlots: () => [], clickSlot: () => false },
     sleep: async () => true,

@@ -35,7 +35,7 @@ export async function syncServerClock(
         throw error;
       }
     }
-    if (index + 1 < sampleCount && !(await dependencies.sleep(50, dependencies.signal))) break;
+    if (index + 1 < sampleCount && !(await dependencies.sleep(125, dependencies.signal))) break;
   }
   return selectClockEstimate(samples);
 }

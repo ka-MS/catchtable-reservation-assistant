@@ -3,6 +3,7 @@ import type { ClockEstimate } from "../shared/clock.js";
 import { waitUntil, type Clock, type Sleep } from "../shared/scheduler.js";
 import { selectPreferredSlot, type SlotCandidate } from "../shared/slot-selection.js";
 import { RunStateMachine } from "../shared/state-machine.js";
+import { nextTogglePlan } from "../shared/toggle-schedule.js";
 import type { ReservationConfig, RunEvent, RunState } from "../shared/types.js";
 import type { CalendarInspection } from "./adapter/calendar.js";
 
@@ -99,6 +100,9 @@ export class OpenRunOrchestrator {
         clockSamples: estimate.sampleCount,
         clockSpreadMs: estimate.spreadMs ?? -1,
         clockFallback: estimate.fallback,
+        clockMethod: estimate.method,
+        clockPrecisionMs: estimate.precisionMs ?? -1,
+        clockPhase: "initial",
       });
 
       transition("PREPARING_PAGE", "예약 모달과 목표 날짜를 확인합니다.");
@@ -110,6 +114,32 @@ export class OpenRunOrchestrator {
 
       const serverClock: Clock = { now: () => this.dependencies.clock.now() + (offsetMs ?? 0) };
       transition("WAITING_FOR_OPEN", "예약 오픈 직전까지 대기합니다.");
+      const finalSyncAt = config.openAtMs - config.preOpenLeadMs - 2_000;
+      if (serverClock.now() < finalSyncAt) {
+        const finalSyncWait = await waitUntil(finalSyncAt, {
+          clock: serverClock,
+          stopAtMs: config.stopAtMs,
+          signal: controller.signal,
+          sleep: this.dependencies.sleep,
+        });
+        const finalSyncExit = stopOrTimeout(finalSyncWait);
+        if (finalSyncExit) return finalSyncExit;
+        const finalEstimate = await this.dependencies.syncClock(config, controller.signal);
+        if (controller.signal.aborted) {
+          transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
+          return finish();
+        }
+        if (!finalEstimate.fallback) offsetMs = finalEstimate.offsetMs;
+        emit("metric", finalEstimate.fallback ? "오픈 직전 시계 재측정에 실패해 기존 기준을 유지합니다." : "오픈 직전 서버 시계를 다시 보정했습니다.", {
+          clockOffsetMs: offsetMs ?? 0,
+          clockSamples: finalEstimate.sampleCount,
+          clockSpreadMs: finalEstimate.spreadMs ?? -1,
+          clockFallback: finalEstimate.fallback,
+          clockMethod: finalEstimate.method,
+          clockPrecisionMs: finalEstimate.precisionMs ?? -1,
+          clockPhase: "final",
+        });
+      }
       const waitResult = await waitUntil(config.openAtMs - config.preOpenLeadMs, {
         clock: serverClock,
         stopAtMs: config.stopAtMs,
@@ -126,6 +156,17 @@ export class OpenRunOrchestrator {
           return finish();
         }
 
+        const plan = nextTogglePlan(serverClock.now(), config.openAtMs, config.toggleIntervalMs);
+        const adjacentWait = await waitUntil(plan.adjacentClickAtMs, {
+          clock: serverClock,
+          stopAtMs: config.stopAtMs,
+          signal: controller.signal,
+          sleep: this.dependencies.sleep,
+          tickMs: 10,
+        });
+        const adjacentWaitExit = stopOrTimeout(adjacentWait);
+        if (adjacentWaitExit) return adjacentWaitExit;
+
         const currentSetup = this.dependencies.calendar.inspect(config.reservationDate);
         const adjacentDate = currentSetup.adjacentDate;
         if (!currentSetup.targetAvailable || adjacentDate === null) {
@@ -136,37 +177,53 @@ export class OpenRunOrchestrator {
           transition("HANDED_OFF", "인접 날짜를 선택할 수 없습니다.");
           return finish();
         }
-
-        const switchDelay = Math.min(50, config.toggleIntervalMs);
-        if (!(await this.dependencies.sleep(switchDelay, controller.signal))) {
-          transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
-          return finish();
-        }
-        if (serverClock.now() >= config.stopAtMs) {
-          transition("TIMED_OUT", "감시 종료 시각에 도달했습니다.");
-          return finish();
-        }
+        const targetWait = await waitUntil(plan.targetClickAtMs, {
+          clock: serverClock,
+          stopAtMs: config.stopAtMs,
+          signal: controller.signal,
+          sleep: this.dependencies.sleep,
+          tickMs: 5,
+        });
+        const targetWaitExit = stopOrTimeout(targetWait);
+        if (targetWaitExit) return targetWaitExit;
         if (!this.dependencies.calendar.clickDate(config.reservationDate)) {
           transition("HANDED_OFF", "목표 날짜를 다시 선택할 수 없습니다.");
           return finish();
         }
+        const targetClickedAt = serverClock.now();
+        if (plan.targetClickAtMs === config.openAtMs) {
+          emit("metric", "예약 오픈 정각에 목표 날짜를 클릭했습니다.", {
+            targetClickAtMs: targetClickedAt,
+            targetScheduleDriftMs: targetClickedAt - plan.targetClickAtMs,
+          });
+        }
 
-        const settleDelay = Math.min(50, Math.max(0, config.toggleIntervalMs - switchDelay));
-        if (settleDelay > 0 && !(await this.dependencies.sleep(settleDelay, controller.signal))) {
+        if (!(await this.dependencies.sleep(20, controller.signal))) {
           transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
           return finish();
         }
         if (serverClock.now() >= config.stopAtMs) {
           transition("TIMED_OUT", "감시 종료 시각에 도달했습니다.");
           return finish();
+        }
+        const selectionDeadline = Math.min(plan.targetClickAtMs + 60, config.stopAtMs);
+        while (
+          !this.dependencies.calendar.inspect(config.reservationDate).targetSelected
+          && serverClock.now() < selectionDeadline
+        ) {
+          if (!(await this.dependencies.sleep(Math.min(10, selectionDeadline - serverClock.now()), controller.signal))) {
+            transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
+            return finish();
+          }
         }
         if (!this.dependencies.calendar.inspect(config.reservationDate).targetSelected) {
           transition("HANDED_OFF", "목표 날짜 선택 상태를 확인할 수 없습니다.");
           return finish();
         }
 
+        const nextPlan = nextTogglePlan(serverClock.now(), config.openAtMs, config.toggleIntervalMs);
         const detectUntil = Math.min(
-          serverClock.now() + Math.max(0, config.toggleIntervalMs - switchDelay - settleDelay),
+          nextPlan.adjacentClickAtMs,
           config.stopAtMs,
         );
         let candidate: SlotCandidate | null = null;

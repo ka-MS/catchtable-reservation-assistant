@@ -8,6 +8,7 @@ test("clock measurement compensates HTTP Date resolution and half RTT", () => {
   assert.equal(measurement.estimatedServerNow, 2_550);
   assert.equal(measurement.clockOffset, 1_450);
   assert.equal(measurement.measuredAt, 1_100);
+  assert.equal(measurement.serverDateMs, 2_000);
 });
 
 test("clock estimate uses the median of the lowest-latency samples", () => {
@@ -22,6 +23,19 @@ test("clock estimate uses the median of the lowest-latency samples", () => {
   assert.equal(result.offsetMs, 102);
   assert.equal(result.sampleCount, 3);
   assert.equal(result.spreadMs, 4);
+  assert.equal(result.method, "median");
+});
+
+test("clock estimate locks to an observed HTTP Date second boundary", () => {
+  const samples = [
+    createMeasurement({ requestStartedAt: 0, responseReceivedAt: 20, serverDateMs: 1_000 }),
+    createMeasurement({ requestStartedAt: 100, responseReceivedAt: 120, serverDateMs: 2_000 }),
+    createMeasurement({ requestStartedAt: 200, responseReceivedAt: 220, serverDateMs: 2_000 }),
+  ];
+  const result = selectClockEstimate(samples);
+  assert.equal(result.method, "boundary");
+  assert.equal(result.offsetMs, 1_940);
+  assert.equal(result.precisionMs, 60);
 });
 
 test("clock estimate falls back explicitly when no samples exist", () => {
@@ -30,5 +44,7 @@ test("clock estimate falls back explicitly when no samples exist", () => {
     sampleCount: 0,
     spreadMs: null,
     fallback: true,
+    method: "local",
+    precisionMs: null,
   });
 });

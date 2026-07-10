@@ -4,6 +4,7 @@ export interface ClockMeasurement {
   clockOffset: number;
   measurementLatency: number;
   measuredAt: number;
+  serverDateMs: number;
 }
 
 export interface ClockEstimate {
@@ -11,6 +12,8 @@ export interface ClockEstimate {
   sampleCount: number;
   spreadMs: number | null;
   fallback: boolean;
+  method: "boundary" | "median" | "local";
+  precisionMs: number | null;
 }
 
 export function createMeasurement(input: {
@@ -26,6 +29,7 @@ export function createMeasurement(input: {
     clockOffset: estimatedServerNow - input.responseReceivedAt,
     measurementLatency,
     measuredAt: input.responseReceivedAt,
+    serverDateMs: input.serverDateMs,
   };
 }
 
@@ -36,9 +40,38 @@ function median(values: number[]): number {
 }
 
 export function selectClockEstimate(
-  samples: Array<Pick<ClockMeasurement, "clockOffset" | "measurementLatency">>,
+  samples: Array<Pick<ClockMeasurement, "clockOffset" | "measurementLatency"> & Partial<Pick<ClockMeasurement, "measuredAt" | "serverDateMs">>>,
 ): ClockEstimate {
-  if (samples.length === 0) return { offsetMs: 0, sampleCount: 0, spreadMs: null, fallback: true };
+  if (samples.length === 0) {
+    return { offsetMs: 0, sampleCount: 0, spreadMs: null, fallback: true, method: "local", precisionMs: null };
+  }
+
+  const chronological = samples
+    .filter((sample): sample is typeof sample & Required<Pick<ClockMeasurement, "measuredAt" | "serverDateMs">> =>
+      sample.measuredAt !== undefined && sample.serverDateMs !== undefined)
+    .sort((left, right) => left.measuredAt - right.measuredAt);
+  const boundaries = chronological.slice(1).flatMap((current, index) => {
+    const previous = chronological[index];
+    if (current.serverDateMs <= previous.serverDateMs) return [];
+    const previousMidpoint = previous.measuredAt - previous.measurementLatency / 2;
+    const currentMidpoint = current.measuredAt - current.measurementLatency / 2;
+    const localBoundary = (previousMidpoint + currentMidpoint) / 2;
+    const precisionMs = (currentMidpoint - previousMidpoint) / 2
+      + Math.max(previous.measurementLatency, current.measurementLatency) / 2;
+    return [{ offsetMs: current.serverDateMs - localBoundary, precisionMs }];
+  }).sort((left, right) => left.precisionMs - right.precisionMs);
+  const boundary = boundaries[0];
+  if (boundary) {
+    return {
+      offsetMs: boundary.offsetMs,
+      sampleCount: 2,
+      spreadMs: boundary.precisionMs * 2,
+      fallback: false,
+      method: "boundary",
+      precisionMs: boundary.precisionMs,
+    };
+  }
+
   const selected = [...samples]
     .sort((left, right) => left.measurementLatency - right.measurementLatency)
     .slice(0, Math.min(3, samples.length));
@@ -48,5 +81,7 @@ export function selectClockEstimate(
     sampleCount: selected.length,
     spreadMs: Math.max(...offsets) - Math.min(...offsets),
     fallback: false,
+    method: "median",
+    precisionMs: 500 + Math.min(...selected.map((sample) => sample.measurementLatency)) / 2,
   };
 }

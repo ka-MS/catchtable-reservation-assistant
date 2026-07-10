@@ -59,7 +59,7 @@ interface ClockSyncAdapter {
 }
 ```
 
-`ClockMeasurement`는 `localNow`, `estimatedServerNow`, `clockOffset`, `measurementLatency`, `measuredAt`을 포함한다. 여러 표본에서 최소 RTT 표본군의 중앙 오프셋을 선택하고 오래된 결과는 다시 측정한다. 비즈니스 로직은 직접 `Date.now()`를 호출하지 않는다.
+`ClockMeasurement`는 서버 Date 초 값, 로컬 요청 중간 시각, RTT를 포함한다. 연속 표본에서 서버 초 값이 바뀌면 그 로컬 구간의 중간점을 서버 초 경계로 사용한다. 경계를 관찰하지 못한 경우에만 최소 RTT 표본군의 중앙 오프셋을 선택한다. 비즈니스 로직은 직접 `Date.now()`를 호출하지 않는다.
 
 ## 5. Site Adapter 계약
 
@@ -91,7 +91,9 @@ interface ReservationSiteAdapter {
 
 - 시작마다 RunContext와 AbortController를 새로 만든다.
 - 중지, 시간 초과, 인계, 실패 시 timer와 observer를 모두 해제한다.
-- 날짜 토글 기본 간격은 T-3초부터 400ms다.
+- 날짜 토글 기본 간격은 150ms이며, 정밀 구간의 목표 날짜 클릭은 서버 오픈 시각 기준 150ms 격자에 고정한다.
+- 장시간 대기는 오픈 직전 시계를 다시 측정하고, 재측정 실패 시 초기 오프셋을 유지한다.
+- 인접 날짜 클릭은 목표 날짜 클릭 40ms 전에 수행하며 목표 클릭 시각까지 5ms tick으로 대기한다.
 - 슬롯이 없으면 종료 시각까지 반복하되, 루프마다 AbortSignal과 서버 현재 시각을 확인한다.
 - actual click 직후 어떤 화면도 판독하지 않고 `HANDED_OFF` 이벤트를 발행한다.
 
@@ -111,4 +113,3 @@ Side Panel은 `storage.onChanged`로 상태를 갱신한다.
 ## 9. 취소 스나이핑 확장점
 
 향후 `RunMode = OPEN_RUN | CANCELLATION`을 추가하고, 취소 모드는 동일 adapter를 30초 이상 간격으로 호출한다. 현재 MVP 타입과 UI에는 노출하지 않는다.
-

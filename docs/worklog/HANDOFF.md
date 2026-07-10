@@ -6,13 +6,13 @@
 
 ## 현재 상태
 
-오픈런 MVP 구현, 자동 검증, 적대적 리뷰 수정, 독립 문서 정리가 완료됐다. `npm run check`는 34개 테스트와 dist·독립성 검증까지 통과한다. 남은 완료 게이트는 사용자가 Chrome에서 새 `dist/`를 재로드한 뒤 실제 사이트 dry-run 체크리스트를 수행하는 것이다.
+오픈런 MVP의 서버 시각 보정과 날짜 토글을 정밀화했다. HTTP Date 초 경계 추정, 오픈 직전 재동기화, 서버 오픈 시각에 위상 고정된 150ms 토글 버스트가 구현됐다. 테이블 타입 화면은 사용자 제공 이미지로 존재만 확인했고 DOM 실측은 남아 있다.
 
 ## 다음 작업
 
-1. `chrome://extensions`에서 확장 카드를 새로고침한다.
-2. `docs/verification/mvp-checklist.md`의 수동 dry-run 항목을 수행한다.
-3. 결과에 따라 체크리스트와 실측 문서를 갱신한다.
+1. 테이블 타입 모달을 다시 열어 둔 상태에서 DOM 역할·속성·선택 상태를 실측한다.
+2. 선택기가 확인되면 `있으면 선택 후 다음`, `없으면 예약 폼 인계` 단계를 구현한다.
+3. `chrome://extensions`에서 확장 카드를 새로고침하고 수동 dry-run을 수행한다.
 
 ## 검증
 
@@ -21,4 +21,4 @@ npm test
 git status --short --branch
 ```
 
-현재 전체 코드 기준 `npm run check`: 34 tests pass + dist/independence pass.
+현재 전체 코드 기준 `npm run check`: 40 tests pass + dist/independence pass.
