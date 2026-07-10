@@ -281,7 +281,9 @@ export class OpenRunOrchestrator {
         while (!controller.signal.aborted && serverClock.now() < postSlotDeadline) {
           const inspection = this.dependencies.postSlot.inspect();
           if (inspection.kind === "form") {
-            transition("HANDED_OFF", "예약 폼에 도착했습니다. 약관 확인과 최종 예약은 직접 진행하세요.");
+            transition("HANDED_OFF", "예약 폼에 도착했습니다. 약관 확인과 최종 예약은 직접 진행하세요.", {
+              data: { openDeltaMs: Math.round(serverClock.now() - config.openAtMs) },
+            });
             return finish();
           }
           if (inspection.kind === "unknown") {

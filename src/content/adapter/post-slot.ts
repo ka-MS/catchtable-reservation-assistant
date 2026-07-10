@@ -8,6 +8,7 @@ export type PostSlotInspection =
   | { kind: "deposit_notice" }
   | { kind: "deposit" }
   | { kind: "form" }
+  | { kind: "form_notice" }
   | { kind: "unknown"; label: string };
 
 export interface PostSlotActionResult {
@@ -41,7 +42,9 @@ export class PostSlotAdapter {
   constructor(private readonly document: Document) {}
 
   inspect(): PostSlotInspection {
-    if (this.document.location.pathname === "/ct/reservation/form") return { kind: "form" };
+    if (this.document.location.pathname === "/ct/reservation/form") {
+      return this.formNoticeButton() ? { kind: "form_notice" } : { kind: "form" };
+    }
     const active = this.activeDialog();
     if (!active) return { kind: "waiting" };
     const label = active.getAttribute("aria-label") ?? "알 수 없는 단계";
@@ -69,6 +72,8 @@ export class PostSlotAdapter {
         return this.advanceDepositNotice();
       case "deposit":
         return this.advanceDeposit();
+      case "form_notice":
+        return this.advanceFormNotice();
       default:
         return { status: "blocked", message: "진행할 수 있는 후속 선택 단계가 아닙니다." };
     }
@@ -184,6 +189,19 @@ export class PostSlotAdapter {
       return { status: "acted", message: "예약금 0원 결제를 선택했습니다." };
     }
     return this.clickProgress(dialog, ["다음", "확인"], "예약금 결제 방법을 확인했습니다.");
+  }
+
+  // 예약 폼 위 홍보 안내는 화면 증거만 있으므로 확인했어요 버튼 텍스트로만 판정한다.
+  private formNoticeButton(): HTMLButtonElement | null {
+    return Array.from(this.document.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => normalized(button.textContent) === "확인했어요" && !button.disabled) ?? null;
+  }
+
+  private advanceFormNotice(): PostSlotActionResult {
+    const notice = this.formNoticeButton();
+    if (!notice) return { status: "waiting", message: "예약 폼 안내 확인을 기다립니다." };
+    notice.click();
+    return { status: "acted", message: "예약 폼 안내 창을 닫았습니다." };
   }
 
   private dialog(label: string): HTMLElement | null {

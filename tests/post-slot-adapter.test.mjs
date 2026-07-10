@@ -306,3 +306,25 @@ test("reservation form and unknown dialogs are distinguished", () => {
   const unknown = new PostSlotAdapter(documentFor('<div role="dialog" aria-label="알 수 없는 단계"></div>'));
   assert.deepEqual(unknown.inspect(), { kind: "unknown", label: "알 수 없는 단계" });
 });
+
+test("promotional notice on the reservation form is dismissed before handing off", () => {
+  // Screen evidence 2026-07-11: a lottery promo dialog with a single 확인했어요 button
+  // can cover the reservation form on arrival. DOM roles are not measured yet.
+  const document = documentFor(`
+    <main></main>
+    <div><button>확인했어요</button></div>
+  `, "https://app.catchtable.co.kr/ct/reservation/form?isDepositFree=1");
+  let dismissClicks = 0;
+  const dismiss = document.querySelector("button");
+  dismiss.addEventListener("click", () => {
+    dismissClicks += 1;
+    dismiss.parentElement.remove();
+  });
+  const adapter = new PostSlotAdapter(document);
+
+  const inspection = adapter.inspect();
+  assert.deepEqual(inspection, { kind: "form_notice" });
+  assert.equal(adapter.advance(inspection, { tablePreference: "any", menuKeyword: "", personCount: 2 }).status, "acted");
+  assert.equal(dismissClicks, 1);
+  assert.deepEqual(adapter.inspect(), { kind: "form" });
+});

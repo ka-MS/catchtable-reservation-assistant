@@ -110,7 +110,11 @@ test("actual mode clicks one slot and hands off at the reservation form", async 
   assert.equal(slotSelected?.data?.openDeltaMs, slotSelected?.serverAt - 1_000);
   assert.match(slotSelected?.message ?? "", /시간 선택을 완료/);
   assert.equal(h.events.some((event) => event.data?.state === "ADVANCING_RESERVATION"), true);
-  assert.equal(h.events.at(-1)?.data?.state, "HANDED_OFF");
+  const handedOff = h.events.at(-1);
+  assert.equal(handedOff?.data?.state, "HANDED_OFF");
+  assert.match(handedOff?.message ?? "", /예약 폼/);
+  assert.equal(typeof handedOff?.data?.openDeltaMs, "number");
+  assert.equal(handedOff?.data?.openDeltaMs, handedOff?.serverAt - 1_000);
 });
 
 test("disabled post-slot automation stops immediately after the slot click", async () => {
