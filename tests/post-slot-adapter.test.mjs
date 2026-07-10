@@ -132,6 +132,69 @@ test("latest extra-products dialog wins over a stale table dialog and skips prod
   assert.equal(nextClicks, 1);
 });
 
+test("table dialog with every radio transition-disabled waits instead of blocking", () => {
+  // Live DOM measured 2026-07-11 at haokaostan: after clicking 다음, every radio gains
+  // aria-disabled="true" (~65ms) while the dialog stays rendered until removal (~193ms).
+  const document = documentFor(`
+    <div role="dialog" aria-label="테이블 타입 선택">
+      <label role="radio" aria-label="오리엔탈 숯불구이" aria-checked="true" aria-disabled="true">오리엔탈 숯불구이</label>
+      <label role="radio" aria-label="2층 vip룸" aria-checked="false" aria-disabled="true">2층 vip룸</label>
+      <button>다음</button>
+    </div>
+  `);
+  const adapter = new PostSlotAdapter(document);
+
+  assert.equal(adapter.advance(adapter.inspect(), { tablePreference: "any", menuKeyword: "" }).status, "waiting");
+  assert.equal(adapter.advance(adapter.inspect(), { tablePreference: "room", menuKeyword: "" }).status, "waiting");
+});
+
+test("menu dialog with every checkbox transition-disabled waits instead of blocking", () => {
+  const document = documentFor(`
+    <div role="dialog" aria-label="메뉴 선택">
+      <button role="checkbox" aria-label="디너 오마카세" aria-checked="true" disabled></button>
+      <button data-next>다음</button>
+    </div>
+  `);
+  const adapter = new PostSlotAdapter(document);
+
+  assert.equal(adapter.advance(adapter.inspect(), { tablePreference: "any", menuKeyword: "" }).status, "waiting");
+});
+
+test("deposit method with a transition-disabled free radio waits instead of blocking", () => {
+  const document = documentFor(`
+    <div role="dialog" aria-label="예약금 결제 방법 선택">
+      <input type="radio" aria-label="예약금 0원 결제" disabled>
+      <button data-next>다음</button>
+    </div>
+  `);
+  const adapter = new PostSlotAdapter(document);
+
+  assert.equal(adapter.advance(adapter.inspect(), { tablePreference: "any", menuKeyword: "" }).status, "waiting");
+});
+
+test("deposit notice dialog advances with the confirm button", () => {
+  // Live DOM measured 2026-07-11 at haokaostan: aria-label="예약금 안내" with enabled 이전/확인 buttons.
+  const document = documentFor(`
+    <div role="dialog" aria-modal="true" aria-label="예약금 안내">
+      <p>인원에 따른 예약 보증금이 발생합니다.</p>
+      <button>이전</button>
+      <button>확인</button>
+    </div>
+  `);
+  let prevClicks = 0;
+  let confirmClicks = 0;
+  const [prev, confirm] = document.querySelectorAll("button");
+  prev.addEventListener("click", () => { prevClicks += 1; });
+  confirm.addEventListener("click", () => { confirmClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+
+  const inspection = adapter.inspect();
+  assert.deepEqual(inspection, { kind: "deposit_notice" });
+  assert.equal(adapter.advance(inspection, { tablePreference: "any", menuKeyword: "" }).status, "acted");
+  assert.equal(confirmClicks, 1);
+  assert.equal(prevClicks, 0);
+});
+
 test("deposit-free flow advances but a paid-only dialog blocks", () => {
   // Live DOM measured 2026-07-10: native radio inputs with stable aria-label values.
   const document = documentFor(`

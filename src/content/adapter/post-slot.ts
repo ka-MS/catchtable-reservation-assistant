@@ -5,6 +5,7 @@ export type PostSlotInspection =
   | { kind: "table_type"; options: string[] }
   | { kind: "menu"; options: string[] }
   | { kind: "extras" }
+  | { kind: "deposit_notice" }
   | { kind: "deposit" }
   | { kind: "form" }
   | { kind: "unknown"; label: string };
@@ -51,6 +52,7 @@ export class PostSlotAdapter {
       return { kind: "menu", options: this.optionLabels(active, '[role="checkbox"][aria-label]') };
     }
     if (label === "추가 상품") return { kind: "extras" };
+    if (label === "예약금 안내") return { kind: "deposit_notice" };
     if (label === "예약금 결제 방법 선택") return { kind: "deposit" };
     return { kind: "unknown", label };
   }
@@ -63,6 +65,8 @@ export class PostSlotAdapter {
         return this.advanceMenu(config.menuKeyword);
       case "extras":
         return this.advanceExtras();
+      case "deposit_notice":
+        return this.advanceDepositNotice();
       case "deposit":
         return this.advanceDeposit();
       default:
@@ -74,6 +78,7 @@ export class PostSlotAdapter {
     const dialog = this.dialog("테이블 타입 선택");
     if (!dialog) return { status: "waiting", message: "다음 후속 화면을 기다립니다." };
     const choices = this.enabledChoices(dialog, '[role="radio"][aria-label]');
+    if (choices.length === 0) return { status: "waiting", message: "테이블 타입 화면 전환을 기다립니다." };
     const expected = preference === "any" ? null : TABLE_LABEL[preference];
     const target = expected === null
       ? choices.find(isChecked) ?? choices[0]
@@ -90,6 +95,7 @@ export class PostSlotAdapter {
     const dialog = this.dialog("메뉴 선택");
     if (!dialog) return { status: "waiting", message: "다음 후속 화면을 기다립니다." };
     const choices = this.enabledChoices(dialog, '[role="checkbox"][aria-label]');
+    if (choices.length === 0) return { status: "waiting", message: "메뉴 화면 전환을 기다립니다." };
     const query = normalized(keyword);
     const target = query
       ? choices.find((choice) => normalized(choice.getAttribute("aria-label")).includes(query))
@@ -114,13 +120,20 @@ export class PostSlotAdapter {
     return this.clickProgress(dialog, ["다음"], "추가 상품을 선택하지 않고 진행했습니다.");
   }
 
+  private advanceDepositNotice(): PostSlotActionResult {
+    const dialog = this.dialog("예약금 안내");
+    if (!dialog) return { status: "waiting", message: "다음 후속 화면을 기다립니다." };
+    return this.clickProgress(dialog, ["확인"], "예약금 안내를 확인했습니다.");
+  }
+
   private advanceDeposit(): PostSlotActionResult {
     const dialog = this.dialog("예약금 결제 방법 선택");
     if (!dialog) return { status: "waiting", message: "다음 후속 화면을 기다립니다." };
     const depositFree = dialog.querySelector<HTMLInputElement>('input[type="radio"][aria-label="예약금 0원 결제"]');
-    if (!depositFree || depositFree.disabled) {
+    if (!depositFree) {
       return { status: "blocked", message: "예약금 0원 결제를 선택할 수 없어 사용자에게 인계합니다." };
     }
+    if (depositFree.disabled) return { status: "waiting", message: "예약금 결제 방법 화면 전환을 기다립니다." };
     if (!depositFree.checked) {
       depositFree.click();
       return { status: "acted", message: "예약금 0원 결제를 선택했습니다." };
