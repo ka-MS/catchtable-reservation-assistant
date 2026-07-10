@@ -7,10 +7,112 @@
     <link rel="stylesheet" href="sidepanel.css" />
   </head>
   <body>
+    <header class="app-header">
+      <div>
+        <h1>예약 오픈런</h1>
+        <p id="status-detail">설정 대기 중</p>
+      </div>
+      <span id="state" class="state" data-state="IDLE">IDLE</span>
+    </header>
+
     <main>
-      <h1>예약 오픈런</h1>
-      <p id="status">초기화 중</p>
+      <form id="reservation-form">
+        <fieldset id="config-fields">
+          <section>
+            <h2>예약 대상</h2>
+            <label class="field wide">
+              <span>식당 예약 URL</span>
+              <input id="target-url" type="url" required placeholder="https://app.catchtable.co.kr/ct/shop/..." />
+            </label>
+            <div class="grid two">
+              <label class="field">
+                <span>예약 오픈 일시</span>
+                <input id="open-at" type="datetime-local" required />
+              </label>
+              <label class="field">
+                <span>감시 종료 시각</span>
+                <input id="stop-at" type="datetime-local" required />
+              </label>
+              <label class="field">
+                <span>예약 날짜</span>
+                <input id="reservation-date" type="date" required />
+              </label>
+              <label class="field">
+                <span>예약 인원</span>
+                <input id="person-count" type="number" min="1" max="20" required value="2" />
+              </label>
+            </div>
+          </section>
+
+          <section>
+            <h2>희망 시간</h2>
+            <div class="grid two">
+              <label class="field">
+                <span>시작</span>
+                <input id="start-time" type="time" required value="18:00" />
+              </label>
+              <label class="field">
+                <span>종료</span>
+                <input id="end-time" type="time" required value="20:00" />
+              </label>
+            </div>
+            <div class="priority-editor">
+              <label class="field priority-input">
+                <span>시간 우선순위</span>
+                <span class="inline-control">
+                  <input id="priority-time" type="time" />
+                  <button id="add-priority" class="icon-button" type="button" title="우선순위 추가" aria-label="우선순위 추가">+</button>
+                </span>
+              </label>
+              <ol id="priority-list" aria-label="시간 우선순위 목록"></ol>
+            </div>
+          </section>
+
+          <section>
+            <h2>실행 옵션</h2>
+            <label class="toggle-row">
+              <input id="page-prepared" type="checkbox" required />
+              <span>페이지에서 예약 모달과 인원을 준비함</span>
+            </label>
+            <label class="toggle-row emphasized">
+              <input id="dry-run" type="checkbox" checked />
+              <span>Dry-run</span>
+            </label>
+            <details>
+              <summary>고급 설정</summary>
+              <div class="grid three advanced-grid">
+                <label class="field">
+                  <span>사전 시작 (ms)</span>
+                  <input id="pre-open-lead" type="number" min="0" max="10000" step="100" value="3000" />
+                </label>
+                <label class="field">
+                  <span>토글 간격 (ms)</span>
+                  <input id="toggle-interval" type="number" min="250" max="5000" step="50" value="400" />
+                </label>
+                <label class="field">
+                  <span>시계 표본</span>
+                  <input id="clock-samples" type="number" min="3" max="9" step="1" value="5" />
+                </label>
+              </div>
+            </details>
+          </section>
+
+          <button id="start" class="primary" type="submit">오픈런 시작</button>
+        </fieldset>
+      </form>
+
+      <button id="stop" class="secondary" type="button" disabled>중지</button>
+      <p id="form-error" class="error" role="alert"></p>
+
+      <section class="runtime">
+        <div class="runtime-heading">
+          <h2>실행 기록</h2>
+          <span id="clock-offset">시계 -</span>
+        </div>
+        <ol id="event-list" class="event-list"></ol>
+      </section>
     </main>
+
     <script type="module" src="index.js"></script>
   </body>
 </html>

@@ -151,7 +151,20 @@ export class OpenRunOrchestrator {
           return finish();
         }
 
-        const detectUntil = Math.min(serverClock.now() + Math.max(0, config.toggleIntervalMs - switchDelay), config.stopAtMs);
+        const settleDelay = Math.min(50, Math.max(0, config.toggleIntervalMs - switchDelay));
+        if (settleDelay > 0 && !(await this.dependencies.sleep(settleDelay, controller.signal))) {
+          transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
+          return finish();
+        }
+        if (!this.dependencies.calendar.inspect(config.reservationDate).targetSelected) {
+          transition("HANDED_OFF", "목표 날짜 선택 상태를 확인할 수 없습니다.");
+          return finish();
+        }
+
+        const detectUntil = Math.min(
+          serverClock.now() + Math.max(0, config.toggleIntervalMs - switchDelay - settleDelay),
+          config.stopAtMs,
+        );
         let candidate: SlotCandidate | null = null;
         while (!controller.signal.aborted && serverClock.now() < detectUntil) {
           candidate = selectPreferredSlot(

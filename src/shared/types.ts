@@ -49,3 +49,30 @@ export interface RunEvent {
   message: string;
   data?: Record<string, string | number | boolean>;
 }
+
+export interface ActiveRun {
+  runId: string;
+  tabId: number;
+  state: RunState;
+  startedAt: number;
+  updatedAt: number;
+}
+
+export type ContentCommand =
+  | { type: "PING" }
+  | { type: "START"; config: ReservationConfig }
+  | { type: "STOP" };
+
+export type PanelCommand =
+  | { type: "PANEL_START"; config: ReservationConfig }
+  | { type: "PANEL_STOP" };
+
+export interface RunEventMessage {
+  type: "RUN_EVENT";
+  event: RunEvent;
+}
+
+export interface CommandResponse {
+  ok: boolean;
+  error?: string;
+}

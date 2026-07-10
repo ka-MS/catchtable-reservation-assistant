@@ -3,7 +3,7 @@
   "name": "Catchtable Reserve Assistant",
   "version": "0.2.0",
   "description": "예약 오픈 시각에 목표 슬롯을 감지하고 클릭 후 사용자에게 인계합니다.",
-  "permissions": ["storage", "sidePanel", "scripting", "notifications"],
+  "permissions": ["storage", "tabs", "sidePanel", "scripting", "notifications"],
   "host_permissions": ["https://app.catchtable.co.kr/*"],
   "background": {
     "service_worker": "background/index.js",
