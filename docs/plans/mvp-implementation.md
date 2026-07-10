@@ -6,8 +6,8 @@
 - [x] 2. 시간 파싱, 설정 검증, 기본 종료 시각 구현 및 단위 테스트
 - [ ] 3. Clock/ClockSyncAdapter와 표본 선택 구현 및 단위 테스트
 - [ ] 4. 상태 머신과 스케줄러 구현 및 단위 테스트
-- [ ] 5. 실측 fixture와 CalendarAdapter 구현
-- [ ] 6. SlotAdapter와 우선순위 선택 구현
+- [x] 5. 실측 fixture와 CalendarAdapter 구현
+- [x] 6. SlotAdapter와 우선순위 선택 구현
 - [ ] 7. OpenRunOrchestrator 구현: 대기, 토글, 감지, dry-run, 클릭, 인계, 종료
 - [ ] 8. Content Script on-demand 부트스트랩과 메시지 처리
 - [ ] 9. Background 주입·storage·이벤트 링버퍼·알림
