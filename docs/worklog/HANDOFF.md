@@ -6,13 +6,13 @@
 
 ## 현재 상태
 
-재구축 전 상태 보존, 공식 기준 확정, 과거 문서 폐기와 깨끗한 MV3 스캐폴드 교체까지 완료했다. 아직 오픈런 코어 로직과 UI는 구현하지 않았다.
+재구축 전 상태 보존, 공식 기준, MV3 스캐폴드와 공유 코어(설정·시간·시계 계산·상태 머신)까지 구현했다. Site Adapter, 오케스트레이터, Background, UI는 아직 구현하지 않았다.
 
 ## 다음 작업
 
-1. 설정·시간·상태 머신 단위 테스트부터 TDD로 구현한다.
-2. 서버 시계 표본 선택과 fallback을 구현한다.
-3. 실측 fixture를 바탕으로 Site Adapter와 오픈런 오케스트레이터를 구현한다.
+1. 실측 fixture를 바탕으로 CalendarAdapter와 SlotAdapter를 구현한다.
+2. 서버 HEAD 측정 adapter와 중단 가능한 Scheduler를 구현한다.
+3. 오픈런 오케스트레이터, Background, UI를 연결한다.
 
 ## 검증
 
@@ -21,4 +21,4 @@ npm test
 git status --short --branch
 ```
 
-현재 새 스캐폴드 기준 `npm test`: 2 pass.
+현재 공유 코어 기준 `npm test`: 14 pass.
