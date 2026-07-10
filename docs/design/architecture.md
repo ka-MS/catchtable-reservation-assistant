@@ -103,6 +103,7 @@ interface ReservationSiteAdapter {
 - `postSlotEnabled=false`면 actual click 직후 인계하고 후속 DOM을 판독하지 않는다.
 - `postSlotEnabled=true`면 actual click 뒤 최대 5초 동안 테이블 타입, 메뉴, 추가 상품, 예약금 안내, 예약금 0원 결제 방법을 순서와 존재 여부에 관계없이 판독한다.
 - dialog 전환 중 활성 선택지가 0개면 실패가 아니라 전환 중으로 판정하고 제한 시간 안에서 재시도한다.
+- 수량형 메뉴는 진행 버튼이 항상 활성이므로 버튼 상태 대신 총수량(예약 인원수 도달)을 진행 조건으로 사용한다.
 - 예약 폼 URL에 도착하거나 지원하지 않는 화면을 만나면 `HANDED_OFF` 이벤트를 발행한다.
 
 ## 8. 저장 모델

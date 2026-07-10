@@ -15,7 +15,7 @@ export interface PostSlotActionResult {
   message: string;
 }
 
-type PostSlotConfig = Pick<ReservationConfig, "tablePreference" | "menuKeyword">;
+type PostSlotConfig = Pick<ReservationConfig, "tablePreference" | "menuKeyword" | "personCount">;
 
 const TABLE_LABEL: Record<Exclude<TablePreference, "any">, string> = {
   hall: "홀",
@@ -62,7 +62,7 @@ export class PostSlotAdapter {
       case "table_type":
         return this.advanceTable(config.tablePreference);
       case "menu":
-        return this.advanceMenu(config.menuKeyword);
+        return this.advanceMenu(config.menuKeyword, config.personCount);
       case "extras":
         return this.advanceExtras();
       case "deposit_notice":
@@ -91,9 +91,14 @@ export class PostSlotAdapter {
     return this.clickProgress(dialog, ["다음", "확인"], "테이블 타입 선택을 완료했습니다.");
   }
 
-  private advanceMenu(keyword: string): PostSlotActionResult {
+  private advanceMenu(keyword: string, personCount: number): PostSlotActionResult {
     const dialog = this.dialog("메뉴 선택");
     if (!dialog) return { status: "waiting", message: "다음 후속 화면을 기다립니다." };
+    if (dialog.querySelector('[role="checkbox"][aria-label]')) return this.advanceMenuChoices(dialog, keyword);
+    return this.advanceMenuCounts(dialog, keyword, personCount);
+  }
+
+  private advanceMenuChoices(dialog: HTMLElement, keyword: string): PostSlotActionResult {
     const choices = this.enabledChoices(dialog, '[role="checkbox"][aria-label]');
     if (choices.length === 0) return { status: "waiting", message: "메뉴 화면 전환을 기다립니다." };
     const query = normalized(keyword);
@@ -112,6 +117,46 @@ export class PostSlotAdapter {
       return { status: "acted", message: `${target.getAttribute("aria-label") ?? "메뉴"}를 선택했습니다.` };
     }
     return this.clickProgress(dialog, ["다음", "확인"], "메뉴 선택을 완료했습니다.");
+  }
+
+  // 수량형 메뉴는 진행 버튼이 항상 활성이지만 총수량이 예약 인원수와 같아야만 클릭이 접수된다.
+  private advanceMenuCounts(dialog: HTMLElement, keyword: string, personCount: number): PostSlotActionResult {
+    const inputs = Array.from(dialog.querySelectorAll<HTMLInputElement>('input[type="number"][aria-label]'))
+      .filter((input) => (input.getAttribute("aria-label") ?? "").endsWith("수량"));
+    if (inputs.length === 0) return { status: "waiting", message: "메뉴 화면 전환을 기다립니다." };
+    const buttons = Array.from(dialog.querySelectorAll<HTMLButtonElement>("button[aria-label]"));
+    const entries = inputs.map((input) => {
+      const name = (input.getAttribute("aria-label") ?? "").replace(/\s*수량$/, "");
+      return {
+        name,
+        value: Number.parseInt(input.value, 10) || 0,
+        plus: buttons.find((button) => button.getAttribute("aria-label") === `${name} 수량 추가`),
+        minus: buttons.find((button) => button.getAttribute("aria-label") === `${name} 수량 감소`),
+      };
+    });
+    const query = normalized(keyword);
+    const target = query ? entries.find((entry) => normalized(entry.name).includes(query)) : entries[0];
+    if (!target) return { status: "blocked", message: "설정한 메뉴를 선택할 수 없습니다." };
+
+    const other = entries.find((entry) => entry !== target && entry.value > 0);
+    if (other) {
+      if (!other.minus || other.minus.disabled) return { status: "blocked", message: `${other.name} 수량을 줄일 수 없습니다.` };
+      other.minus.click();
+      return { status: "acted", message: `${other.name} 수량을 줄였습니다.` };
+    }
+    if (target.value > personCount) {
+      if (!target.minus || target.minus.disabled) return { status: "blocked", message: `${target.name} 수량을 줄일 수 없습니다.` };
+      target.minus.click();
+      return { status: "acted", message: `${target.name} 수량을 ${target.value - 1}개로 줄였습니다.` };
+    }
+    if (target.value < personCount) {
+      if (!target.plus || target.plus.disabled) {
+        return { status: "blocked", message: "메뉴 수량을 예약 인원수만큼 설정할 수 없습니다." };
+      }
+      target.plus.click();
+      return { status: "acted", message: `${target.name} 수량을 ${target.value + 1}개로 설정했습니다.` };
+    }
+    return this.clickProgress(dialog, ["다음", "확인"], "메뉴 수량 선택을 완료했습니다.");
   }
 
   private advanceExtras(): PostSlotActionResult {

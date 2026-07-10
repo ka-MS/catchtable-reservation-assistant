@@ -160,6 +160,85 @@ test("menu dialog with every checkbox transition-disabled waits instead of block
   assert.equal(adapter.advance(adapter.inspect(), { tablePreference: "any", menuKeyword: "" }).status, "waiting");
 });
 
+// Live DOM measured 2026-07-11 at dotgabinugak: quantity menus expose
+// input[type=number aria-label="<메뉴명> 수량"] with per-menu 수량 추가/감소 buttons.
+// The progress button stays DOM-enabled even when the required quantity is unmet.
+function quantityMenuDocument({ firstValue = 0, secondValue = 0 } = {}) {
+  const document = documentFor(`
+    <div role="dialog" aria-modal="true" aria-label="메뉴 선택">
+      <button aria-label="한우맡김차림 수량 감소" ${firstValue === 0 ? "disabled" : ""}>-</button>
+      <input type="number" aria-label="한우맡김차림 수량" value="${firstValue}">
+      <button aria-label="한우맡김차림 수량 추가">+</button>
+      <button aria-label="한우맡김차림(전통주페어링 포함) 수량 감소" ${secondValue === 0 ? "disabled" : ""}>-</button>
+      <input type="number" aria-label="한우맡김차림(전통주페어링 포함) 수량" value="${secondValue}">
+      <button aria-label="한우맡김차림(전통주페어링 포함) 수량 추가">+</button>
+      <button>이전</button>
+      <button data-next>확인</button>
+    </div>
+  `);
+  for (const input of document.querySelectorAll('input[type="number"]')) {
+    const name = input.getAttribute("aria-label").replace(/ ?수량$/, "");
+    const plus = Array.from(document.querySelectorAll("button")).find((b) => b.getAttribute("aria-label") === `${name} 수량 추가`);
+    const minus = Array.from(document.querySelectorAll("button")).find((b) => b.getAttribute("aria-label") === `${name} 수량 감소`);
+    plus.addEventListener("click", () => {
+      input.value = String(Number(input.value) + 1);
+      minus.disabled = false;
+    });
+    minus.addEventListener("click", () => {
+      input.value = String(Math.max(0, Number(input.value) - 1));
+      if (input.value === "0") minus.disabled = true;
+    });
+  }
+  return document;
+}
+
+test("quantity menu fills the person count one step at a time then confirms", () => {
+  const document = quantityMenuDocument();
+  let confirmClicks = 0;
+  document.querySelector("button[data-next]").addEventListener("click", () => { confirmClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+  const config = { tablePreference: "any", menuKeyword: "", personCount: 2 };
+
+  assert.equal(adapter.advance(adapter.inspect(), config).status, "acted");
+  assert.equal(document.querySelector('[aria-label="한우맡김차림 수량"]').value, "1");
+  assert.equal(adapter.advance(adapter.inspect(), config).status, "acted");
+  assert.equal(document.querySelector('[aria-label="한우맡김차림 수량"]').value, "2");
+  assert.equal(confirmClicks, 0);
+  assert.equal(adapter.advance(adapter.inspect(), config).status, "acted");
+  assert.equal(confirmClicks, 1);
+  assert.equal(document.querySelector('[aria-label*="전통주페어링"][aria-label$="수량"]').value, "0");
+});
+
+test("quantity menu honors the menu keyword", () => {
+  const document = quantityMenuDocument();
+  const adapter = new PostSlotAdapter(document);
+  const config = { tablePreference: "any", menuKeyword: "전통주", personCount: 1 };
+
+  assert.equal(adapter.advance(adapter.inspect(), config).status, "acted");
+  assert.equal(document.querySelector('[aria-label="한우맡김차림(전통주페어링 포함) 수량"]').value, "1");
+  assert.equal(document.querySelector('[aria-label="한우맡김차림 수량"]').value, "0");
+});
+
+test("quantity menu clears another menu's quantity before filling the target", () => {
+  const document = quantityMenuDocument({ secondValue: 1 });
+  const adapter = new PostSlotAdapter(document);
+  const config = { tablePreference: "any", menuKeyword: "", personCount: 1 };
+
+  assert.equal(adapter.advance(adapter.inspect(), config).status, "acted");
+  assert.equal(document.querySelector('[aria-label="한우맡김차림(전통주페어링 포함) 수량"]').value, "0");
+  assert.equal(adapter.advance(adapter.inspect(), config).status, "acted");
+  assert.equal(document.querySelector('[aria-label="한우맡김차림 수량"]').value, "1");
+});
+
+test("quantity menu blocks when the add button cannot reach the person count", () => {
+  const document = quantityMenuDocument();
+  document.querySelector('[aria-label="한우맡김차림 수량 추가"]').disabled = true;
+  const adapter = new PostSlotAdapter(document);
+
+  const result = adapter.advance(adapter.inspect(), { tablePreference: "any", menuKeyword: "", personCount: 2 });
+  assert.equal(result.status, "blocked");
+});
+
 test("deposit method with a transition-disabled free radio waits instead of blocking", () => {
   const document = documentFor(`
     <div role="dialog" aria-label="예약금 결제 방법 선택">
