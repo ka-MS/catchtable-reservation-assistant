@@ -1,101 +1,87 @@
-# Karpathy Guidelines
+# Catchtable Reserve
 
-LLM 코딩 에이전트가 흔히 만드는 실수를 줄이기 위한 지침입니다. 원본 저장소의 Claude Code 플러그인, Cursor 룰, 공통 지침 파일의 기능을 Codex와 Claude Code에서 사용할 수 있는 구조로 옮겼습니다.
+예약 오픈 시각에 Catchtable DINING 예약 슬롯을 빠르게 감지하고, 목표 슬롯을 한 번 클릭한 뒤 사용자에게 제어권을 넘기는 개인용 Chrome Manifest V3 확장 프로그램입니다.
 
-원본 아이디어는 Andrej Karpathy가 지적한 LLM 코딩 문제에서 출발합니다.
+## 현재 범위
 
-- 모델이 사용자 대신 잘못된 가정을 하고 확인 없이 진행함
-- 혼란, 모순, 절충점, 반대 의견을 충분히 드러내지 않음
-- 코드와 API를 과하게 복잡하게 만들고 불필요한 추상화를 쌓음
-- 작업과 무관한 코드, 주석, 포맷을 바꾸는 부작용을 냄
+- 단일 식당·단일 탭 오픈런
+- 예약 오픈 일시와 예약 희망 시간 분리
+- 같은 오리진 서버 Date 헤더 기반 시계 보정
+- 기본 T-3초부터 `인접 날짜 -> 목표 날짜` 토글
+- 시간 우선순위와 허용 범위 적용
+- dry-run 무클릭 감지
+- 실제 슬롯 클릭 직후 `HANDED_OFF`
+- 사용자 중지와 감시 종료 시각 강제 종료
 
-## 구성
+로그인, CAPTCHA, 인원 자동 선택, 테이블 타입, 예약금, 약관, 결제, 최종 예약 확정은 자동화하지 않습니다.
+
+## 요구 환경
+
+- Chrome 120 이상
+- Node.js 22 이상
+- npm
+- Catchtable에 로그인된 사용자 Chrome 세션
+
+## 설치와 검증
+
+```bash
+npm ci
+npm run check
+```
+
+`npm run check`는 strict typecheck, 전체 테스트, 배포 번들, 외부 저장소 독립성을 검증합니다.
+
+Chrome에서 확장을 로드합니다.
+
+1. `chrome://extensions`를 엽니다.
+2. 개발자 모드를 켭니다.
+3. `압축해제된 확장 프로그램을 로드합니다`를 선택합니다.
+4. `/home/developer/source/catchtable-reserve/dist`를 선택합니다.
+5. 소스 변경 후 `npm run build`를 실행하고 확장 카드의 새로고침 버튼을 누릅니다.
+
+Windows 파일 선택기에서는 다음 경로를 사용할 수 있습니다.
 
 ```text
-codex-karpathy-guidelines-ko/
-├─ AGENTS.md
-├─ EXAMPLES.md
-├─ README.md
-├─ .agents/plugins/marketplace.json
-└─ plugins/karpathy-guidelines-ko/
-   ├─ README.md
-   ├─ .codex-plugin/plugin.json
-   └─ skills/karpathy-guidelines-ko/SKILL.md
+\\wsl.localhost\Ubuntu\home\developer\source\catchtable-reserve\dist
 ```
 
-## Codex에서 사용하는 방법
+## 사용
 
-### 방법 A: 프로젝트 지침으로 사용
+1. Catchtable 식당 페이지에서 예약 모달을 열고 예약 날짜와 인원을 직접 준비합니다.
+2. 확장 아이콘을 눌러 Side Panel을 엽니다.
+3. 식당 URL, 예약 오픈 일시, 예약 날짜·인원, 희망 시간, 우선순위, 감시 종료 시각을 설정합니다.
+4. `페이지에서 예약 모달과 인원을 준비함`을 확인합니다.
+5. 첫 실행은 `Dry-run`을 켠 상태로 검증합니다.
+6. 실제 실행에서는 목표 슬롯을 한 번 클릭한 직후 자동화가 종료됩니다. 이후 단계는 직접 진행합니다.
 
-새 프로젝트나 기존 프로젝트 루트에 `AGENTS.md` 내용을 복사하거나 병합합니다. Codex는 프로젝트 루트의 `AGENTS.md`를 작업 지침으로 읽습니다.
+감시 종료 시각은 예약 오픈 일시를 입력하면 기본 `+10분`으로 계산됩니다. 사용자가 종료 시각을 직접 수정한 뒤에는 자동으로 덮어쓰지 않습니다.
 
-### 방법 B: Codex 플러그인으로 사용
+## 개발 명령
 
-이 폴더는 Codex 로컬 플러그인 마켓플레이스 구조를 포함합니다.
-
-```powershell
-cd C:\Source\andrej-karpathy-skills\codex-karpathy-guidelines-ko
+```bash
+npm run build
+npm run typecheck
+npm test
+npm run check:dist
+npm run check:independence
+npm run check
 ```
 
-Codex에서 로컬 플러그인 소스로 사용할 때는 이 폴더의 `.agents/plugins/marketplace.json`이 `./plugins/karpathy-guidelines-ko`를 가리킵니다. 플러그인 자체는 다음 파일로 정의됩니다.
+## 구조
 
 ```text
-plugins/karpathy-guidelines-ko/.codex-plugin/plugin.json
+src/
+├─ background/     탭, 주입, storage, 알림
+├─ content/        오케스트레이터와 실측 Site Adapter
+├─ shared/         설정, 시간, 시계, 상태 머신, 스케줄러
+└─ sidepanel/      설정, 상태, 이벤트 UI
 ```
 
-스킬 본문은 다음 위치에 있습니다.
+공식 요구사항과 미실측 영역은 [문서 인덱스](docs/README.md), 현재 검증 상태는 [MVP 체크리스트](docs/verification/mvp-checklist.md)를 확인합니다.
 
-```text
-plugins/karpathy-guidelines-ko/skills/karpathy-guidelines-ko/SKILL.md
-```
+## 알려진 제한사항
 
-## 네 가지 원칙
-
-| 원칙 | 줄이는 문제 |
-| --- | --- |
-| 코딩 전에 생각하기 | 잘못된 가정, 숨겨진 혼란, 누락된 절충점 |
-| 단순함 우선 | 과설계, 불필요한 추상화 |
-| 외과적으로 변경하기 | 무관한 편집, 건드리지 않아야 할 코드 변경 |
-| 목표 중심 실행 | 검증 없는 구현, 약한 성공 기준 |
-
-## 핵심 사용 패턴
-
-작업을 시작할 때는 먼저 가정과 성공 기준을 드러냅니다.
-
-```text
-가정:
-- 원본 동작은 유지한다.
-- 요청된 버그만 수정한다.
-
-성공 기준:
-- 버그를 재현하는 테스트가 실패한다.
-- 수정 후 같은 테스트가 통과한다.
-- 관련 기존 테스트가 통과한다.
-```
-
-## 원본 기능 변환 대응표
-
-| 원본 | Codex 변환본 |
-| --- | --- |
-| `.claude-plugin/plugin.json` | `plugins/karpathy-guidelines-ko/.codex-plugin/plugin.json` |
-| `.claude-plugin/marketplace.json` | `.agents/plugins/marketplace.json` |
-| `skills/karpathy-guidelines/SKILL.md` | `plugins/karpathy-guidelines-ko/skills/karpathy-guidelines-ko/SKILL.md` |
-| `CLAUDE.md` | `AGENTS.md` |
-| `CURSOR.md`, `.cursor/rules/...` | Codex에서는 `AGENTS.md` 또는 스킬로 대체 |
-| `README.md`, `EXAMPLES.md` | 한국어 Codex 기준 문서로 재작성 |
-
-## 커스터마이징
-
-프로젝트별 규칙은 `AGENTS.md` 아래에 별도 섹션으로 추가합니다.
-
-```markdown
-## 프로젝트별 지침
-
-- TypeScript strict mode를 사용한다.
-- API 엔드포인트에는 테스트를 추가한다.
-- `src/utils/errors.ts`의 기존 오류 처리 패턴을 따른다.
-```
-
-## 라이선스
-
-MIT
+- 인원 칩의 안정적인 선택 상태 속성이 미실측이므로 사용자가 직접 준비하고 확인합니다.
+- 슬롯 클릭 이후 화면은 MVP 미실측 범위이므로 즉시 사용자에게 인계합니다.
+- 취소 자리 스나이핑은 2단계 확장점만 정의되어 있고 구현되지 않았습니다.
+- 실제 사이트 슬롯 클릭은 예약 자리를 점유할 수 있으므로 자동 테스트하지 않습니다.

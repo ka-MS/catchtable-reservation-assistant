@@ -12,8 +12,8 @@
 - [x] 8. Content Script on-demand 부트스트랩과 메시지 처리
 - [x] 9. Background 주입·storage·이벤트 링버퍼·알림
 - [x] 10. 예약 오픈 일시 중심 Side Panel UI
-- [ ] 11. 통합·빌드·독립성 회귀 테스트
-- [ ] 12. README, 실사이트 dry-run 체크리스트, 미실측 영역 최종화
+- [x] 11. 통합·빌드·독립성 회귀 테스트
+- [x] 12. README, 실사이트 dry-run 체크리스트, 미실측 영역 최종화
 
 ## 구현 순서 제약
 

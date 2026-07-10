@@ -31,8 +31,7 @@
 
 - Content Script 번들에 정적 `import`가 없어야 한다.
 - manifest에 `content_scripts`가 없어야 한다.
-- 핵심 코드에 `catchtable-reserve-cl` 경로가 없어야 한다.
+- 핵심 코드에 외부 실험 저장소 경로가 없어야 한다.
 - dry-run에서 DOM click 호출은 0회여야 한다.
 - 슬롯 선택 후 다음 DOM을 해석하거나 클릭하지 않아야 한다.
 - 종료 시각 이후 스케줄러와 DOM 클릭이 발생하지 않아야 한다.
-

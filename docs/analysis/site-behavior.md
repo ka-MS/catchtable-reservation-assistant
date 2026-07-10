@@ -54,7 +54,7 @@ POST https://ct-api.catchtable.co.kr/api/reservation/v1/dining/time-slots
 </button>
 ```
 
-- 기본 선택자: `button[data-busy]`
+- 기본 선택자: `main button[data-busy]`
 - 캐러셀 복제 노드가 다수 존재하며 `aria-hidden="true"`는 제외한다.
 - 시간 슬롯에는 `aria-disabled`가 존재하지 않았다. 과거 `main button[aria-disabled]`는 0개를 반환한 잘못된 선택자다.
 - 시간 표기는 `오전|오후 H:MM` 형식이다.
@@ -106,3 +106,6 @@ POST https://ct-api.catchtable.co.kr/api/reservation/v1/dining/time-slots
 
 테스트 fixture에는 이 문서의 실측 구조만 포함하며, 파일 상단에 실측일·화면·출처를 기록한다. 테스트 편의를 위해 실제로 없던 속성을 추가하지 않는다.
 
+## 11. 2026-07-10 읽기 전용 재확인
+
+태오 광안리 DINING 페이지에서 `main button[data-busy]` 49개를 확인했다. 표시 슬롯은 `aria-hidden`이 없고 캐러셀 복제본은 `aria-hidden="true"`였으며 `data-duplicate-index`와 `오후 H:MM` 텍스트가 유지됐다. 달력 모달은 닫혀 있어 날짜 셀은 이 재확인에서 제외했다. 어떤 버튼도 클릭하지 않았다.
