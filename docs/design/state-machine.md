@@ -45,6 +45,7 @@ IDLE
 - 페이지 사전 준비가 필요한 검증 실패 -> `HANDED_OFF`
 - 예외, 잘못된 전이, 지원하지 않는 URL -> `FAILED`
 - `SLOT_SELECTED` -> `HANDED_OFF` 외 다른 전이는 허용하지 않는다.
+- `SLOT_DETECTED`에서 클릭 직전 슬롯이 사라지면 `REFRESHING_SLOTS`로 돌아갈 수 있다.
 
 ## 4. 전이 기록
 
@@ -72,4 +73,3 @@ interface StateTransition {
 - dry-run 런은 `SLOT_SELECTED`에 진입할 수 없다.
 - 서버 기준 현재 시각이 `stopAtMs` 이상이면 DOM을 클릭할 수 없다.
 - 새 시작은 새 runId와 빈 논리 클릭 기록을 가진다.
-
