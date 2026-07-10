@@ -8,7 +8,7 @@ import type {
   RunEventMessage,
   RunState,
 } from "../shared/types.js";
-import { appendRunEvent } from "./storage.js";
+import { appendRunEvent, SerialTaskQueue } from "./storage.js";
 
 const TERMINAL_STATES = new Set<RunState>([
   "DRY_RUN_COMPLETED",
@@ -18,6 +18,7 @@ const TERMINAL_STATES = new Set<RunState>([
   "TIMED_OUT",
   "FAILED",
 ]);
+const eventWrites = new SerialTaskQueue();
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => undefined);
 
@@ -45,6 +46,10 @@ async function ensureContent(tabId: number): Promise<void> {
 }
 
 async function startRun(config: ReservationConfig): Promise<CommandResponse> {
+  const stored = await chrome.storage.local.get("activeRun") as { activeRun?: ActiveRun | null };
+  if (stored.activeRun && !TERMINAL_STATES.has(stored.activeRun.state)) {
+    return { ok: false, error: "이미 실행 중인 작업이 있습니다." };
+  }
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab?.id || !sameRestaurant(tab.url, config.targetUrl)) {
     return { ok: false, error: "설정한 식당의 Catchtable 탭을 활성화하세요." };
@@ -60,7 +65,9 @@ async function startRun(config: ReservationConfig): Promise<CommandResponse> {
   };
   await chrome.storage.local.set({ reservationConfig: config, activeRun: pendingRun, runEvents: [] });
   const response = await chrome.tabs.sendMessage(tab.id, { type: "START", config } satisfies ContentCommand);
-  return response?.ok ? { ok: true } : { ok: false, error: response?.error ?? "실행을 시작할 수 없습니다." };
+  if (response?.ok) return { ok: true };
+  await chrome.storage.local.set({ activeRun: null });
+  return { ok: false, error: response?.error ?? "실행을 시작할 수 없습니다." };
 }
 
 async function stopRun(): Promise<CommandResponse> {
@@ -112,7 +119,9 @@ async function recordEvent(event: RunEvent, tabId: number | undefined): Promise<
 chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
   const message = rawMessage as PanelCommand | RunEventMessage;
   if (message.type === "RUN_EVENT") {
-    void recordEvent(message.event, sender.tab?.id);
+    void eventWrites.enqueue(() => recordEvent(message.event, sender.tab?.id)).catch((error) => {
+      console.error("실행 이벤트를 저장하지 못했습니다.", error);
+    });
     return;
   }
   if (message.type === "PANEL_START") {

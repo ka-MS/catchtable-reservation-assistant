@@ -22,7 +22,7 @@ export class SlotAdapter {
   private readSlots(): SlotWithButton[] {
     // 실측 2026-07-10: docs/analysis/site-behavior.md §4 슬롯 칩과 캐러셀 복제 필터.
     const unique = new Map<number, SlotWithButton>();
-    const buttons = Array.from(this.document.querySelectorAll<HTMLButtonElement>('button[data-busy]'));
+    const buttons = Array.from(this.document.querySelectorAll<HTMLButtonElement>('main button[data-busy]'));
     for (const button of buttons) {
       if (
         button.dataset.busy !== "false" ||

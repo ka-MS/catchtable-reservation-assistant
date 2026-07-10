@@ -125,7 +125,7 @@ function valuesFromConfig(config: ReservationConfig): FormValues {
 }
 
 function saveDraft(): void {
-  void chrome.storage.local.set({ draftForm: readValues() });
+  void chrome.storage.local.set({ draftForm: readValues(), draftStopAtDirty: stopAtDirty });
 }
 
 function renderPriorities(): void {
@@ -258,12 +258,12 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
 });
 
-void chrome.storage.local.get(["reservationConfig", "activeRun", "runEvents", "draftForm"]).then((stored) => {
+void chrome.storage.local.get(["reservationConfig", "activeRun", "runEvents", "draftForm", "draftStopAtDirty"]).then((stored) => {
   const draft = stored.draftForm as FormValues | undefined;
   const config = stored.reservationConfig as ReservationConfig | undefined;
   if (draft) {
     applyValues(draft);
-    stopAtDirty = Boolean(draft.stopAt);
+    stopAtDirty = stored.draftStopAtDirty === true;
   } else if (config) {
     applyValues(valuesFromConfig(config));
     stopAtDirty = true;
