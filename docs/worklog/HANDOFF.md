@@ -21,4 +21,4 @@ npm test
 git status --short --branch
 ```
 
-실행 기록은 밀리초까지 표시하며 시간 슬롯 클릭 성공 시 서버 보정 시각과 오픈 대비 지연을 함께 표시한다. 후속 단계는 메뉴 `다음/확인`, 추가 상품 무선택 진행, 예약금 안내 `확인`, 전환 중 일괄 비활성 대기, 최신 렌더 dialog 우선 판정을 지원한다. 현재 전체 코드 기준 `npm run check`: 63 tests pass + dist/independence pass.
+실행 기록은 밀리초까지 표시하며 시간 슬롯 클릭 성공 시 서버 보정 시각과 오픈 대비 지연을 함께 표시한다. 후속 단계는 메뉴 `다음/확인`, 추가 상품 무선택 진행, 예약금 안내 `확인`, 전환 중 일괄 비활성 대기, 최신 렌더 dialog 우선 판정을 지원한다. 현재 전체 코드 기준 `npm run check`: 64 tests pass + dist/independence pass.

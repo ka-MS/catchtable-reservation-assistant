@@ -167,6 +167,34 @@ test("optional post-slot stages are advanced in observed order", async () => {
   assert.match(h.events.at(-1)?.message ?? "", /예약 폼/);
 });
 
+test("a promo notice appearing after form arrival is dismissed before handing off", async () => {
+  // The promo dialog renders non-deterministically after the form loads, so the
+  // orchestrator dwells on the form briefly instead of handing off on first sight.
+  let inspections = 0;
+  const actions = [];
+  const h = harness({
+    postSlot: {
+      inspect: () => {
+        inspections += 1;
+        if (inspections < 10) return { kind: "form" };
+        if (inspections === 10) return { kind: "form_notice" };
+        return { kind: "form" };
+      },
+      advance: (stage) => {
+        actions.push(stage.kind);
+        return { status: "acted", message: "예약 폼 안내 창을 닫았습니다." };
+      },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ dryRun: false }));
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.deepEqual(actions, ["form_notice"]);
+  assert.equal(h.events.some((event) => event.message === "예약 폼 안내 창을 닫았습니다."), true);
+  assert.match(h.events.at(-1)?.message ?? "", /예약 폼/);
+});
+
 test("post-slot waiting actions are retried instead of handing off", async () => {
   let advances = 0;
   const h = harness({

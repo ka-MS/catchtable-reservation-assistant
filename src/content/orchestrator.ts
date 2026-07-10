@@ -278,9 +278,18 @@ export class OpenRunOrchestrator {
         }
         transition("ADVANCING_RESERVATION", "예약 폼까지 선택적 중간 단계를 진행합니다.");
         const postSlotDeadline = serverClock.now() + 5_000;
+        // 홍보 안내 창은 폼 도착 뒤 비결정적으로 늦게 렌더되므로 잠시 머물며 닫을 기회를 준다.
+        const formNoticeGraceMs = 1_500;
+        let formSeenAtMs: number | null = null;
+        let formNoticeDismissed = false;
         while (!controller.signal.aborted && serverClock.now() < postSlotDeadline) {
           const inspection = this.dependencies.postSlot.inspect();
           if (inspection.kind === "form") {
+            formSeenAtMs ??= serverClock.now();
+            if (!formNoticeDismissed && serverClock.now() - formSeenAtMs < formNoticeGraceMs) {
+              if (!(await this.dependencies.sleep(20, controller.signal))) break;
+              continue;
+            }
             transition("HANDED_OFF", "예약 폼에 도착했습니다. 약관 확인과 최종 예약은 직접 진행하세요.", {
               data: { openDeltaMs: Math.round(serverClock.now() - config.openAtMs) },
             });
@@ -300,6 +309,7 @@ export class OpenRunOrchestrator {
             if (!(await this.dependencies.sleep(20, controller.signal))) break;
             continue;
           }
+          if (inspection.kind === "form_notice" && action.status === "acted") formNoticeDismissed = true;
           const actionData: NonNullable<RunEvent["data"]> = {
             postSlotStage: inspection.kind,
             postSlotStatus: action.status,
