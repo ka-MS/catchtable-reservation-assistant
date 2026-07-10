@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Catchtable Reserve Assistant",
-  "version": "0.1.0",
-  "description": "Watches a configured Catchtable DINING reservation page and advances only through non-final steps.",
-  "permissions": ["storage", "tabs", "sidePanel", "scripting"],
+  "version": "0.2.0",
+  "description": "예약 오픈 시각에 목표 슬롯을 감지하고 클릭 후 사용자에게 인계합니다.",
+  "permissions": ["storage", "sidePanel", "scripting", "notifications"],
   "host_permissions": ["https://app.catchtable.co.kr/*"],
   "background": {
-    "service_worker": "background.js",
+    "service_worker": "background/index.js",
     "type": "module"
   },
   "action": {
@@ -14,12 +14,5 @@
   },
   "side_panel": {
     "default_path": "sidepanel/sidepanel.html"
-  },
-  "content_scripts": [
-    {
-      "matches": ["https://app.catchtable.co.kr/*"],
-      "js": ["content/index.js"],
-      "run_at": "document_start"
-    }
-  ]
+  }
 }

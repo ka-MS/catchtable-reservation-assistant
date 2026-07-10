@@ -3,45 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Catchtable Reserve Assistant</title>
+    <title>Catchtable Reserve</title>
     <link rel="stylesheet" href="sidepanel.css" />
   </head>
   <body>
     <main>
-      <header>
-        <h1>예약 감시</h1>
-        <p id="status" role="status">대기 중</p>
-      </header>
-      <form id="reservation-form">
-        <label>식당 예약 URL<input id="target-url" type="url" required /></label>
-        <div class="grid">
-          <label>날짜<input id="date" type="date" required /></label>
-          <label>인원<input id="person-count" type="number" min="1" max="20" required /></label>
-        </div>
-        <div class="grid">
-          <label>시작 시간<input id="start-time" type="time" required /></label>
-          <label>종료 시간<input id="end-time" type="time" required /></label>
-        </div>
-        <label>테이블 타입
-          <select id="table-type">
-            <option value="none">선택 안 함</option>
-            <option value="hall">홀</option>
-            <option value="room">룸</option>
-            <option value="bar">바</option>
-          </select>
-        </label>
-        <label>재시도 종료 시각<input id="stop-at" type="datetime-local" /></label>
-        <div class="actions">
-          <button type="submit">감시 시작</button>
-          <button id="stop" type="button">중지</button>
-        </div>
-      </form>
-      <dl>
-        <dt>마지막 동작</dt>
-        <dd id="last-action">없음</dd>
-        <dt>재시도</dt>
-        <dd id="retry-count">0</dd>
-      </dl>
+      <h1>예약 오픈런</h1>
+      <p id="status">초기화 중</p>
     </main>
     <script type="module" src="index.js"></script>
   </body>
