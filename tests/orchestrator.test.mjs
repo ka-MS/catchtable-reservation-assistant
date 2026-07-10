@@ -146,7 +146,7 @@ test("optional post-slot stages are advanced in observed order", async () => {
       advance: (stage) => {
         actions.push(stage.kind);
         index += 1;
-        return { status: "acted", message: `${stage.kind} 처리` };
+        return { status: "acted", message: `${stage.kind} 처리`, completed: true };
       },
     },
   });
@@ -155,6 +155,9 @@ test("optional post-slot stages are advanced in observed order", async () => {
 
   assert.equal(result.state, "HANDED_OFF");
   assert.deepEqual(actions, ["table_type", "menu", "deposit"]);
+  const menuCompletion = h.events.find((event) => event.data?.postSlotStage === "menu");
+  assert.equal(typeof menuCompletion?.data?.openDeltaMs, "number");
+  assert.equal(menuCompletion?.data?.openDeltaMs, menuCompletion?.serverAt - 1_000);
   assert.match(h.events.at(-1)?.message ?? "", /예약 폼/);
 });
 

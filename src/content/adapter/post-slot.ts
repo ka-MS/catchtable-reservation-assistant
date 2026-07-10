@@ -11,6 +11,7 @@ export type PostSlotInspection =
 export interface PostSlotActionResult {
   status: "acted" | "blocked";
   message: string;
+  completed?: boolean;
 }
 
 type PostSlotConfig = Pick<ReservationConfig, "tablePreference" | "menuKeyword">;
@@ -137,6 +138,6 @@ export class PostSlotAdapter {
       .find((button) => normalized(button.textContent) === "다음");
     if (!next || next.disabled) return { status: "blocked", message: "다음 버튼이 활성화되지 않았습니다." };
     next.click();
-    return { status: "acted", message };
+    return { status: "acted", message, completed: true };
   }
 }

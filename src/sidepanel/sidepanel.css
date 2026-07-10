@@ -292,7 +292,7 @@ fieldset:disabled {
 
 .event-list li {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
+  grid-template-columns: 88px minmax(0, 1fr);
   gap: 8px;
   color: #344039;
   font-size: 12px;
@@ -302,6 +302,7 @@ fieldset:disabled {
 .event-time {
   color: #7a857e;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .event-empty {

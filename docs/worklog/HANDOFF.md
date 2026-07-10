@@ -21,4 +21,4 @@ npm test
 git status --short --branch
 ```
 
-현재 전체 코드 기준 `npm run check`: 48 tests pass + dist/independence pass.
+실행 기록은 밀리초까지 표시하며 메뉴 선택 완료 시 서버 보정 시각과 오픈 대비 지연을 함께 표시한다. 현재 전체 코드 기준 `npm run check`: 51 tests pass + dist/independence pass.

@@ -288,7 +288,14 @@ export class OpenRunOrchestrator {
           }
 
           const action = this.dependencies.postSlot.advance(inspection, config);
-          emit("action", action.message, { postSlotStage: inspection.kind, postSlotStatus: action.status });
+          const actionData: NonNullable<RunEvent["data"]> = {
+            postSlotStage: inspection.kind,
+            postSlotStatus: action.status,
+          };
+          if (inspection.kind === "menu" && action.completed) {
+            actionData.openDeltaMs = Math.round(serverClock.now() - config.openAtMs);
+          }
+          emit("action", action.message, actionData);
           if (action.status === "blocked") {
             transition("HANDED_OFF", action.message);
             return finish();

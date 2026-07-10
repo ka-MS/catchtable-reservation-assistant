@@ -1,6 +1,7 @@
 import { defaultStopAt } from "../shared/config.js";
 import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
 import type { ActiveRun, CommandResponse, PanelCommand, ReservationConfig, RunEvent, RunState, TablePreference } from "../shared/types.js";
+import { formatEventMessage, formatEventTime } from "./event-format.js";
 import { configFromFormValues, type FormValues } from "./form-model.js";
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -214,9 +215,9 @@ function renderRuntime(activeRun: ActiveRun | null | undefined, events: RunEvent
     const item = document.createElement("li");
     const time = document.createElement("span");
     time.className = "event-time";
-    time.textContent = new Date(event.at).toLocaleTimeString("ko-KR", { hour12: false });
+    time.textContent = formatEventTime(event.at);
     const message = document.createElement("span");
-    message.textContent = event.message;
+    message.textContent = formatEventMessage(event);
     item.append(time, message);
     eventList.append(item);
   });
