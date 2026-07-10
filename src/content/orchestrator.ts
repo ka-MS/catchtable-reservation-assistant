@@ -156,6 +156,10 @@ export class OpenRunOrchestrator {
           transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
           return finish();
         }
+        if (serverClock.now() >= config.stopAtMs) {
+          transition("TIMED_OUT", "감시 종료 시각에 도달했습니다.");
+          return finish();
+        }
         if (!this.dependencies.calendar.inspect(config.reservationDate).targetSelected) {
           transition("HANDED_OFF", "목표 날짜 선택 상태를 확인할 수 없습니다.");
           return finish();

@@ -98,6 +98,44 @@ test("monitoring terminates at stop time without slot clicks", async () => {
   assert.ok(h.now >= 1_500);
 });
 
+test("deadline wins over a slot that appears during target-date settling", async () => {
+  let now = 0;
+  let targetClicked = false;
+  let reads = 0;
+  let clicks = 0;
+  const orchestrator = new OpenRunOrchestrator({
+    clock: { now: () => now },
+    syncClock: async () => ({ offsetMs: 0, sampleCount: 3, spreadMs: 1, fallback: false }),
+    calendar: {
+      inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: "2026-07-29" }),
+      clickDate: (date) => {
+        if (date === "2026-07-30") targetClicked = true;
+        return true;
+      },
+    },
+    slots: {
+      readAvailableSlots: () => {
+        reads += 1;
+        return [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }];
+      },
+      clickSlot: () => {
+        clicks += 1;
+        return true;
+      },
+    },
+    sleep: async (ms) => {
+      now = targetClicked ? 1_001 : now + ms;
+      return true;
+    },
+    emit: () => undefined,
+    runId: () => "run-deadline",
+  });
+  const result = await orchestrator.start(config({ stopAtMs: 1_001 }));
+  assert.equal(result.state, "TIMED_OUT");
+  assert.equal(reads, 0);
+  assert.equal(clicks, 0);
+});
+
 test("missing adjacent date hands control to the user", async () => {
   const h = harness();
   h.orchestrator = new OpenRunOrchestrator({

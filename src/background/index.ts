@@ -146,3 +146,19 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     }
   });
 });
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (!changeInfo.url) return;
+  void chrome.storage.local.get(["activeRun", "reservationConfig"]).then((stored) => {
+    const run = stored.activeRun as ActiveRun | null | undefined;
+    const config = stored.reservationConfig as ReservationConfig | undefined;
+    if (
+      run?.tabId === tabId &&
+      config &&
+      !TERMINAL_STATES.has(run.state) &&
+      !sameRestaurant(changeInfo.url, config.targetUrl)
+    ) {
+      return chrome.storage.local.set({ activeRun: { ...run, state: "STOPPED", updatedAt: Date.now() } });
+    }
+  });
+});
