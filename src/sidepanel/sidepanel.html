@@ -69,6 +69,29 @@
           </section>
 
           <section>
+            <h2>후속 선택</h2>
+            <label class="toggle-row">
+              <input id="post-slot-enabled" type="checkbox" />
+              <span>후속 선택 자동 진행</span>
+            </label>
+            <div id="post-slot-options" class="grid two dependent-options" data-enabled="false">
+              <label class="field">
+                <span>테이블 타입</span>
+                <select id="table-preference" disabled>
+                  <option value="any">아무거나</option>
+                  <option value="hall">홀</option>
+                  <option value="bar">바</option>
+                  <option value="room">룸</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>메뉴명 키워드</span>
+                <input id="menu-keyword" type="text" maxlength="80" placeholder="비우면 첫 메뉴" disabled />
+              </label>
+            </div>
+          </section>
+
+          <section>
             <h2>실행 옵션</h2>
             <label class="toggle-row">
               <input id="page-prepared" type="checkbox" required />

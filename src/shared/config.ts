@@ -47,6 +47,15 @@ export function validateReservationConfig(config: ReservationConfig, nowMs: numb
   if (config.priorityTimes.some((value) => !isMinute(value) || value < startMinutes || value > endMinutes)) {
     errors.push("시간 우선순위는 희망 범위 안에 있어야 합니다.");
   }
+  if (typeof config.postSlotEnabled !== "boolean") {
+    errors.push("후속 선택 자동 진행 설정을 확인하세요.");
+  }
+  if (!["any", "hall", "bar", "room"].includes(config.tablePreference)) {
+    errors.push("테이블 타입 설정을 확인하세요.");
+  }
+  if (typeof config.menuKeyword !== "string" || config.menuKeyword.trim().length > 80) {
+    errors.push("메뉴명 키워드는 80자 이하여야 합니다.");
+  }
 
   if (!config.pagePrepared) errors.push("페이지 준비 완료를 확인하세요.");
   if (!Number.isInteger(config.preOpenLeadMs) || config.preOpenLeadMs < 0 || config.preOpenLeadMs > 10_000) {

@@ -2,6 +2,7 @@ import { abortableSleep } from "../shared/scheduler.js";
 import type { ContentCommand, RunEventMessage } from "../shared/types.js";
 import { CalendarAdapter } from "./adapter/calendar.js";
 import { SlotAdapter } from "./adapter/slots.js";
+import { PostSlotAdapter } from "./adapter/post-slot.js";
 import { syncServerClock } from "./clock-sync.js";
 import { OpenRunOrchestrator } from "./orchestrator.js";
 
@@ -23,6 +24,7 @@ if (!window.__ctReserveInjected) {
     }),
     calendar: new CalendarAdapter(document),
     slots: new SlotAdapter(document),
+    postSlot: new PostSlotAdapter(document),
     sleep: abortableSleep,
     emit: (event) => {
       const message: RunEventMessage = { type: "RUN_EVENT", event };

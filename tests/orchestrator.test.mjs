@@ -10,6 +10,9 @@ function config(overrides = {}) {
     personCount: 2,
     timeRange: { startMinutes: 1080, endMinutes: 1200 },
     priorityTimes: [1140],
+    postSlotEnabled: true,
+    tablePreference: "any",
+    menuKeyword: "",
     stopAtMs: 3_000,
     pagePrepared: true,
     dryRun: true,
@@ -20,7 +23,11 @@ function config(overrides = {}) {
   };
 }
 
-function harness({ slotAfterCycles = 1, clickResult = true } = {}) {
+function harness({
+  slotAfterCycles = 1,
+  clickResult = true,
+  postSlot = { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "unused" }) },
+} = {}) {
   let now = 0;
   let cycles = 0;
   let slotClicks = 0;
@@ -55,6 +62,7 @@ function harness({ slotAfterCycles = 1, clickResult = true } = {}) {
     }),
     calendar,
     slots,
+    postSlot,
     sleep: async (ms, signal) => {
       if (signal.aborted) return false;
       now += ms;
@@ -92,13 +100,62 @@ test("dry-run detects a prioritized slot without clicking", async () => {
   ]);
 });
 
-test("actual mode clicks one slot and immediately hands off", async () => {
+test("actual mode clicks one slot and hands off at the reservation form", async () => {
   const h = harness();
   const result = await h.orchestrator.start(config({ dryRun: false }));
   assert.equal(result.state, "HANDED_OFF");
   assert.equal(h.slotClicks, 1);
   assert.equal(h.events.some((event) => event.data?.state === "SLOT_SELECTED"), true);
+  assert.equal(h.events.some((event) => event.data?.state === "ADVANCING_RESERVATION"), true);
   assert.equal(h.events.at(-1)?.data?.state, "HANDED_OFF");
+});
+
+test("disabled post-slot automation stops immediately after the slot click", async () => {
+  let inspections = 0;
+  const h = harness({
+    postSlot: {
+      inspect: () => {
+        inspections += 1;
+        return { kind: "table_type", options: ["홀"] };
+      },
+      advance: () => ({ status: "acted", message: "unexpected" }),
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ dryRun: false, postSlotEnabled: false }));
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.equal(h.slotClicks, 1);
+  assert.equal(inspections, 0);
+  assert.equal(h.events.some((event) => event.data?.state === "ADVANCING_RESERVATION"), false);
+  assert.match(h.events.at(-1)?.message ?? "", /슬롯 선택까지만/);
+});
+
+test("optional post-slot stages are advanced in observed order", async () => {
+  const stages = [
+    { kind: "table_type", options: ["홀", "바"] },
+    { kind: "menu", options: ["디너 오마카세"] },
+    { kind: "deposit" },
+    { kind: "form" },
+  ];
+  const actions = [];
+  let index = 0;
+  const h = harness({
+    postSlot: {
+      inspect: () => stages[index],
+      advance: (stage) => {
+        actions.push(stage.kind);
+        index += 1;
+        return { status: "acted", message: `${stage.kind} 처리` };
+      },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ dryRun: false }));
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.deepEqual(actions, ["table_type", "menu", "deposit"]);
+  assert.match(h.events.at(-1)?.message ?? "", /예약 폼/);
 });
 
 test("long waits resynchronize the server clock shortly before opening", async () => {
@@ -129,6 +186,7 @@ test("long waits resynchronize the server clock shortly before opening", async (
       readAvailableSlots: () => targetClicks > 0 ? [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }] : [],
       clickSlot: () => true,
     },
+    postSlot: { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "unused" }) },
     sleep: async (ms) => {
       now += ms;
       return true;
@@ -187,6 +245,7 @@ test("deadline wins over a slot that appears during target-date settling", async
         return true;
       },
     },
+    postSlot: { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "unused" }) },
     sleep: async (ms) => {
       now = targetClicked ? 1_001 : now + ms;
       return true;
@@ -214,6 +273,7 @@ test("missing adjacent date hands control to the user", async () => {
     }),
     calendar: { inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: null }), clickDate: () => false },
     slots: { readAvailableSlots: () => [], clickSlot: () => false },
+    postSlot: { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "unused" }) },
     sleep: async () => true,
     emit: () => undefined,
     runId: () => "run-2",

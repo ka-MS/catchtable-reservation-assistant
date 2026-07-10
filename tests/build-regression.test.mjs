@@ -13,5 +13,13 @@ test("content script is an import-free IIFE bundle", async () => {
   const content = await readFile("dist/content/index.js", "utf8");
   assert.doesNotMatch(content, /^\s*import\s/m);
   assert.match(content, /__ctReserveInjected/);
-  assert.doesNotMatch(content, /자동결제로 예약하기|예약금 안내|테이블 타입 선택/);
+  assert.doesNotMatch(content, /모두 동의합니다\.|자동결제로 예약하기|예약하기/);
+});
+
+test("post-slot automation is opt-in in the sidepanel", async () => {
+  const html = await readFile("dist/sidepanel/sidepanel.html", "utf8");
+  assert.match(html, /id="post-slot-enabled" type="checkbox"/);
+  assert.doesNotMatch(html, /id="post-slot-enabled"[^>]*checked/);
+  assert.match(html, /id="table-preference" disabled/);
+  assert.match(html, /id="menu-keyword"[^>]*disabled/);
 });

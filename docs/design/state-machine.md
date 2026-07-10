@@ -13,6 +13,7 @@
 | `REFRESHING_SLOTS` | 날짜 토글과 슬롯 탐색 | 아니오 |
 | `SLOT_DETECTED` | 선택할 논리 슬롯 확정 | 아니오 |
 | `SLOT_SELECTED` | 실제 슬롯 click 호출 완료 | 아니오 |
+| `ADVANCING_RESERVATION` | 선택적 중간 단계를 처리하며 예약 폼 이동 | 아니오 |
 | `DRY_RUN_COMPLETED` | 클릭 없이 후보 감지 완료 | 예 |
 | `HANDED_OFF` | 자동화 종료 후 사용자 조작 필요 | 예 |
 | `COMPLETED` | 향후 실측된 예약 완료 상태용, MVP 미사용 | 예 |
@@ -35,7 +36,9 @@ IDLE
   -> SLOT_DETECTED
        -> DRY_RUN_COMPLETED  (dry-run)
        -> SLOT_SELECTED
-       -> HANDED_OFF         (실제 클릭 직후)
+            -> HANDED_OFF              (후속 자동 진행 꺼짐)
+            -> ADVANCING_RESERVATION   (후속 자동 진행 켜짐)
+       -> HANDED_OFF         (예약 폼 또는 안전 중단)
 ```
 
 ## 3. 종료 전이
@@ -44,7 +47,8 @@ IDLE
 - `WAITING_FOR_OPEN`, `REFRESHING_SLOTS` + 종료 시각 도달 -> `TIMED_OUT`
 - 페이지 사전 준비가 필요한 검증 실패 -> `HANDED_OFF`
 - 예외, 잘못된 전이, 지원하지 않는 URL -> `FAILED`
-- `SLOT_SELECTED` -> `HANDED_OFF` 외 다른 전이는 허용하지 않는다.
+- `SLOT_SELECTED`는 설정에 따라 `HANDED_OFF` 또는 `ADVANCING_RESERVATION`으로 전이한다.
+- `ADVANCING_RESERVATION`은 예약 폼 도착, 미지원 화면, 선택 불가, 5초 제한에서 `HANDED_OFF`로 종료한다.
 - `SLOT_DETECTED`에서 클릭 직전 슬롯이 사라지면 `REFRESHING_SLOTS`로 돌아갈 수 있다.
 
 ## 4. 전이 기록
@@ -71,5 +75,6 @@ interface StateTransition {
 - 종료 상태에 진입한 런은 다시 전이하지 않는다.
 - 한 번의 런에서 `SLOT_SELECTED`는 최대 1회다.
 - dry-run 런은 `SLOT_SELECTED`에 진입할 수 없다.
-- 서버 기준 현재 시각이 `stopAtMs` 이상이면 DOM을 클릭할 수 없다.
+- 슬롯 선택 전 서버 기준 현재 시각이 `stopAtMs` 이상이면 DOM을 클릭할 수 없다.
+- 예약 폼에서는 최종 `예약하기`를 클릭하지 않는다.
 - 새 시작은 새 runId와 빈 논리 클릭 기록을 가진다.

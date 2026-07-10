@@ -13,12 +13,13 @@ test("open-run state follows the documented happy path", () => {
     "REFRESHING_SLOTS",
     "SLOT_DETECTED",
     "SLOT_SELECTED",
+    "ADVANCING_RESERVATION",
     "HANDED_OFF",
   ]) {
     machine.transition(state, `to ${state}`);
   }
   assert.equal(machine.state, "HANDED_OFF");
-  assert.equal(machine.history.length, 9);
+  assert.equal(machine.history.length, 10);
 });
 
 test("dry-run cannot enter SLOT_SELECTED", () => {

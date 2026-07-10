@@ -36,6 +36,9 @@ function validConfig() {
     personCount: 2,
     timeRange: { startMinutes: 1080, endMinutes: 1200 },
     priorityTimes: [1140, 1110],
+    postSlotEnabled: false,
+    tablePreference: "any",
+    menuKeyword: "",
     stopAtMs: 2_600_000,
     pagePrepared: true,
     dryRun: true,
@@ -56,7 +59,9 @@ test("invalid time relationships and unsafe settings are rejected", () => {
   config.timeRange = { startMinutes: 1200, endMinutes: 1080 };
   config.priorityTimes = [1140, 1140, 900];
   config.pagePrepared = false;
-  config.toggleIntervalMs = 100;
+  config.toggleIntervalMs = 50;
+  config.tablePreference = "window";
+  config.postSlotEnabled = "yes";
 
   const errors = validateReservationConfig(config, 1_000_000);
   assert.ok(errors.length >= 6);

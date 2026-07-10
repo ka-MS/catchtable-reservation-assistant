@@ -12,6 +12,7 @@ Side Panel
                  -> CatchtableSiteAdapter
                       -> CalendarAdapter
                       -> SlotAdapter
+                      -> PostSlotAdapter
 ```
 
 - Side Panel: 설정과 상태 표시
@@ -38,6 +39,9 @@ interface ReservationConfig {
   personCount: number;
   timeRange: { startMinutes: number; endMinutes: number };
   priorityTimes: number[];
+  postSlotEnabled: boolean;
+  tablePreference: "any" | "hall" | "bar" | "room";
+  menuKeyword: string;
   stopAtMs: number;
   pagePrepared: boolean;
   dryRun: boolean;
@@ -76,6 +80,7 @@ interface ReservationSiteAdapter {
 - `refreshSlots`: 인접 날짜와 목표 날짜를 한 번씩 클릭한다.
 - `readAvailableSlots`: 표시 중이고 `data-busy="false"`인 유니크 슬롯만 반환한다.
 - `clickSlot`: 논리 후보를 DOM에 다시 매칭하고 연결·표시·가용 상태를 재검증한 뒤 한 번 클릭한다.
+- `PostSlotAdapter`: 실측된 dialog aria-label과 radio/checkbox 상태만 사용해 선택적 중간 단계를 진행한다.
 
 인원 자동 설정은 안정 선택 상태가 미실측이므로 계약에 포함하지 않는다. Side Panel의 페이지 준비 확인으로 경계를 명시한다.
 
@@ -95,7 +100,9 @@ interface ReservationSiteAdapter {
 - 장시간 대기는 오픈 직전 시계를 다시 측정하고, 재측정 실패 시 초기 오프셋을 유지한다.
 - 인접 날짜 클릭은 목표 날짜 클릭 40ms 전에 수행하며 목표 클릭 시각까지 5ms tick으로 대기한다.
 - 슬롯이 없으면 종료 시각까지 반복하되, 루프마다 AbortSignal과 서버 현재 시각을 확인한다.
-- actual click 직후 어떤 화면도 판독하지 않고 `HANDED_OFF` 이벤트를 발행한다.
+- `postSlotEnabled=false`면 actual click 직후 인계하고 후속 DOM을 판독하지 않는다.
+- `postSlotEnabled=true`면 actual click 뒤 최대 5초 동안 테이블 타입, 메뉴, 예약금 0원 결제 방법을 순서와 존재 여부에 관계없이 판독한다.
+- 예약 폼 URL에 도착하거나 지원하지 않는 화면을 만나면 `HANDED_OFF` 이벤트를 발행한다.
 
 ## 8. 저장 모델
 

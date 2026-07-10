@@ -1,6 +1,6 @@
 import { validateReservationConfig } from "../shared/config.js";
 import { localInputToEpoch, parseTimeInput } from "../shared/time.js";
-import type { ReservationConfig } from "../shared/types.js";
+import type { ReservationConfig, TablePreference } from "../shared/types.js";
 
 export interface FormValues {
   targetUrl: string;
@@ -10,6 +10,9 @@ export interface FormValues {
   startTime: string;
   endTime: string;
   priorityTimes: string[];
+  postSlotEnabled: boolean;
+  tablePreference: TablePreference;
+  menuKeyword: string;
   stopAt: string;
   pagePrepared: boolean;
   dryRun: boolean;
@@ -32,6 +35,9 @@ export function configFromFormValues(values: FormValues, nowMs: number): Reserva
     personCount: Number(values.personCount),
     timeRange: { startMinutes, endMinutes },
     priorityTimes: priorityTimes as number[],
+    postSlotEnabled: values.postSlotEnabled,
+    tablePreference: values.tablePreference,
+    menuKeyword: values.menuKeyword.trim(),
     stopAtMs: localInputToEpoch(values.stopAt),
     pagePrepared: values.pagePrepared,
     dryRun: values.dryRun,

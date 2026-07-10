@@ -11,6 +11,9 @@ function values(overrides = {}) {
     startTime: "18:00",
     endTime: "20:00",
     priorityTimes: ["19:00", "18:30"],
+    postSlotEnabled: true,
+    tablePreference: "bar",
+    menuKeyword: "디너 오마카세",
     stopAt: "2026-07-10T13:10",
     pagePrepared: true,
     dryRun: true,
@@ -26,6 +29,9 @@ test("sidepanel values produce an epoch-based configuration", () => {
   assert.equal(config.stopAtMs - config.openAtMs, 600_000);
   assert.deepEqual(config.timeRange, { startMinutes: 1080, endMinutes: 1200 });
   assert.deepEqual(config.priorityTimes, [1140, 1110]);
+  assert.equal(config.postSlotEnabled, true);
+  assert.equal(config.tablePreference, "bar");
+  assert.equal(config.menuKeyword, "디너 오마카세");
 });
 
 test("sidepanel model reports validation errors", () => {

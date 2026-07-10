@@ -6,6 +6,7 @@ import { RunStateMachine } from "../shared/state-machine.js";
 import { nextTogglePlan } from "../shared/toggle-schedule.js";
 import type { ReservationConfig, RunEvent, RunState } from "../shared/types.js";
 import type { CalendarInspection } from "./adapter/calendar.js";
+import type { PostSlotActionResult, PostSlotInspection } from "./adapter/post-slot.js";
 
 interface CalendarPort {
   inspect(targetDate: string): CalendarInspection;
@@ -17,11 +18,17 @@ interface SlotPort {
   clickSlot(candidate: SlotCandidate): boolean;
 }
 
+interface PostSlotPort {
+  inspect(): PostSlotInspection;
+  advance(inspection: PostSlotInspection, config: ReservationConfig): PostSlotActionResult;
+}
+
 interface Dependencies {
   clock: Clock;
   syncClock(config: ReservationConfig, signal: AbortSignal): Promise<ClockEstimate>;
   calendar: CalendarPort;
   slots: SlotPort;
+  postSlot: PostSlotPort;
   sleep: Sleep;
   emit(event: RunEvent): void;
   runId(): string;
@@ -259,7 +266,40 @@ export class OpenRunOrchestrator {
           continue;
         }
         transition("SLOT_SELECTED", `${candidate.label} 슬롯을 한 번 클릭했습니다.`);
-        transition("HANDED_OFF", "슬롯 선택 이후 단계는 사용자가 직접 진행하세요.");
+        if (!config.postSlotEnabled) {
+          transition("HANDED_OFF", "후속 선택 자동 진행이 꺼져 있어 슬롯 선택까지만 완료했습니다.");
+          return finish();
+        }
+        transition("ADVANCING_RESERVATION", "예약 폼까지 선택적 중간 단계를 진행합니다.");
+        const postSlotDeadline = serverClock.now() + 5_000;
+        while (!controller.signal.aborted && serverClock.now() < postSlotDeadline) {
+          const inspection = this.dependencies.postSlot.inspect();
+          if (inspection.kind === "form") {
+            transition("HANDED_OFF", "예약 폼에 도착했습니다. 약관 확인과 최종 예약은 직접 진행하세요.");
+            return finish();
+          }
+          if (inspection.kind === "unknown") {
+            transition("HANDED_OFF", `${inspection.label} 화면은 자동 진행하지 않습니다.`);
+            return finish();
+          }
+          if (inspection.kind === "waiting") {
+            if (!(await this.dependencies.sleep(20, controller.signal))) break;
+            continue;
+          }
+
+          const action = this.dependencies.postSlot.advance(inspection, config);
+          emit("action", action.message, { postSlotStage: inspection.kind, postSlotStatus: action.status });
+          if (action.status === "blocked") {
+            transition("HANDED_OFF", action.message);
+            return finish();
+          }
+          if (!(await this.dependencies.sleep(30, controller.signal))) break;
+        }
+        if (controller.signal.aborted) {
+          transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
+          return finish();
+        }
+        transition("HANDED_OFF", "후속 예약 화면을 5초 안에 확인하지 못했습니다.");
         return finish();
       }
 

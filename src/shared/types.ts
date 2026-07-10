@@ -8,12 +8,15 @@ export type RunState =
   | "REFRESHING_SLOTS"
   | "SLOT_DETECTED"
   | "SLOT_SELECTED"
+  | "ADVANCING_RESERVATION"
   | "DRY_RUN_COMPLETED"
   | "HANDED_OFF"
   | "COMPLETED"
   | "STOPPED"
   | "TIMED_OUT"
   | "FAILED";
+
+export type TablePreference = "any" | "hall" | "bar" | "room";
 
 export interface ReservationConfig {
   targetUrl: string;
@@ -22,6 +25,9 @@ export interface ReservationConfig {
   personCount: number;
   timeRange: { startMinutes: number; endMinutes: number };
   priorityTimes: number[];
+  postSlotEnabled: boolean;
+  tablePreference: TablePreference;
+  menuKeyword: string;
   stopAtMs: number;
   pagePrepared: boolean;
   dryRun: boolean;

@@ -1,6 +1,6 @@
 import { defaultStopAt } from "../shared/config.js";
 import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
-import type { ActiveRun, CommandResponse, PanelCommand, ReservationConfig, RunEvent, RunState } from "../shared/types.js";
+import type { ActiveRun, CommandResponse, PanelCommand, ReservationConfig, RunEvent, RunState, TablePreference } from "../shared/types.js";
 import { configFromFormValues, type FormValues } from "./form-model.js";
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -19,6 +19,7 @@ const clockOffset = byId<HTMLElement>("clock-offset");
 const stopButton = byId<HTMLButtonElement>("stop");
 const priorityInput = byId<HTMLInputElement>("priority-time");
 const priorityList = byId<HTMLOListElement>("priority-list");
+const postSlotOptions = byId<HTMLElement>("post-slot-options");
 
 const fields = {
   targetUrl: byId<HTMLInputElement>("target-url"),
@@ -27,6 +28,9 @@ const fields = {
   personCount: byId<HTMLInputElement>("person-count"),
   startTime: byId<HTMLInputElement>("start-time"),
   endTime: byId<HTMLInputElement>("end-time"),
+  postSlotEnabled: byId<HTMLInputElement>("post-slot-enabled"),
+  tablePreference: byId<HTMLSelectElement>("table-preference"),
+  menuKeyword: byId<HTMLInputElement>("menu-keyword"),
   stopAt: byId<HTMLInputElement>("stop-at"),
   pagePrepared: byId<HTMLInputElement>("page-prepared"),
   dryRun: byId<HTMLInputElement>("dry-run"),
@@ -54,6 +58,7 @@ const STATE_LABEL: Record<RunState, string> = {
   REFRESHING_SLOTS: "예약 슬롯을 갱신 중입니다.",
   SLOT_DETECTED: "조건에 맞는 슬롯을 감지했습니다.",
   SLOT_SELECTED: "슬롯을 선택했습니다.",
+  ADVANCING_RESERVATION: "예약 폼으로 이동 중입니다.",
   DRY_RUN_COMPLETED: "Dry-run 감지를 완료했습니다.",
   HANDED_OFF: "사용자 조작으로 인계했습니다.",
   COMPLETED: "완료했습니다.",
@@ -74,6 +79,9 @@ function readValues(): FormValues {
     startTime: fields.startTime.value,
     endTime: fields.endTime.value,
     priorityTimes: [...priorityTimes],
+    postSlotEnabled: fields.postSlotEnabled.checked,
+    tablePreference: fields.tablePreference.value as TablePreference,
+    menuKeyword: fields.menuKeyword.value,
     stopAt: fields.stopAt.value,
     pagePrepared: fields.pagePrepared.checked,
     dryRun: fields.dryRun.checked,
@@ -90,6 +98,9 @@ function applyValues(values: FormValues): void {
   fields.personCount.value = values.personCount;
   fields.startTime.value = values.startTime;
   fields.endTime.value = values.endTime;
+  fields.postSlotEnabled.checked = values.postSlotEnabled ?? false;
+  fields.tablePreference.value = values.tablePreference ?? "any";
+  fields.menuKeyword.value = values.menuKeyword ?? "";
   fields.stopAt.value = values.stopAt;
   fields.pagePrepared.checked = values.pagePrepared;
   fields.dryRun.checked = values.dryRun;
@@ -97,6 +108,7 @@ function applyValues(values: FormValues): void {
   fields.toggleIntervalMs.value = values.toggleIntervalMs;
   fields.clockSampleCount.value = values.clockSampleCount;
   priorityTimes = [...values.priorityTimes];
+  syncPostSlotFields();
   renderPriorities();
 }
 
@@ -115,6 +127,9 @@ function valuesFromConfig(config: ReservationConfig): FormValues {
     startTime: minutesToInput(config.timeRange.startMinutes),
     endTime: minutesToInput(config.timeRange.endMinutes),
     priorityTimes: config.priorityTimes.map(minutesToInput),
+    postSlotEnabled: config.postSlotEnabled ?? false,
+    tablePreference: config.tablePreference ?? "any",
+    menuKeyword: config.menuKeyword ?? "",
     stopAt: epochToLocalInput(config.stopAtMs),
     pagePrepared: config.pagePrepared,
     dryRun: config.dryRun,
@@ -126,6 +141,13 @@ function valuesFromConfig(config: ReservationConfig): FormValues {
 
 function saveDraft(): void {
   void chrome.storage.local.set({ draftForm: readValues(), draftStopAtDirty: stopAtDirty });
+}
+
+function syncPostSlotFields(): void {
+  const enabled = fields.postSlotEnabled.checked;
+  fields.tablePreference.disabled = !enabled;
+  fields.menuKeyword.disabled = !enabled;
+  postSlotOptions.dataset.enabled = String(enabled);
 }
 
 function renderPriorities(): void {
@@ -223,6 +245,10 @@ fields.stopAt.addEventListener("input", () => {
   stopAtDirty = true;
   saveDraft();
 });
+fields.postSlotEnabled.addEventListener("change", () => {
+  syncPostSlotFields();
+  saveDraft();
+});
 form.addEventListener("input", (event) => {
   if (event.target !== fields.stopAt && event.target !== fields.openAt) saveDraft();
 });
@@ -268,5 +294,6 @@ void chrome.storage.local.get(["reservationConfig", "activeRun", "runEvents", "d
     applyValues(valuesFromConfig(config));
     stopAtDirty = true;
   }
+  syncPostSlotFields();
   renderRuntime(stored.activeRun as ActiveRun | null | undefined, (stored.runEvents as RunEvent[] | undefined) ?? []);
 });
