@@ -294,6 +294,10 @@ export class OpenRunOrchestrator {
           }
 
           const action = this.dependencies.postSlot.advance(inspection, config);
+          if (action.status === "waiting") {
+            if (!(await this.dependencies.sleep(20, controller.signal))) break;
+            continue;
+          }
           const actionData: NonNullable<RunEvent["data"]> = {
             postSlotStage: inspection.kind,
             postSlotStatus: action.status,

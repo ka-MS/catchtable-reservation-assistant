@@ -137,6 +137,7 @@ test("disabled post-slot automation stops immediately after the slot click", asy
 test("optional post-slot stages are advanced in observed order", async () => {
   const stages = [
     { kind: "table_type", options: ["홀", "바"] },
+    { kind: "extras" },
     { kind: "menu", options: ["디너 오마카세"] },
     { kind: "deposit" },
     { kind: "form" },
@@ -157,9 +158,30 @@ test("optional post-slot stages are advanced in observed order", async () => {
   const result = await h.orchestrator.start(config({ dryRun: false }));
 
   assert.equal(result.state, "HANDED_OFF");
-  assert.deepEqual(actions, ["table_type", "menu", "deposit"]);
+  assert.deepEqual(actions, ["table_type", "extras", "menu", "deposit"]);
   assert.equal(h.events.some((event) => event.data?.postSlotStage === "menu" && "openDeltaMs" in event.data), false);
   assert.match(h.events.at(-1)?.message ?? "", /예약 폼/);
+});
+
+test("post-slot waiting actions are retried instead of handing off", async () => {
+  let advances = 0;
+  const h = harness({
+    postSlot: {
+      inspect: () => advances >= 2 ? { kind: "form" } : { kind: "menu", options: ["디너"] },
+      advance: () => {
+        advances += 1;
+        return advances === 1
+          ? { status: "waiting", message: "확인 버튼 활성화 대기" }
+          : { status: "acted", message: "메뉴 선택 완료" };
+      },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ dryRun: false }));
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.equal(advances, 2);
+  assert.equal(h.events.some((event) => event.message === "확인 버튼 활성화 대기"), false);
 });
 
 test("long waits resynchronize the server clock shortly before opening", async () => {

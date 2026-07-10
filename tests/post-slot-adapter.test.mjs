@@ -86,6 +86,52 @@ test("menu selection matches a keyword before advancing", () => {
   assert.equal(nextClicks, 1);
 });
 
+test("menu selection waits for a confirm button to become enabled", () => {
+  const document = documentFor(`
+    <div role="dialog" aria-label="메뉴 선택">
+      <button role="checkbox" aria-label="디너 오마카세" aria-checked="false"></button>
+      <button data-next disabled>확인</button>
+    </div>
+  `);
+  const choice = document.querySelector('[role="checkbox"]');
+  choice.addEventListener("click", () => choice.setAttribute("aria-checked", "true"));
+  const confirm = document.querySelector("button[data-next]");
+  let confirmClicks = 0;
+  confirm.addEventListener("click", () => { confirmClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+
+  assert.equal(adapter.advance(adapter.inspect(), { tablePreference: "any", menuKeyword: "" }).status, "acted");
+  assert.equal(adapter.advance(adapter.inspect(), { tablePreference: "any", menuKeyword: "" }).status, "waiting");
+  confirm.disabled = false;
+  assert.equal(adapter.advance(adapter.inspect(), { tablePreference: "any", menuKeyword: "" }).status, "acted");
+  assert.equal(confirmClicks, 1);
+});
+
+test("latest extra-products dialog wins over a stale table dialog and skips products", () => {
+  // Live DOM measured 2026-07-10 at haokaostan: optional products plus Previous/Next buttons.
+  const document = documentFor(`
+    <div role="dialog" aria-label="테이블 타입 선택">
+      <label role="radio" aria-label="홀" aria-checked="true">홀</label>
+      <button>다음</button>
+    </div>
+    <div role="dialog" aria-label="추가 상품">
+      <button data-product>+</button>
+      <button>이전</button>
+      <button data-next>다음</button>
+    </div>
+  `);
+  let productClicks = 0;
+  let nextClicks = 0;
+  document.querySelector("button[data-product]").addEventListener("click", () => { productClicks += 1; });
+  document.querySelector("button[data-next]").addEventListener("click", () => { nextClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+
+  assert.deepEqual(adapter.inspect(), { kind: "extras" });
+  assert.equal(adapter.advance(adapter.inspect(), { tablePreference: "any", menuKeyword: "" }).status, "acted");
+  assert.equal(productClicks, 0);
+  assert.equal(nextClicks, 1);
+});
+
 test("deposit-free flow advances but a paid-only dialog blocks", () => {
   // Live DOM measured 2026-07-10: native radio inputs with stable aria-label values.
   const document = documentFor(`
