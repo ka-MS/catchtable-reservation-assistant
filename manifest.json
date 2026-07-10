@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Catchtable Reserve Assistant",
+  "version": "0.1.0",
+  "description": "Watches a configured Catchtable DINING reservation page and advances only through non-final steps.",
+  "permissions": ["storage", "tabs", "sidePanel", "scripting"],
+  "host_permissions": ["https://app.catchtable.co.kr/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Catchtable Reserve Assistant"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://app.catchtable.co.kr/*"],
+      "js": ["content/index.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

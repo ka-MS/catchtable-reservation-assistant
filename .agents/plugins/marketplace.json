@@ -1,0 +1,20 @@
+{
+  "name": "karpathy-guidelines-ko-marketplace",
+  "interface": {
+    "displayName": "Karpathy Guidelines 한국어"
+  },
+  "plugins": [
+    {
+      "name": "karpathy-guidelines-ko",
+      "source": {
+        "source": "local",
+        "path": "./plugins/karpathy-guidelines-ko"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
