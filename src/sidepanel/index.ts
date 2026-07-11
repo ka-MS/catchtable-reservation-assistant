@@ -1,11 +1,13 @@
 import { defaultStopAt } from "../shared/config.js";
 import { MonotonicEpochClock } from "../shared/monotonic-clock.js";
 import { sanitizeSavedConfigs } from "../shared/saved-configs.js";
+import { sanitizeScheduledJobs } from "../shared/scheduled-jobs.js";
 import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
-import type { ActiveRun, CommandResponse, EntryMode, PanelCommand, ReservationConfig, RunEvent, RunState, TablePreference } from "../shared/types.js";
+import type { ActiveRun, CommandResponse, EntryMode, PanelCommand, ReservationConfig, RunEvent, RunState, ScheduledJob, TablePreference } from "../shared/types.js";
 import { countdownModel } from "./countdown.js";
 import { formatEventDetail, formatEventTime } from "./event-format.js";
 import { configFromFormValues, configSnapshotFromFormValues, type FormValues } from "./form-model.js";
+import { jobCardModel } from "./job-card.js";
 import { SavedConfigsView } from "./saved-configs-view.js";
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -33,6 +35,13 @@ const summarySub = byId<HTMLElement>("summary-sub");
 const countdownBanner = byId<HTMLElement>("countdown");
 const countdownText = byId<HTMLElement>("countdown-text");
 const countdownDetail = byId<HTMLElement>("countdown-detail");
+const viewHome = byId<HTMLElement>("view-home");
+const viewForm = byId<HTMLElement>("view-form");
+const viewRun = byId<HTMLElement>("view-run");
+const newJobButton = byId<HTMLButtonElement>("new-job");
+const jobList = byId<HTMLOListElement>("job-list");
+const backHomeButton = byId<HTMLButtonElement>("back-home");
+const saveJobButton = byId<HTMLButtonElement>("save-job");
 
 const fields = {
   targetUrl: byId<HTMLInputElement>("target-url"),
@@ -120,6 +129,30 @@ let latestActiveRun: ActiveRun | null | undefined;
 let latestEvents: RunEvent[] = [];
 const countdownServerClock = new MonotonicEpochClock({ now: () => performance.now() });
 let countdownClockOffsetMs: number | null = null;
+
+type PanelView = "home" | "form" | "run";
+let currentView: PanelView = "home";
+let editingJobId: string | null = null;
+let scheduledJobsState: ScheduledJob[] = [];
+let runConfigOpenAtMs: number | null = null;
+let wasRunning = false;
+
+function isRunning(): boolean {
+  return latestActiveRun !== null && latestActiveRun !== undefined && !TERMINAL.has(latestActiveRun.state);
+}
+
+function setView(view: PanelView): void {
+  currentView = view;
+  viewHome.hidden = view !== "home";
+  viewForm.hidden = view !== "form";
+  viewRun.hidden = view !== "run";
+  backHomeButton.hidden = view === "home";
+  saveJobButton.hidden = view !== "form";
+  startButton.hidden = view !== "form" || isRunning();
+  stopButton.hidden = view !== "run";
+  formError.textContent = "";
+  renderCountdown();
+}
 
 function formatDate(value: string): string {
   if (!value) return "";
@@ -286,8 +319,17 @@ function groupEvents(events: RunEvent[]): Array<{ event: RunEvent; count: number
   return groups;
 }
 
+function countdownOpenAtMs(): number | null {
+  if (currentView === "form") {
+    return fields.openAt.value ? localInputToEpoch(fields.openAt.value) : null;
+  }
+  if (currentView === "run") return runConfigOpenAtMs;
+  const nextJob = scheduledJobsState.find((job) => job.status === "scheduled");
+  return nextJob ? nextJob.config.openAtMs : null;
+}
+
 function renderCountdown(): void {
-  const openAt = fields.openAt.value ? localInputToEpoch(fields.openAt.value) : null;
+  const openAt = countdownOpenAtMs();
   const offsetEvent = [...latestEvents].reverse().find((event) => typeof event.data?.clockOffsetMs === "number");
   const offsetMs = offsetEvent ? Number(offsetEvent.data?.clockOffsetMs) : null;
   if (offsetMs === null) {
@@ -310,6 +352,75 @@ function renderCountdown(): void {
   countdownDetail.textContent = model.detail;
 }
 
+function renderJobs(): void {
+  jobList.replaceChildren();
+  if (scheduledJobsState.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "job-empty";
+    empty.textContent = "등록된 예약 작업이 없습니다.";
+    jobList.append(empty);
+    return;
+  }
+  scheduledJobsState.forEach((job) => {
+    const model = jobCardModel(job, Date.now());
+    const item = document.createElement("li");
+    item.className = "job-card";
+    const header = document.createElement("div");
+    header.className = "job-card-header";
+    const title = document.createElement("span");
+    title.className = "job-card-title";
+    title.textContent = model.title;
+    const status = document.createElement("span");
+    status.className = "job-status";
+    status.dataset.tone = model.statusTone;
+    status.textContent = model.statusLabel;
+    header.append(title, status);
+    const meta = document.createElement("div");
+    meta.className = "job-card-meta";
+    const summary = document.createElement("span");
+    summary.textContent = model.summary;
+    const openAt = document.createElement("span");
+    openAt.textContent = model.openAtText;
+    meta.append(summary, openAt);
+    const detail = document.createElement("span");
+    detail.className = "job-card-detail";
+    detail.textContent = model.detail;
+    const actions = document.createElement("div");
+    actions.className = "job-card-actions";
+    if (model.showLog) {
+      const logButton = document.createElement("button");
+      logButton.type = "button";
+      logButton.textContent = "로그 보기";
+      logButton.addEventListener("click", () => setView("run"));
+      actions.append(logButton);
+    }
+    if (model.canEdit) {
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.textContent = "편집";
+      editButton.addEventListener("click", () => {
+        editingJobId = job.id;
+        applyValues(valuesFromConfig(job.config));
+        setView("form");
+      });
+      actions.append(editButton);
+    }
+    if (model.canDelete) {
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.textContent = "삭제";
+      deleteButton.addEventListener("click", async () => {
+        if (!window.confirm(`${model.title} 예약 작업을 삭제할까요?`)) return;
+        const response = await send({ type: "DELETE_JOB", id: job.id });
+        if (!response.ok) formError.textContent = response.error ?? "예약 작업을 삭제할 수 없습니다.";
+      });
+      actions.append(deleteButton);
+    }
+    item.append(header, meta, detail, actions);
+    jobList.append(item);
+  });
+}
+
 function renderRuntime(activeRun: ActiveRun | null | undefined, events: RunEvent[]): void {
   latestActiveRun = activeRun;
   latestEvents = events;
@@ -320,8 +431,10 @@ function renderRuntime(activeRun: ActiveRun | null | undefined, events: RunEvent
   statusDetail.textContent = STATE_LABEL[state];
   const running = activeRun !== null && activeRun !== undefined && !TERMINAL.has(state);
   fieldset.disabled = running;
-  startButton.hidden = running;
+  startButton.hidden = running || currentView !== "form";
   stopButton.disabled = !running;
+  if (running && !wasRunning) setView("run");
+  wasRunning = running;
 
   const metric = [...events].reverse().find((event) => typeof event.data?.clockOffsetMs === "number");
   clockOffset.textContent = metric ? `시계 ${Number(metric.data?.clockOffsetMs).toFixed(0)}ms` : "시계 -";
@@ -414,6 +527,32 @@ const savedConfigsView = new SavedConfigsView(document, {
   },
 });
 
+newJobButton.addEventListener("click", () => {
+  editingJobId = null;
+  setView("form");
+});
+
+backHomeButton.addEventListener("click", () => {
+  editingJobId = null;
+  setView("home");
+});
+
+saveJobButton.addEventListener("click", async () => {
+  formError.textContent = "";
+  saveJobButton.disabled = true;
+  try {
+    const config = configFromFormValues(readValues(), Date.now());
+    const response = await send({ type: "SCHEDULE_JOB", id: editingJobId, config });
+    if (!response.ok) throw new Error(response.error ?? "예약 작업을 저장할 수 없습니다.");
+    editingJobId = null;
+    setView("home");
+  } catch (error) {
+    formError.textContent = error instanceof Error ? error.message : "입력값을 확인하세요.";
+  } finally {
+    saveJobButton.disabled = false;
+  }
+});
+
 byId<HTMLButtonElement>("add-priority").addEventListener("click", () => {
   const value = priorityInput.value;
   if (!value || priorityTimes.includes(value)) return;
@@ -431,6 +570,7 @@ fields.openAt.addEventListener("change", () => {
   renderCountdown();
 });
 setInterval(renderCountdown, 500);
+setInterval(renderJobs, 30_000);
 fields.stopAt.addEventListener("input", () => {
   saveDraft();
 });
@@ -457,6 +597,7 @@ form.addEventListener("submit", async (event) => {
     fieldset.disabled = true;
     startButton.hidden = true;
     stopButton.disabled = false;
+    setView("run");
   } catch (error) {
     formError.textContent = error instanceof Error ? error.message : "입력값을 확인하세요.";
   } finally {
@@ -484,6 +625,15 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
       );
     });
   }
+  if (changes.scheduledJobs) {
+    scheduledJobsState = sanitizeScheduledJobs(changes.scheduledJobs.newValue);
+    renderJobs();
+    renderCountdown();
+  }
+  if (changes.reservationConfig) {
+    const next = changes.reservationConfig.newValue as ReservationConfig | undefined;
+    runConfigOpenAtMs = next ? next.openAtMs : null;
+  }
 });
 
 void chrome.storage.local.get([
@@ -493,6 +643,7 @@ void chrome.storage.local.get([
   "draftForm",
   "configHistory",
   "configFavorites",
+  "scheduledJobs",
 ]).then((stored) => {
   const draft = stored.draftForm as FormValues | undefined;
   const config = stored.reservationConfig as ReservationConfig | undefined;
@@ -502,6 +653,10 @@ void chrome.storage.local.get([
     applyValues(valuesFromConfig(config));
   }
   syncPostSlotFields();
+  scheduledJobsState = sanitizeScheduledJobs(stored.scheduledJobs);
+  runConfigOpenAtMs = config ? config.openAtMs : null;
+  renderJobs();
+  setView("home");
   renderRuntime(stored.activeRun as ActiveRun | null | undefined, (stored.runEvents as RunEvent[] | undefined) ?? []);
   savedConfigsView.render(
     sanitizeSavedConfigs(stored.configHistory),

@@ -742,3 +742,104 @@ fieldset:disabled {
     min-height: 0;
   }
 }
+
+.view[hidden] {
+  display: none;
+}
+
+.wide-button {
+  width: 100%;
+  padding: 12px;
+}
+
+.job-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.job-empty {
+  color: #6b746f;
+  text-align: center;
+  padding: 28px 0;
+}
+
+.job-card {
+  border: 1px solid #d9dfdb;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #ffffff;
+  display: grid;
+  gap: 6px;
+}
+
+.job-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.job-card-title {
+  font-weight: 700;
+}
+
+.job-status {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.job-status[data-tone="scheduled"] {
+  background: #e3ecff;
+  color: #2b5cd9;
+}
+
+.job-status[data-tone="running"] {
+  background: #ffedd9;
+  color: #c2600a;
+}
+
+.job-status[data-tone="success"] {
+  background: #ddf3e4;
+  color: #17803d;
+}
+
+.job-status[data-tone="error"] {
+  background: #fde3e3;
+  color: #c22525;
+}
+
+.job-status[data-tone="missed"] {
+  background: #e8ebe9;
+  color: #6b746f;
+}
+
+.job-card-meta {
+  font-size: 13px;
+  color: #6b746f;
+  display: grid;
+  gap: 2px;
+}
+
+.job-card-detail {
+  font-size: 13px;
+}
+
+.job-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.job-card-actions button {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid #d9dfdb;
+  border-radius: 8px;
+  background: #ffffff;
+  cursor: pointer;
+}

@@ -23,6 +23,12 @@
     </header>
 
     <main>
+      <section id="view-home" class="view">
+        <button id="new-job" class="primary wide-button" type="button">새 예약 작업</button>
+        <ol id="job-list" class="job-list" aria-label="예약 작업 목록"></ol>
+      </section>
+
+      <section id="view-form" class="view" hidden>
       <form id="reservation-form">
         <fieldset id="config-fields">
           <section class="panel-card">
@@ -167,7 +173,9 @@
           </details>
         </fieldset>
       </form>
+      </section>
 
+      <section id="view-run" class="view" hidden>
       <section class="runtime panel-card">
         <div class="runtime-heading">
           <div>
@@ -181,12 +189,15 @@
         </div>
         <ol id="event-list" class="event-list"></ol>
       </section>
+      </section>
     </main>
 
     <footer class="action-bar">
       <p id="form-error" class="error" role="alert"></p>
-      <button id="start" class="primary" type="submit" form="reservation-form">오픈런 시작</button>
-      <button id="stop" class="secondary" type="button" disabled>실행 중지</button>
+      <button id="back-home" class="secondary" type="button" hidden>목록으로</button>
+      <button id="save-job" class="primary" type="button" hidden>예약 저장</button>
+      <button id="start" class="primary" type="submit" form="reservation-form" hidden>지금 시작</button>
+      <button id="stop" class="secondary" type="button" hidden disabled>실행 중지</button>
     </footer>
 
     <script type="module" src="index.js"></script>
