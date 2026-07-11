@@ -114,7 +114,6 @@ const POST_OPEN_STAGES = new Set<RunState>([
 ]);
 
 let priorityTimes: string[] = [];
-let stopAtDirty = false;
 let importantEventsOnly = false;
 let latestActiveRun: ActiveRun | null | undefined;
 let latestEvents: RunEvent[] = [];
@@ -399,7 +398,6 @@ async function sendSavedCommand(command: PanelCommand): Promise<void> {
 const savedConfigsView = new SavedConfigsView(document, {
   load: (config) => {
     applyValues(valuesFromConfig(config));
-    stopAtDirty = false;
     formError.textContent = "";
     saveDraft();
   },
@@ -430,7 +428,7 @@ byId<HTMLButtonElement>("add-priority").addEventListener("click", () => {
 });
 
 fields.openAt.addEventListener("change", () => {
-  if (!stopAtDirty && fields.openAt.value) {
+  if (fields.openAt.value) {
     fields.stopAt.value = epochToLocalInput(defaultStopAt(localInputToEpoch(fields.openAt.value)));
   }
   saveDraft();
@@ -438,7 +436,6 @@ fields.openAt.addEventListener("change", () => {
 });
 setInterval(renderCountdown, 500);
 fields.stopAt.addEventListener("input", () => {
-  stopAtDirty = true;
   saveDraft();
 });
 fields.postSlotEnabled.addEventListener("change", () => {
