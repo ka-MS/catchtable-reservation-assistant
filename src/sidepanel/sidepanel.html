@@ -138,6 +138,24 @@
               <span id="summary-sub">실제 실행 · 후속 선택 안 함</span>
             </div>
           </section>
+
+          <details id="saved-configs" class="panel-card saved-configs">
+            <summary>
+              <span>최근 설정</span>
+              <span id="saved-config-count" class="saved-config-count">0개</span>
+            </summary>
+            <div class="saved-config-body">
+              <div class="saved-config-tabs" role="tablist" aria-label="저장 설정 종류">
+                <button type="button" role="tab" data-saved-list="history" aria-selected="true">히스토리</button>
+                <button type="button" role="tab" data-saved-list="favorites" aria-selected="false" tabindex="-1">즐겨찾기</button>
+              </div>
+              <div class="saved-config-actions">
+                <button type="button" data-saved-action="save-favorite" hidden>현재 설정 저장</button>
+                <button type="button" data-saved-action="clear" disabled>전체 삭제</button>
+              </div>
+              <ul id="saved-config-list" class="saved-config-list"></ul>
+            </div>
+          </details>
         </fieldset>
       </form>
 

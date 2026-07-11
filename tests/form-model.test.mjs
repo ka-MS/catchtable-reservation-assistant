@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { configFromFormValues } from "../dist/sidepanel/form-model.js";
+import { configFromFormValues, configSnapshotFromFormValues } from "../dist/sidepanel/form-model.js";
 
 function values(overrides = {}) {
   return {
@@ -42,4 +42,10 @@ test("sidepanel model reports validation errors", () => {
 test("legacy pagePrepared drafts migrate to an explicit entry mode", () => {
   const config = configFromFormValues(values({ entryMode: undefined, pagePrepared: true }), new Date("2026-07-10T12:00").getTime());
   assert.equal(config.entryMode, "prepared");
+});
+
+test("favorite snapshots allow past times but keep structural validation", () => {
+  const snapshot = configSnapshotFromFormValues(values());
+  assert.equal(snapshot.openAtMs, new Date("2026-07-10T13:00").getTime());
+  assert.throws(() => configSnapshotFromFormValues(values({ targetUrl: "https://example.com" })), /URL/);
 });

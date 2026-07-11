@@ -34,6 +34,10 @@ select {
   background: #ffffff;
 }
 
+.app-header > div {
+  min-width: 0;
+}
+
 h1,
 h2,
 p {
@@ -66,6 +70,7 @@ h2 {
 }
 
 .state {
+  flex: 0 0 auto;
   padding: 6px 9px;
   border: 1px solid #bcc7c0;
   border-radius: 999px;
@@ -239,6 +244,7 @@ select:focus {
   color: #707b75;
   font-size: 11px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .mode-card {
@@ -363,6 +369,136 @@ fieldset:disabled {
 #summary-sub {
   margin-top: 4px;
   color: #617069;
+  font-size: 12px;
+}
+
+.saved-configs {
+  padding: 10px 18px 16px;
+}
+
+.saved-configs > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-weight: 700;
+}
+
+.saved-config-count {
+  color: #7a857e;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.saved-config-body {
+  padding-top: 8px;
+  border-top: 1px solid #e2e7e3;
+}
+
+.saved-config-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #ccd5d0;
+}
+
+.saved-config-tabs button {
+  height: 36px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: #66716b;
+  background: transparent;
+  cursor: pointer;
+}
+
+.saved-config-tabs button[aria-selected="true"] {
+  border-bottom-color: #166c4d;
+  color: #144f39;
+  font-weight: 700;
+}
+
+.saved-config-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 30px;
+  margin-bottom: 8px;
+}
+
+.saved-config-actions button {
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid #c8d1cc;
+  border-radius: 4px;
+  color: #415047;
+  background: #ffffff;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.saved-config-actions [hidden] {
+  display: none;
+}
+
+.saved-config-list {
+  overflow-y: auto;
+  max-height: 320px;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid #e2e7e3;
+  list-style: none;
+}
+
+.saved-config-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  border-bottom: 1px solid #e2e7e3;
+}
+
+.saved-config-load {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 11px 4px;
+  border: 0;
+  color: #27352e;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.saved-config-load strong,
+.saved-config-load span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-config-load span {
+  color: #748078;
+  font-size: 11px;
+}
+
+.saved-config-load .saved-config-past {
+  color: #a64720;
+}
+
+.saved-config-remove {
+  width: 32px;
+  height: 32px;
+  align-self: center;
+  padding: 0;
+  border: 0;
+  color: #7a857e;
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.saved-config-empty {
+  padding: 24px 4px;
+  color: #7a857e;
+  text-align: center;
   font-size: 12px;
 }
 
@@ -537,7 +673,7 @@ fieldset:disabled {
   text-align: center;
 }
 
-@media (max-width: 380px) {
+@media (max-width: 520px) {
   .grid.two,
   .grid.three {
     grid-template-columns: 1fr;

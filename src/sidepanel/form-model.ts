@@ -22,7 +22,7 @@ export interface FormValues {
   clockSampleCount: string;
 }
 
-export function configFromFormValues(values: FormValues, nowMs: number): ReservationConfig {
+function parseConfig(values: FormValues): ReservationConfig {
   const startMinutes = parseTimeInput(values.startTime);
   const endMinutes = parseTimeInput(values.endTime);
   const priorityTimes = values.priorityTimes.map(parseTimeInput);
@@ -46,6 +46,18 @@ export function configFromFormValues(values: FormValues, nowMs: number): Reserva
     toggleIntervalMs: Number(values.toggleIntervalMs),
     clockSampleCount: Number(values.clockSampleCount),
   };
+  return config;
+}
+
+export function configSnapshotFromFormValues(values: FormValues): ReservationConfig {
+  const config = parseConfig(values);
+  const errors = validateReservationConfig(config, Number.NEGATIVE_INFINITY);
+  if (errors.length > 0) throw new Error(errors.join(" "));
+  return config;
+}
+
+export function configFromFormValues(values: FormValues, nowMs: number): ReservationConfig {
+  const config = configSnapshotFromFormValues(values);
   const errors = validateReservationConfig(config, nowMs);
   if (errors.length > 0) throw new Error(errors.join(" "));
   return config;

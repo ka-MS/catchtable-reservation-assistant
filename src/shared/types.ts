@@ -41,6 +41,15 @@ export interface ReservationConfig {
   clockSampleCount: number;
 }
 
+export type SavedConfigList = "history" | "favorites";
+
+export interface SavedConfig {
+  id: string;
+  savedAt: number;
+  fingerprint: string;
+  config: ReservationConfig;
+}
+
 export interface StateTransition {
   from: RunState;
   to: RunState;
@@ -76,7 +85,10 @@ export type ContentCommand =
 
 export type PanelCommand =
   | { type: "PANEL_START"; config: ReservationConfig }
-  | { type: "PANEL_STOP" };
+  | { type: "PANEL_STOP" }
+  | { type: "SAVE_FAVORITE"; config: ReservationConfig }
+  | { type: "DELETE_SAVED"; list: SavedConfigList; id: string }
+  | { type: "CLEAR_SAVED"; list: SavedConfigList };
 
 export interface RunEventMessage {
   type: "RUN_EVENT";

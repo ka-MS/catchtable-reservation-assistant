@@ -125,9 +125,13 @@ schemaVersion
 reservationConfig
 activeRun
 runEvents (최대 300개 링버퍼)
+configHistory (최대 20개)
+configFavorites (최대 20개)
 ```
 
-Side Panel은 `storage.onChanged`로 상태를 갱신한다.
+최근 설정은 예약 의도 fingerprint로 중복을 대체한다. fingerprint에는 정규화 식당 URL, 예약 날짜·인원, 희망 시간·우선순위, 테이블 타입과 메뉴 키워드를 사용하고 오픈 시각·종료 시각·실행 모드는 포함하지 않는다. 히스토리 쓰기는 직렬화하되 오픈런 시작 경로를 기다리게 하지 않는다.
+
+Side Panel은 `storage.onChanged`로 상태와 저장 목록을 갱신한다. 지난 오픈 일시를 포함한 snapshot 복원은 허용하고 실제 실행 직전에 현재 시각 검증을 다시 수행한다.
 
 ## 9. 취소 스나이핑 확장점
 

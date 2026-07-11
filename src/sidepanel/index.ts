@@ -1,8 +1,10 @@
 import { defaultStopAt } from "../shared/config.js";
+import { sanitizeSavedConfigs } from "../shared/saved-configs.js";
 import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
 import type { ActiveRun, CommandResponse, EntryMode, PanelCommand, ReservationConfig, RunEvent, RunState, TablePreference } from "../shared/types.js";
 import { formatEventTime } from "./event-format.js";
-import { configFromFormValues, type FormValues } from "./form-model.js";
+import { configFromFormValues, configSnapshotFromFormValues, type FormValues } from "./form-model.js";
+import { SavedConfigsView } from "./saved-configs-view.js";
 
 function byId<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -355,6 +357,40 @@ async function send(command: PanelCommand): Promise<CommandResponse> {
   return chrome.runtime.sendMessage(command) as Promise<CommandResponse>;
 }
 
+async function sendSavedCommand(command: PanelCommand): Promise<void> {
+  formError.textContent = "";
+  try {
+    const response = await send(command);
+    if (!response.ok) throw new Error(response.error ?? "저장 설정을 변경할 수 없습니다.");
+  } catch (error) {
+    formError.textContent = error instanceof Error ? error.message : "저장 설정을 변경할 수 없습니다.";
+  }
+}
+
+const savedConfigsView = new SavedConfigsView(document, {
+  load: (config) => {
+    applyValues(valuesFromConfig(config));
+    stopAtDirty = true;
+    formError.textContent = "";
+    saveDraft();
+  },
+  saveFavorite: () => {
+    try {
+      const config = configSnapshotFromFormValues(readValues());
+      void sendSavedCommand({ type: "SAVE_FAVORITE", config });
+    } catch (error) {
+      formError.textContent = error instanceof Error ? error.message : "즐겨찾기에 저장할 설정을 확인하세요.";
+    }
+  },
+  remove: (list, id) => {
+    void sendSavedCommand({ type: "DELETE_SAVED", list, id });
+  },
+  clear: (list) => {
+    if (!window.confirm(list === "history" ? "히스토리를 모두 삭제할까요?" : "즐겨찾기를 모두 삭제할까요?")) return;
+    void sendSavedCommand({ type: "CLEAR_SAVED", list });
+  },
+});
+
 byId<HTMLButtonElement>("add-priority").addEventListener("click", () => {
   const value = priorityInput.value;
   if (!value || priorityTimes.includes(value)) return;
@@ -416,9 +452,25 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
       renderRuntime(stored.activeRun as ActiveRun | null | undefined, (stored.runEvents as RunEvent[] | undefined) ?? []);
     });
   }
+  if (changes.configHistory || changes.configFavorites) {
+    void chrome.storage.local.get(["configHistory", "configFavorites"]).then((stored) => {
+      savedConfigsView.render(
+        sanitizeSavedConfigs(stored.configHistory),
+        sanitizeSavedConfigs(stored.configFavorites),
+      );
+    });
+  }
 });
 
-void chrome.storage.local.get(["reservationConfig", "activeRun", "runEvents", "draftForm", "draftStopAtDirty"]).then((stored) => {
+void chrome.storage.local.get([
+  "reservationConfig",
+  "activeRun",
+  "runEvents",
+  "draftForm",
+  "draftStopAtDirty",
+  "configHistory",
+  "configFavorites",
+]).then((stored) => {
   const draft = stored.draftForm as FormValues | undefined;
   const config = stored.reservationConfig as ReservationConfig | undefined;
   if (draft) {
@@ -430,4 +482,8 @@ void chrome.storage.local.get(["reservationConfig", "activeRun", "runEvents", "d
   }
   syncPostSlotFields();
   renderRuntime(stored.activeRun as ActiveRun | null | undefined, (stored.runEvents as RunEvent[] | undefined) ?? []);
+  savedConfigsView.render(
+    sanitizeSavedConfigs(stored.configHistory),
+    sanitizeSavedConfigs(stored.configFavorites),
+  );
 });

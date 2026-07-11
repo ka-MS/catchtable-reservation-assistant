@@ -20,6 +20,10 @@
 - dry-run 분기
 - 논리 슬롯 중복 방지
 - URL 쿼리·끝 슬래시를 제외한 동일 매장 판정과 탭 load complete 대기
+- 저장 설정 fingerprint 정규화, 중복 대체, 최신순 정렬, 20건 제한
+- 손상된 저장 snapshot 폐기와 fingerprint 복구
+- 히스토리·즐겨찾기 repository의 저장·단건 삭제·전체 삭제
+- 지난 오픈 일시를 포함한 설정 snapshot 복원과 실행 시 재검증
 
 ## 3. Fixture 통합 테스트
 
@@ -60,6 +64,7 @@
 - hidden dialog 자식 control과 hidden 폼 안내 버튼 제외
 - unknown 구조 진단의 input value·body text·전체 HTML 비수집
 - unknown 진단의 Side Panel 실행 기록 표시
+- 히스토리·즐겨찾기 탭 전환, 폼 복원, 저장·삭제 UI 이벤트
 
 ## 4. 빌드 회귀 테스트
 
@@ -70,6 +75,7 @@
 - dist에 manifest, background, content, sidepanel이 모두 존재
 - 예약 폼의 약관·최종 `예약하기` 자동화 코드가 없음
 - 무기한 `PAUSED` 상태가 없음
+- Side Panel 배포물에 최근 설정과 즐겨찾기 control이 존재
 
 ## 5. 독립성 테스트
 

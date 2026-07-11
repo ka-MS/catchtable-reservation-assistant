@@ -28,6 +28,15 @@ test("sidepanel exposes an explicit entry mode instead of pagePrepared", async (
   assert.doesNotMatch(html, /id="page-prepared"/);
 });
 
+test("sidepanel includes history and favorites controls", async () => {
+  const html = await readFile("dist/sidepanel/sidepanel.html", "utf8");
+  assert.match(html, /id="saved-configs"/);
+  assert.match(html, /data-saved-list="history"/);
+  assert.match(html, /data-saved-list="favorites"/);
+  assert.match(html, /data-saved-action="save-favorite"/);
+  assert.match(html, /data-saved-action="clear"/);
+});
+
 test("post-slot automation is opt-in in the sidepanel", async () => {
   const html = await readFile("dist/sidepanel/sidepanel.html", "utf8");
   assert.match(html, /id="post-slot-enabled" type="checkbox"/);

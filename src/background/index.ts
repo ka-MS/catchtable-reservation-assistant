@@ -8,8 +8,10 @@ import type {
   RunEventMessage,
   RunState,
 } from "../shared/types.js";
+import { validateReservationConfig } from "../shared/config.js";
 import { appendRunEvent, SerialTaskQueue } from "./storage.js";
 import { navigateTab, sameRestaurant } from "./navigation.js";
+import { SavedConfigRepository } from "./saved-config-repository.js";
 
 const TERMINAL_STATES = new Set<RunState>([
   "DRY_RUN_COMPLETED",
@@ -20,7 +22,12 @@ const TERMINAL_STATES = new Set<RunState>([
   "FAILED",
 ]);
 const eventWrites = new SerialTaskQueue();
+const savedConfigWrites = new SerialTaskQueue();
 const cancelledPendingRuns = new Set<string>();
+const savedConfigs = new SavedConfigRepository({
+  get: (key) => chrome.storage.local.get(key),
+  set: (values) => chrome.storage.local.set(values),
+}, () => crypto.randomUUID(), () => Date.now());
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => undefined);
 
@@ -37,6 +44,8 @@ async function ensureContent(tabId: number): Promise<void> {
 }
 
 async function startRun(config: ReservationConfig): Promise<CommandResponse> {
+  const validationErrors = validateReservationConfig(config, Date.now());
+  if (validationErrors.length > 0) return { ok: false, error: validationErrors.join(" ") };
   const stored = await chrome.storage.local.get("activeRun") as { activeRun?: ActiveRun | null };
   if (stored.activeRun && !TERMINAL_STATES.has(stored.activeRun.state)) {
     return { ok: false, error: "이미 실행 중인 작업이 있습니다." };
@@ -57,6 +66,9 @@ async function startRun(config: ReservationConfig): Promise<CommandResponse> {
     updatedAt: now,
   };
   await chrome.storage.local.set({ reservationConfig: config, activeRun: pendingRun, runEvents: [] });
+  void savedConfigWrites.enqueue(() => savedConfigs.upsert("history", config)).catch((error) => {
+    console.warn("최근 설정을 저장하지 못했습니다.", error);
+  });
   const assertPending = async (): Promise<void> => {
     const current = await chrome.storage.local.get("activeRun") as { activeRun?: ActiveRun | null };
     if (cancelledPendingRuns.has(pendingRunId)
@@ -95,6 +107,21 @@ async function startRun(config: ReservationConfig): Promise<CommandResponse> {
   } finally {
     cancelledPendingRuns.delete(pendingRunId);
   }
+}
+
+async function updateSavedConfigs(command: Exclude<PanelCommand, { type: "PANEL_START" } | { type: "PANEL_STOP" }>): Promise<CommandResponse> {
+  if (command.type === "SAVE_FAVORITE") {
+    const errors = validateReservationConfig(command.config, Number.NEGATIVE_INFINITY);
+    if (errors.length > 0) return { ok: false, error: errors.join(" ") };
+    await savedConfigWrites.enqueue(() => savedConfigs.upsert("favorites", command.config));
+    return { ok: true };
+  }
+  if (command.type === "DELETE_SAVED") {
+    await savedConfigWrites.enqueue(() => savedConfigs.remove(command.list, command.id));
+    return { ok: true };
+  }
+  await savedConfigWrites.enqueue(() => savedConfigs.clear(command.list));
+  return { ok: true };
 }
 
 async function stopRun(): Promise<CommandResponse> {
@@ -174,6 +201,12 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
   if (message.type === "PANEL_STOP") {
     void stopRun().then(sendResponse).catch((error) => {
       sendResponse({ ok: false, error: error instanceof Error ? error.message : "실행을 중지할 수 없습니다." });
+    });
+    return true;
+  }
+  if (message.type === "SAVE_FAVORITE" || message.type === "DELETE_SAVED" || message.type === "CLEAR_SAVED") {
+    void updateSavedConfigs(message).then(sendResponse).catch((error) => {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : "저장 설정을 변경할 수 없습니다." });
     });
     return true;
   }
