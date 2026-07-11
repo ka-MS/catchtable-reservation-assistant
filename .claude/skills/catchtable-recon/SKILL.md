@@ -43,17 +43,11 @@ description: Use when 캐치테이블(app.catchtable.co.kr) 사이트 동작을 
 5. 셀렉터 근거는 ARIA 속성(`role`, `aria-label`, `aria-pressed` 등)과 `data-*`만. 해시 CSS class 금지.
 6. 기록: 새 사실은 `site-behavior.md`에 매장명·실측일과 함께 `[실측]` 태그로 추가. 화면으로만 본 것은 `[화면 증거]`. 세션 요약은 `docs/worklog/`에.
 
-## 워크플로 B: 확장 직접 테스트
+## 확장 직접 테스트: AI 불가 (2026-07-11 실측)
 
-1. 빌드: WSL에서 `cd /home/developer/source/catchtable-reserve && npm run check` (빌드+테스트+dist 검증).
-2. **[사용자]** 확장 리로드 요청 → 확인 대기.
-3. 사이드패널 판독 경로. 확장 페이지 URL은 `chrome-extension://olbclnjiehfelpfmgmdphfmenapmpaal/sidepanel/sidepanel.html` (확장 ID는 2026-07-11 사용자 확인).
-   - **[제약, 2026-07-11 실측] AI(claude-in-chrome)는 사이드패널을 조작·판독할 수 없다.** navigate 도구는 `chrome-extension://` 스킴을 열지 못하고(https:// 강제 부착), 사용자가 대신 열어줘도 "Cannot access a chrome-extension:// URL of different extension"으로 스크린샷·JS 실행이 모두 차단된다. 브라우저 자동화 확장은 다른 확장의 페이지에 접근할 수 없다.
-   - **따라서 워크플로 B의 UI 판독은 사용자 주도다.** 사용자가 사이드패널을 조작하고 이벤트 로그/상태를 구두 또는 스크린샷으로 전달한다. AI는 대상 매장 탭(일반 웹페이지)만 관측하고, 확장 내부 상태는 사용자 보고로 검증한다.
-   - 대안 자동 판독은 미검증: 확장이 `chrome.storage`를 쓰므로 AI가 별도 컨텍스트에서 읽을 방법이 없다. 필요 시 확장에 디버그 출력을 추가하는 방안을 설계 단계에서 검토.
-4. 대상 매장 탭을 활성화한 상태에서 사이드패널 폼에 설정을 입력한다. **AI 주도 테스트는 dry-run을 기본값**으로 한다. dry-run 해제는 사용자가 명시적으로 요청했을 때만.
-5. 실행 후 판독: 사이드패널 이벤트 로그(UI) + 확장 페이지 탭에서 `chrome.storage.local.get(["activeRun","runEvents"])`을 직접 읽어 상태·이벤트를 검증한다.
-6. 결과는 `docs/worklog/`에 기록. 확장 자체의 거동 발견(예: 사이드패널 탭 제약)은 이 스킬에 보강한다.
+**AI(claude-in-chrome)는 확장의 사이드패널을 조작·판독할 수 없다.** navigate 도구는 `chrome-extension://` 스킴을 열지 못하고(https:// 강제 부착), 사용자가 대신 열어줘도 "Cannot access a chrome-extension:// URL of different extension"으로 스크린샷·JS 실행이 모두 차단된다. 브라우저 자동화 확장은 다른 확장의 페이지에 접근할 수 없다.
+
+따라서 확장 UI 검증은 **사용자 주도**다. AI는 빌드(`npm run check`)와 대상 매장 탭(일반 웹페이지) 관측만 담당하고, 사이드패널 실행·이벤트 로그 판독은 사용자가 수행해 스크린샷/구두로 전달한다. 자동 회귀는 fixture 기반 단위/통합 테스트로 커버한다.
 
 ## 포인터
 
@@ -62,8 +56,3 @@ description: Use when 캐치테이블(app.catchtable.co.kr) 사이트 동작을 
 - 주입 정책: `docs/design/decisions/ADR-004-on-demand-content.md`
 - DOM 재현 fixture: `tests/fixtures/`
 - 파이프라인 상태 정의: `docs/design/state-machine.md`
-
-## 미검증 항목 (검증되면 갱신)
-
-- 사이드패널 탭 트릭이 실제로 동작하는지 (`chrome.sidePanel` API 의존 부분이 탭 컨텍스트에서 실패할 가능성)
-- 확장 ID (사용자 확인 필요)
