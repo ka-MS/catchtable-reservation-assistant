@@ -27,3 +27,9 @@ test("post-slot automation is opt-in in the sidepanel", async () => {
   assert.match(html, /id="table-preference" disabled/);
   assert.match(html, /id="menu-keyword"[^>]*disabled/);
 });
+
+test("dry-run is disabled by default in the sidepanel", async () => {
+  const html = await readFile("dist/sidepanel/sidepanel.html", "utf8");
+  assert.match(html, /id="dry-run" type="checkbox"/);
+  assert.doesNotMatch(html, /id="dry-run"[^>]*checked/);
+});

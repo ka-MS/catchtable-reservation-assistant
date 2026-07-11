@@ -1,7 +1,7 @@
 import { defaultStopAt } from "../shared/config.js";
 import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
 import type { ActiveRun, CommandResponse, PanelCommand, ReservationConfig, RunEvent, RunState, TablePreference } from "../shared/types.js";
-import { formatEventMessage, formatEventTime } from "./event-format.js";
+import { formatEventTime } from "./event-format.js";
 import { configFromFormValues, type FormValues } from "./form-model.js";
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -16,11 +16,16 @@ const stateBadge = byId<HTMLElement>("state");
 const statusDetail = byId<HTMLElement>("status-detail");
 const formError = byId<HTMLElement>("form-error");
 const eventList = byId<HTMLOListElement>("event-list");
+const eventCount = byId<HTMLElement>("event-count");
+const eventFilter = byId<HTMLButtonElement>("event-filter");
 const clockOffset = byId<HTMLElement>("clock-offset");
+const startButton = byId<HTMLButtonElement>("start");
 const stopButton = byId<HTMLButtonElement>("stop");
 const priorityInput = byId<HTMLInputElement>("priority-time");
 const priorityList = byId<HTMLOListElement>("priority-list");
 const postSlotOptions = byId<HTMLElement>("post-slot-options");
+const summaryMain = byId<HTMLElement>("summary-main");
+const summarySub = byId<HTMLElement>("summary-sub");
 
 const fields = {
   targetUrl: byId<HTMLInputElement>("target-url"),
@@ -68,8 +73,47 @@ const STATE_LABEL: Record<RunState, string> = {
   FAILED: "실행에 실패했습니다.",
 };
 
+const STATE_BADGE: Record<RunState, string> = {
+  IDLE: "준비 필요",
+  CONFIGURED: "시작 중",
+  VALIDATING: "검증 중",
+  SYNCING_CLOCK: "시계 동기화",
+  PREPARING_PAGE: "페이지 준비",
+  WAITING_FOR_OPEN: "오픈 대기",
+  REFRESHING_SLOTS: "슬롯 탐색",
+  SLOT_DETECTED: "슬롯 감지",
+  SLOT_SELECTED: "슬롯 선택",
+  ADVANCING_RESERVATION: "예약 진행",
+  DRY_RUN_COMPLETED: "점검 완료",
+  HANDED_OFF: "사용자 인계",
+  COMPLETED: "완료",
+  STOPPED: "중지됨",
+  TIMED_OUT: "시간 초과",
+  FAILED: "실패",
+};
+
 let priorityTimes: string[] = [];
 let stopAtDirty = false;
+let importantEventsOnly = false;
+let latestActiveRun: ActiveRun | null | undefined;
+let latestEvents: RunEvent[] = [];
+
+function formatDate(value: string): string {
+  if (!value) return "";
+  const [, month, day] = value.split("-");
+  return `${Number(month)}월 ${Number(day)}일`;
+}
+
+function renderSummary(): void {
+  const date = formatDate(fields.reservationDate.value);
+  const people = fields.personCount.value ? `${fields.personCount.value}명` : "";
+  const range = fields.startTime.value && fields.endTime.value ? `${fields.startTime.value}–${fields.endTime.value}` : "";
+  const parts = [date, people, range].filter(Boolean);
+  summaryMain.textContent = parts.length > 0 ? parts.join(" · ") : "예약 정보를 입력해 주세요.";
+  const mode = fields.dryRun.checked ? "안전 점검" : "실제 실행";
+  const postSlot = fields.postSlotEnabled.checked ? "후속 선택 진행" : "후속 선택 안 함";
+  summarySub.textContent = `${mode} · ${postSlot}`;
+}
 
 function readValues(): FormValues {
   return {
@@ -111,6 +155,7 @@ function applyValues(values: FormValues): void {
   priorityTimes = [...values.priorityTimes];
   syncPostSlotFields();
   renderPriorities();
+  renderSummary();
 }
 
 function minutesToInput(minutes: number): string {
@@ -191,37 +236,111 @@ function renderPriorities(): void {
   });
 }
 
+function eventTone(event: RunEvent): "neutral" | "info" | "action" | "success" | "error" {
+  const state = typeof event.data?.state === "string" ? event.data.state : "";
+  if (event.kind === "error" || state === "FAILED" || state === "TIMED_OUT") return "error";
+  if (["HANDED_OFF", "COMPLETED", "DRY_RUN_COMPLETED"].includes(state)) return "success";
+  if (event.kind === "detect" || state === "SLOT_DETECTED") return "info";
+  if (event.kind === "action" || state === "SLOT_SELECTED" || state === "ADVANCING_RESERVATION") return "action";
+  return "neutral";
+}
+
+function isImportantEvent(event: RunEvent): boolean {
+  return eventTone(event) !== "neutral";
+}
+
+function eventDetail(event: RunEvent): string {
+  const details: string[] = [];
+  const timingServerAt = typeof event.data?.timingServerAtMs === "number" ? event.data.timingServerAtMs : event.serverAt;
+  const delta = event.data?.openDeltaMs;
+  if (timingServerAt !== null && typeof delta === "number") {
+    const rounded = Math.round(delta);
+    details.push(`서버 ${formatEventTime(timingServerAt)} · 오픈 ${rounded >= 0 ? "+" : ""}${rounded}ms`);
+  }
+  if (typeof event.data?.clockOffsetMs === "number") {
+    details.push(`오프셋 ${Number(event.data.clockOffsetMs).toFixed(0)}ms`);
+  }
+  return details.join(" · ");
+}
+
+function groupEvents(events: RunEvent[]): Array<{ event: RunEvent; count: number }> {
+  const groups: Array<{ event: RunEvent; count: number }> = [];
+  events.forEach((event) => {
+    const previous = groups.at(-1);
+    if (previous && previous.event.kind === event.kind && previous.event.message === event.message) {
+      previous.count += 1;
+      return;
+    }
+    groups.push({ event, count: 1 });
+  });
+  return groups;
+}
+
 function renderRuntime(activeRun: ActiveRun | null | undefined, events: RunEvent[]): void {
+  latestActiveRun = activeRun;
+  latestEvents = events;
   const state = activeRun?.state ?? "IDLE";
-  stateBadge.textContent = state;
+  stateBadge.textContent = STATE_BADGE[state];
   stateBadge.dataset.state = state;
   statusDetail.textContent = STATE_LABEL[state];
   const running = activeRun !== null && activeRun !== undefined && !TERMINAL.has(state);
   fieldset.disabled = running;
+  startButton.hidden = running;
   stopButton.disabled = !running;
 
   const metric = [...events].reverse().find((event) => typeof event.data?.clockOffsetMs === "number");
   clockOffset.textContent = metric ? `시계 ${Number(metric.data?.clockOffsetMs).toFixed(0)}ms` : "시계 -";
   eventList.replaceChildren();
   const recent = events.slice(-50).reverse();
-  if (recent.length === 0) {
+  const visible = importantEventsOnly ? recent.filter(isImportantEvent) : recent;
+  const grouped = groupEvents(visible);
+  eventCount.textContent = importantEventsOnly ? `중요 ${visible.length}개 · 전체 ${recent.length}개` : `${recent.length}개`;
+  eventFilter.setAttribute("aria-pressed", String(importantEventsOnly));
+  if (grouped.length === 0) {
     const empty = document.createElement("li");
     empty.className = "event-empty";
-    empty.textContent = "실행 기록 없음";
+    empty.textContent = recent.length === 0 ? "아직 실행 기록이 없습니다." : "표시할 중요 이벤트가 없습니다.";
     eventList.append(empty);
     return;
   }
-  recent.forEach((event) => {
+  grouped.forEach(({ event, count }) => {
     const item = document.createElement("li");
+    item.className = "event-item";
+    item.dataset.tone = eventTone(event);
+    const dot = document.createElement("span");
+    dot.className = "event-dot";
+    dot.setAttribute("aria-hidden", "true");
+    const content = document.createElement("div");
+    content.className = "event-content";
+    const header = document.createElement("div");
+    header.className = "event-header";
     const time = document.createElement("span");
     time.className = "event-time";
     time.textContent = formatEventTime(event.at);
+    const repeat = document.createElement("span");
+    repeat.className = "event-repeat";
+    repeat.textContent = count > 1 ? `${count}회` : "";
     const message = document.createElement("span");
-    message.textContent = formatEventMessage(event);
-    item.append(time, message);
+    message.className = "event-message";
+    message.textContent = event.message;
+    header.append(time, repeat);
+    content.append(header, message);
+    const detailText = eventDetail(event);
+    if (detailText) {
+      const detail = document.createElement("span");
+      detail.className = "event-detail";
+      detail.textContent = detailText;
+      content.append(detail);
+    }
+    item.append(dot, content);
     eventList.append(item);
   });
 }
+
+eventFilter.addEventListener("click", () => {
+  importantEventsOnly = !importantEventsOnly;
+  renderRuntime(latestActiveRun, latestEvents);
+});
 
 async function send(command: PanelCommand): Promise<CommandResponse> {
   return chrome.runtime.sendMessage(command) as Promise<CommandResponse>;
@@ -251,6 +370,7 @@ fields.postSlotEnabled.addEventListener("change", () => {
   saveDraft();
 });
 form.addEventListener("input", (event) => {
+  renderSummary();
   if (event.target !== fields.stopAt && event.target !== fields.openAt) saveDraft();
 });
 
@@ -261,10 +381,11 @@ form.addEventListener("submit", async (event) => {
     const config = configFromFormValues(readValues(), Date.now());
     const response = await send({ type: "PANEL_START", config });
     if (!response.ok) throw new Error(response.error ?? "실행을 시작할 수 없습니다.");
-    stateBadge.textContent = "CONFIGURED";
+    stateBadge.textContent = STATE_BADGE.CONFIGURED;
     stateBadge.dataset.state = "CONFIGURED";
     statusDetail.textContent = "현재 탭에 실행을 요청했습니다.";
     fieldset.disabled = true;
+    startButton.hidden = true;
     stopButton.disabled = false;
   } catch (error) {
     formError.textContent = error instanceof Error ? error.message : "입력값을 확인하세요.";

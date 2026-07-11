@@ -9,17 +9,19 @@
   <body>
     <header class="app-header">
       <div>
+        <p class="eyebrow">CATCHTABLE RESERVE</p>
         <h1>예약 오픈런</h1>
         <p id="status-detail">설정 대기 중</p>
       </div>
-      <span id="state" class="state" data-state="IDLE">IDLE</span>
+      <span id="state" class="state" data-state="IDLE">준비 필요</span>
     </header>
 
     <main>
       <form id="reservation-form">
         <fieldset id="config-fields">
-          <section>
-            <h2>예약 대상</h2>
+          <section class="panel-card">
+            <span class="step">01</span>
+            <h2>언제 예약할까요?</h2>
             <label class="field wide">
               <span>식당 예약 URL</span>
               <input id="target-url" type="url" required placeholder="https://app.catchtable.co.kr/ct/shop/..." />
@@ -44,8 +46,9 @@
             </div>
           </section>
 
-          <section>
-            <h2>희망 시간</h2>
+          <section class="panel-card">
+            <span class="step">02</span>
+            <h2>어떤 자리를 찾을까요?</h2>
             <div class="grid two">
               <label class="field">
                 <span>시작</span>
@@ -68,12 +71,14 @@
             </div>
           </section>
 
-          <section>
-            <h2>후속 선택</h2>
+          <section class="panel-card">
+            <span class="step">03</span>
+            <h2>어떻게 진행할까요?</h2>
             <label class="toggle-row">
               <input id="post-slot-enabled" type="checkbox" />
               <span>후속 선택 자동 진행</span>
             </label>
+            <p class="help">테이블·메뉴 등 실측된 중간 단계를 진행하고 예약 폼에서 멈춥니다. 최종 예약은 확정하지 않습니다.</p>
             <div id="post-slot-options" class="grid two dependent-options" data-enabled="false">
               <label class="field">
                 <span>테이블 타입</span>
@@ -91,15 +96,18 @@
             </div>
           </section>
 
-          <section>
-            <h2>실행 옵션</h2>
+          <section class="panel-card execution-card">
+            <h2>실행 모드</h2>
+            <label class="mode-card">
+              <input id="dry-run" type="checkbox" />
+              <span>
+                <strong>안전 점검</strong>
+                <small>슬롯을 감지하지만 클릭하지 않습니다.</small>
+              </span>
+            </label>
             <label class="toggle-row">
               <input id="page-prepared" type="checkbox" required />
-              <span>페이지에서 예약 모달과 인원을 준비함</span>
-            </label>
-            <label class="toggle-row emphasized">
-              <input id="dry-run" type="checkbox" checked />
-              <span>Dry-run</span>
+              <span>페이지에서 예약 모달과 인원을 준비했습니다.</span>
             </label>
             <details>
               <summary>고급 설정</summary>
@@ -120,21 +128,36 @@
             </details>
           </section>
 
-          <button id="start" class="primary" type="submit">오픈런 시작</button>
+          <section class="summary-card" aria-labelledby="summary-title">
+            <div>
+              <span class="summary-label" id="summary-title">실행 요약</span>
+              <strong id="summary-main">예약 정보를 입력해 주세요.</strong>
+              <span id="summary-sub">실제 실행 · 후속 선택 안 함</span>
+            </div>
+          </section>
         </fieldset>
       </form>
 
-      <button id="stop" class="secondary" type="button" disabled>중지</button>
-      <p id="form-error" class="error" role="alert"></p>
-
-      <section class="runtime">
+      <section class="runtime panel-card">
         <div class="runtime-heading">
-          <h2>실행 기록</h2>
-          <span id="clock-offset">시계 -</span>
+          <div>
+            <h2>실행 기록</h2>
+            <span id="event-count" class="event-count">0개</span>
+          </div>
+          <div class="runtime-tools">
+            <span id="clock-offset">시계 -</span>
+            <button id="event-filter" class="filter-button" type="button" aria-pressed="false">중요만</button>
+          </div>
         </div>
         <ol id="event-list" class="event-list"></ol>
       </section>
     </main>
+
+    <footer class="action-bar">
+      <p id="form-error" class="error" role="alert"></p>
+      <button id="start" class="primary" type="submit" form="reservation-form">오픈런 시작</button>
+      <button id="stop" class="secondary" type="button" disabled>실행 중지</button>
+    </footer>
 
     <script type="module" src="index.js"></script>
   </body>
