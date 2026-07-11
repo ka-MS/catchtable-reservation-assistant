@@ -1,4 +1,4 @@
-import { validateReservationConfig } from "../shared/config.js";
+import { defaultStopAt, validateReservationConfig } from "../shared/config.js";
 import { localInputToEpoch, parseTimeInput } from "../shared/time.js";
 import type { EntryMode, ReservationConfig, TablePreference } from "../shared/types.js";
 
@@ -20,6 +20,16 @@ export interface FormValues {
   preOpenLeadMs: string;
   toggleIntervalMs: string;
   clockSampleCount: string;
+}
+
+/** 감시 종료 시각이 오픈+10분 기본값과 다르면 사용자가 직접 정한 값으로 취급한다. */
+export function stopAtIsCustom(values: Pick<FormValues, "openAt" | "stopAt">): boolean {
+  if (!values.openAt || !values.stopAt) return false;
+  try {
+    return localInputToEpoch(values.stopAt) !== defaultStopAt(localInputToEpoch(values.openAt));
+  } catch {
+    return false;
+  }
 }
 
 function parseConfig(values: FormValues): ReservationConfig {

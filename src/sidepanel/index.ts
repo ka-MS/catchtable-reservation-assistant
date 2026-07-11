@@ -4,7 +4,7 @@ import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
 import type { ActiveRun, CommandResponse, EntryMode, PanelCommand, ReservationConfig, RunEvent, RunState, TablePreference } from "../shared/types.js";
 import { countdownModel } from "./countdown.js";
 import { formatEventTime } from "./event-format.js";
-import { configFromFormValues, configSnapshotFromFormValues, type FormValues } from "./form-model.js";
+import { configFromFormValues, configSnapshotFromFormValues, stopAtIsCustom, type FormValues } from "./form-model.js";
 import { SavedConfigsView } from "./saved-configs-view.js";
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -208,7 +208,7 @@ function valuesFromConfig(config: ReservationConfig): FormValues {
 }
 
 function saveDraft(): void {
-  void chrome.storage.local.set({ draftForm: readValues(), draftStopAtDirty: stopAtDirty });
+  void chrome.storage.local.set({ draftForm: readValues() });
 }
 
 function syncPostSlotFields(): void {
@@ -398,8 +398,9 @@ async function sendSavedCommand(command: PanelCommand): Promise<void> {
 
 const savedConfigsView = new SavedConfigsView(document, {
   load: (config) => {
-    applyValues(valuesFromConfig(config));
-    stopAtDirty = true;
+    const values = valuesFromConfig(config);
+    applyValues(values);
+    stopAtDirty = stopAtIsCustom(values);
     formError.textContent = "";
     saveDraft();
   },
@@ -498,7 +499,6 @@ void chrome.storage.local.get([
   "activeRun",
   "runEvents",
   "draftForm",
-  "draftStopAtDirty",
   "configHistory",
   "configFavorites",
 ]).then((stored) => {
@@ -506,10 +506,11 @@ void chrome.storage.local.get([
   const config = stored.reservationConfig as ReservationConfig | undefined;
   if (draft) {
     applyValues(draft);
-    stopAtDirty = stored.draftStopAtDirty === true;
+    stopAtDirty = stopAtIsCustom(draft);
   } else if (config) {
-    applyValues(valuesFromConfig(config));
-    stopAtDirty = true;
+    const values = valuesFromConfig(config);
+    applyValues(values);
+    stopAtDirty = stopAtIsCustom(values);
   }
   syncPostSlotFields();
   renderRuntime(stored.activeRun as ActiveRun | null | undefined, (stored.runEvents as RunEvent[] | undefined) ?? []);

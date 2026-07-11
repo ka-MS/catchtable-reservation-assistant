@@ -25,16 +25,19 @@ select {
   position: sticky;
   top: 0;
   z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 84px;
   padding: 16px 18px;
   border-bottom: 1px solid #d9dfdb;
   background: #ffffff;
 }
 
-.app-header > div {
+.app-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+}
+
+.app-header-row > div {
   min-width: 0;
 }
 
@@ -50,19 +53,20 @@ h1 {
 }
 
 .countdown {
-  position: sticky;
-  top: 84px;
-  z-index: 2;
   display: flex;
   align-items: baseline;
   justify-content: center;
   gap: 8px;
-  padding: 10px 18px;
+  padding: 8px 14px;
   border: 1px solid #ffd8bf;
   border-radius: 10px;
-  margin: 10px 12px 0;
+  margin-top: 10px;
   background: #fff4ec;
   color: #e8590c;
+}
+
+.countdown[hidden] {
+  display: none;
 }
 
 .countdown strong {
@@ -75,19 +79,19 @@ h1 {
   font-size: 11px;
 }
 
+.countdown[data-urgent="true"] {
+  border-color: #ffb38a;
+  background: #ffe9db;
+}
+
 .countdown[data-urgent="true"] strong {
   color: #d9480f;
-  font-size: 22px;
 }
 
 .countdown[data-mode="stage"] {
   border-color: #cfe3da;
   background: #eef6f2;
   color: #16815b;
-}
-
-.countdown[data-mode="stage"] strong {
-  font-size: 16px;
 }
 
 .countdown[data-mode="elapsed"] {

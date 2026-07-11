@@ -8,18 +8,19 @@
   </head>
   <body>
     <header class="app-header">
-      <div>
-        <p class="eyebrow">CATCHTABLE RESERVE</p>
-        <h1>예약 오픈런</h1>
-        <p id="status-detail">설정 대기 중</p>
+      <div class="app-header-row">
+        <div>
+          <p class="eyebrow">CATCHTABLE RESERVE</p>
+          <h1>예약 오픈런</h1>
+          <p id="status-detail">설정 대기 중</p>
+        </div>
+        <span id="state" class="state" data-state="IDLE">준비 필요</span>
       </div>
-      <span id="state" class="state" data-state="IDLE">준비 필요</span>
+      <div id="countdown" class="countdown" data-mode="countdown" hidden>
+        <strong id="countdown-text"></strong>
+        <span id="countdown-detail"></span>
+      </div>
     </header>
-
-    <div id="countdown" class="countdown" data-mode="countdown" hidden>
-      <strong id="countdown-text"></strong>
-      <span id="countdown-detail"></span>
-    </div>
 
     <main>
       <form id="reservation-form">
