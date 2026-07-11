@@ -33,3 +33,17 @@ test("opening delta keeps a negative sign", () => {
   };
   assert.match(formatEventMessage(event), /\(-35ms\)/);
 });
+
+test("a measured server timestamp can differ from the later event time", () => {
+  const arrivalAt = new Date(2026, 6, 11, 13, 0, 1, 250).getTime();
+  const message = formatEventMessage({
+    at: arrivalAt + 1_500,
+    serverAt: arrivalAt + 1_500,
+    runId: "run-form",
+    kind: "state",
+    message: "예약 폼에 도착했습니다.",
+    data: { openDeltaMs: 1_250, timingServerAtMs: arrivalAt },
+  });
+
+  assert.match(message, /서버 \d{2}:\d{2}:\d{2}\.250 \(\+1250ms\)/);
+});

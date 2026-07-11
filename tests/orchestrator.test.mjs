@@ -114,7 +114,8 @@ test("actual mode clicks one slot and hands off at the reservation form", async 
   assert.equal(handedOff?.data?.state, "HANDED_OFF");
   assert.match(handedOff?.message ?? "", /예약 폼/);
   assert.equal(typeof handedOff?.data?.openDeltaMs, "number");
-  assert.equal(handedOff?.data?.openDeltaMs, handedOff?.serverAt - 1_000);
+  assert.equal(typeof handedOff?.data?.timingServerAtMs, "number");
+  assert.equal(handedOff?.data?.openDeltaMs, handedOff?.data?.timingServerAtMs - 1_000);
 });
 
 test("disabled post-slot automation stops immediately after the slot click", async () => {
@@ -193,6 +194,37 @@ test("a promo notice appearing after form arrival is dismissed before handing of
   assert.deepEqual(actions, ["form_notice"]);
   assert.equal(h.events.some((event) => event.message === "예약 폼 안내 창을 닫았습니다."), true);
   assert.match(h.events.at(-1)?.message ?? "", /예약 폼/);
+});
+
+test("late form arrival receives the full promo grace period and keeps its arrival time", async () => {
+  let h;
+  let formSeenAt;
+  let noticeDismissed = false;
+  const actions = [];
+  h = harness({
+    postSlot: {
+      inspect: () => {
+        if (h.now < 5_600) return { kind: "waiting" };
+        formSeenAt ??= h.now;
+        if (!noticeDismissed && h.now >= 6_100) return { kind: "form_notice" };
+        return { kind: "form" };
+      },
+      advance: (stage) => {
+        actions.push(stage.kind);
+        noticeDismissed = true;
+        return { status: "acted", message: "예약 폼 안내 창을 닫았습니다." };
+      },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ dryRun: false }));
+  const handoff = h.events.at(-1);
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.deepEqual(actions, ["form_notice"]);
+  assert.ok(h.now >= 6_100);
+  assert.equal(handoff?.data?.openDeltaMs, formSeenAt - 1_000);
+  assert.equal(handoff?.data?.timingServerAtMs, formSeenAt);
 });
 
 test("post-slot waiting actions are retried instead of handing off", async () => {

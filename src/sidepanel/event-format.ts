@@ -13,8 +13,11 @@ export function formatEventTime(timestamp: number): string {
 
 export function formatEventMessage(event: RunEvent): string {
   const delta = event.data?.openDeltaMs;
-  if (event.serverAt === null || typeof delta !== "number") return event.message;
+  const timingServerAt = typeof event.data?.timingServerAtMs === "number"
+    ? event.data.timingServerAtMs
+    : event.serverAt;
+  if (timingServerAt === null || typeof delta !== "number") return event.message;
   const rounded = Math.round(delta);
   const sign = rounded >= 0 ? "+" : "";
-  return `${event.message} · 서버 ${formatEventTime(event.serverAt)} (${sign}${rounded}ms)`;
+  return `${event.message} · 서버 ${formatEventTime(timingServerAt)} (${sign}${rounded}ms)`;
 }
