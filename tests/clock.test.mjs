@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createMeasurement, selectClockEstimate } from "../dist/shared/clock.js";
+import { createMeasurement, finalClockSyncAt, selectClockEstimate } from "../dist/shared/clock.js";
+
+test("final clock sync is fixed at five seconds before opening for normal lead times", () => {
+  assert.equal(finalClockSyncAt(100_000, 0), 95_000);
+  assert.equal(finalClockSyncAt(100_000, 200), 95_000);
+  assert.equal(finalClockSyncAt(100_000, 3_000), 95_000);
+});
+
+test("final clock sync moves earlier instead of delaying a long pre-open lead", () => {
+  assert.equal(finalClockSyncAt(100_000, 4_000), 94_000);
+  assert.equal(finalClockSyncAt(100_000, 10_000), 88_000);
+});
 
 test("clock measurement compensates HTTP Date resolution and half RTT", () => {
   const measurement = createMeasurement({ requestStartedAt: 1_000, responseReceivedAt: 1_100, serverDateMs: 2_000 });

@@ -2,11 +2,11 @@
 
 **갱신:** 2026-07-11  
 **브랜치:** `main`
-**작업 로그:** `docs/worklog/2026-07-11-14-monotonic-countdown.md`
+**작업 로그:** `docs/worklog/2026-07-11-15-final-clock-sync-schedule.md`
 
 ## 현재 상태
 
-서버 epoch를 `performance.now()`에 앵커링해 실행 중 Windows 시계 변경이 예약 스케줄로 유입되지 않게 했다. Side Panel 카운트다운도 공유 시계 클래스로 별도 앵커를 만들어 서버 기준 표시가 wall clock 변경으로 급변하지 않는다. 로컬 실행 기록 시각은 기존 wall epoch를 유지한다.
+서버 epoch와 Side Panel 카운트다운을 각각 `performance.now()`에 앵커링했다. 최종 서버 시계 재보정은 일반 설정에서 오픈 5초 전에 시작하고, 긴 사전 시작에서는 날짜 토글을 늦추지 않도록 더 앞당긴다. 로컬 실행 기록 시각은 기존 wall epoch를 유지한다.
 
 ## 다음 작업
 
@@ -22,4 +22,4 @@ npm run check
 git status --short --branch
 ```
 
-현재 구현 기준 단위·fixture 테스트 116개와 전체 자동 게이트가 통과했다. 실제 확장 로그 확인은 새 `dist`를 재로드한 뒤 수행한다.
+현재 구현 기준 단위·fixture 테스트 118개와 전체 자동 게이트가 통과했다. 실제 확장 로그 확인은 새 `dist`를 재로드한 뒤 수행한다.

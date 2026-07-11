@@ -1,5 +1,5 @@
 import { validateReservationConfig } from "../shared/config.js";
-import type { ClockEstimate } from "../shared/clock.js";
+import { finalClockSyncAt, type ClockEstimate } from "../shared/clock.js";
 import { waitUntil, type Clock, type Sleep } from "../shared/scheduler.js";
 import { MonotonicEpochClock } from "../shared/monotonic-clock.js";
 import { selectPreferredSlot, type SlotCandidate } from "../shared/slot-selection.js";
@@ -264,7 +264,7 @@ export class OpenRunOrchestrator {
       }
 
       transition("WAITING_FOR_OPEN", "예약 오픈 직전까지 대기합니다.");
-      const finalSyncAt = config.openAtMs - config.preOpenLeadMs - 2_000;
+      const finalSyncAt = finalClockSyncAt(config.openAtMs, config.preOpenLeadMs);
       if (serverClock.now() < finalSyncAt) {
         const finalSyncWait = await waitUntil(finalSyncAt, {
           clock: serverClock,

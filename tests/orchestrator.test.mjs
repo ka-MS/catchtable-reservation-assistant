@@ -418,12 +418,14 @@ test("post-slot waiting actions are retried instead of handing off", async () =>
 test("long waits resynchronize the server clock shortly before opening", async () => {
   let now = 0;
   let syncCalls = 0;
+  const syncTimes = [];
   let targetClicks = 0;
   const orchestrator = new OpenRunOrchestrator({
     clock: { now: () => now },
     monotonicClock: { now: () => now },
     syncClock: async () => {
       syncCalls += 1;
+      syncTimes.push(now);
       return {
         offsetMs: syncCalls === 1 ? 25 : 40,
         sampleCount: 9,
@@ -461,6 +463,7 @@ test("long waits resynchronize the server clock shortly before opening", async (
 
   assert.equal(result.state, "DRY_RUN_COMPLETED");
   assert.equal(syncCalls, 2);
+  assert.deepEqual(syncTimes, [0, 4_975]);
 });
 
 test("monitoring terminates at stop time without slot clicks", async () => {

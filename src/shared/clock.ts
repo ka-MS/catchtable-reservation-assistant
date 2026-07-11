@@ -16,6 +16,16 @@ export interface ClockEstimate {
   precisionMs: number | null;
 }
 
+const FINAL_SYNC_LEAD_MS = 5_000;
+const FINAL_SYNC_BUDGET_MS = 2_000;
+
+export function finalClockSyncAt(openAtMs: number, preOpenLeadMs: number): number {
+  return Math.min(
+    openAtMs - FINAL_SYNC_LEAD_MS,
+    openAtMs - preOpenLeadMs - FINAL_SYNC_BUDGET_MS,
+  );
+}
+
 export function createMeasurement(input: {
   requestStartedAt: number;
   responseReceivedAt: number;
