@@ -1,7 +1,7 @@
 # HANDOFF
 
 **갱신:** 2026-07-11  
-**브랜치:** `rebuild/open-run-mvp`  
+**브랜치:** `main`
 **작업 로그:** `docs/worklog/2026-07-11-03-form-arrival.md`
 
 ## 현재 상태
