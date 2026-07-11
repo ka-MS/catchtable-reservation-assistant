@@ -352,6 +352,13 @@ summary {
   font-size: 12px;
 }
 
+.field-help {
+  color: #6d7872;
+  font-size: 10px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .primary,
 .secondary {
   width: 100%;
@@ -716,6 +723,7 @@ fieldset:disabled {
   color: #66726c;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+  white-space: pre-line;
 }
 
 .event-empty {

@@ -60,8 +60,11 @@ export function validateReservationConfig(config: ReservationConfig, nowMs: numb
   if (!(["auto", "prepared"] as const).includes(config.entryMode)) {
     errors.push("예약 페이지 준비 방식을 확인하세요.");
   }
-  if (!Number.isInteger(config.preOpenLeadMs) || config.preOpenLeadMs < 0 || config.preOpenLeadMs > 10_000) {
-    errors.push("사전 토글 시작값은 0~10000ms여야 합니다.");
+  if (!Number.isInteger(config.preOpenLeadMs)
+    || config.preOpenLeadMs < 0
+    || config.preOpenLeadMs > 10_000
+    || config.preOpenLeadMs % 50 !== 0) {
+    errors.push("사전 토글 시작값은 0~10000ms 범위의 50ms 단위여야 합니다.");
   }
   if (!Number.isInteger(config.toggleIntervalMs) || config.toggleIntervalMs < 100 || config.toggleIntervalMs > 5_000) {
     errors.push("날짜 토글 간격은 100~5000ms여야 합니다.");

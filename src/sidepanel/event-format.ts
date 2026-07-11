@@ -11,6 +11,37 @@ export function formatEventTime(timestamp: number): string {
   return `${seconds}.${String(date.getMilliseconds()).padStart(3, "0")}`;
 }
 
+function signedMilliseconds(value: number): string {
+  const rounded = Math.round(value);
+  return `${rounded >= 0 ? "+" : ""}${rounded}ms`;
+}
+
+function timingLine(label: string, at: unknown, openDelta: unknown, scheduleDrift?: unknown): string | null {
+  if (typeof at !== "number" || typeof openDelta !== "number") return null;
+  const schedule = typeof scheduleDrift === "number" ? ` · 계획 ${signedMilliseconds(scheduleDrift)}` : "";
+  return `${label} 서버 ${formatEventTime(at)} · 오픈 ${signedMilliseconds(openDelta)}${schedule}`;
+}
+
+export function formatEventDetail(event: RunEvent): string {
+  const data = event.data;
+  const lines: string[] = [];
+  const adjacent = timingLine("인접", data?.adjacentTimingServerAtMs, data?.adjacentOpenDeltaMs, data?.adjacentScheduleDriftMs);
+  const target = timingLine("목표", data?.targetTimingServerAtMs, data?.targetOpenDeltaMs, data?.targetScheduleDriftMs);
+  if (adjacent) lines.push(adjacent);
+  if (target) lines.push(target);
+
+  const timingServerAt = typeof data?.timingServerAtMs === "number" ? data.timingServerAtMs : event.serverAt;
+  const stageLabel = data?.timingStage === "slot_detected"
+    ? "감지"
+    : data?.timingStage === "target_date_click"
+      ? "목표"
+      : "";
+  const primary = timingLine(stageLabel, timingServerAt, data?.openDeltaMs, data?.scheduleDriftMs);
+  if (primary) lines.push(primary.trimStart());
+  if (typeof data?.clockOffsetMs === "number") lines.push(`오프셋 ${Number(data.clockOffsetMs).toFixed(0)}ms`);
+  return lines.join("\n");
+}
+
 export function formatEventMessage(event: RunEvent): string {
   let message = event.message;
   if (event.data?.postSlotCertainty === "unknown") {

@@ -3,7 +3,7 @@ import { sanitizeSavedConfigs } from "../shared/saved-configs.js";
 import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
 import type { ActiveRun, CommandResponse, EntryMode, PanelCommand, ReservationConfig, RunEvent, RunState, TablePreference } from "../shared/types.js";
 import { countdownModel } from "./countdown.js";
-import { formatEventTime } from "./event-format.js";
+import { formatEventDetail, formatEventTime } from "./event-format.js";
 import { configFromFormValues, configSnapshotFromFormValues, type FormValues } from "./form-model.js";
 import { SavedConfigsView } from "./saved-configs-view.js";
 
@@ -270,20 +270,6 @@ function isImportantEvent(event: RunEvent): boolean {
   return eventTone(event) !== "neutral";
 }
 
-function eventDetail(event: RunEvent): string {
-  const details: string[] = [];
-  const timingServerAt = typeof event.data?.timingServerAtMs === "number" ? event.data.timingServerAtMs : event.serverAt;
-  const delta = event.data?.openDeltaMs;
-  if (timingServerAt !== null && typeof delta === "number") {
-    const rounded = Math.round(delta);
-    details.push(`서버 ${formatEventTime(timingServerAt)} · 오픈 ${rounded >= 0 ? "+" : ""}${rounded}ms`);
-  }
-  if (typeof event.data?.clockOffsetMs === "number") {
-    details.push(`오프셋 ${Number(event.data.clockOffsetMs).toFixed(0)}ms`);
-  }
-  return details.join(" · ");
-}
-
 function groupEvents(events: RunEvent[]): Array<{ event: RunEvent; count: number }> {
   const groups: Array<{ event: RunEvent; count: number }> = [];
   events.forEach((event) => {
@@ -364,7 +350,7 @@ function renderRuntime(activeRun: ActiveRun | null | undefined, events: RunEvent
     message.textContent = event.message;
     header.append(time, repeat);
     content.append(header, message);
-    const detailText = eventDetail(event);
+    const detailText = formatEventDetail(event);
     if (detailText) {
       const detail = document.createElement("span");
       detail.className = "event-detail";

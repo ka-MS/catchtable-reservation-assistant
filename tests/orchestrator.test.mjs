@@ -94,6 +94,16 @@ test("dry-run detects a prioritized slot without clicking", async () => {
   assert.equal(h.slotClicks, 0);
   assert.deepEqual(h.dateClicks, ["2026-07-29", "2026-07-30", "2026-07-29", "2026-07-30"]);
   assert.equal(h.dateClickTimes.filter((click) => click.date === "2026-07-30").at(-1)?.at, 1_000);
+  const detected = h.events.find((event) => event.data?.state === "SLOT_DETECTED");
+  assert.equal(detected?.data?.timingStage, "slot_detected");
+  assert.equal(detected?.data?.adjacentTimingServerAtMs, 960);
+  assert.equal(detected?.data?.adjacentOpenDeltaMs, -40);
+  assert.equal(detected?.data?.adjacentScheduleDriftMs, 0);
+  assert.equal(detected?.data?.targetTimingServerAtMs, 1_000);
+  assert.equal(detected?.data?.targetOpenDeltaMs, 0);
+  assert.equal(detected?.data?.targetScheduleDriftMs, 0);
+  assert.equal(detected?.data?.timingServerAtMs, 1_020);
+  assert.equal(detected?.data?.openDeltaMs, 20);
   assert.deepEqual(h.events.filter((event) => event.kind === "state").map((event) => event.data?.state), [
     "CONFIGURED",
     "VALIDATING",
@@ -193,6 +203,8 @@ test("actual mode clicks one slot and hands off at the reservation form", async 
   const slotSelected = h.events.find((event) => event.data?.state === "SLOT_SELECTED");
   assert.equal(typeof slotSelected?.data?.openDeltaMs, "number");
   assert.equal(slotSelected?.data?.openDeltaMs, slotSelected?.serverAt - 1_000);
+  assert.equal(slotSelected?.data?.timingStage, "slot_selected");
+  assert.equal(slotSelected?.data?.timingServerAtMs, slotSelected?.serverAt);
   assert.match(slotSelected?.message ?? "", /시간 선택을 완료/);
   assert.equal(h.events.some((event) => event.data?.state === "ADVANCING_RESERVATION"), true);
   const handedOff = h.events.at(-1);

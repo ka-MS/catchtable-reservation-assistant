@@ -100,6 +100,8 @@ export class OpenRunOrchestrator {
     const runId = this.dependencies.runId();
     const machine = new RunStateMachine({ dryRun: config.dryRun, now: () => this.dependencies.clock.now() });
     let offsetMs: number | null = null;
+    let adjacentTiming: { actualAt: number; scheduledAt: number; phase: string } | null = null;
+    let targetTiming: { actualAt: number; scheduledAt: number; phase: string } | null = null;
 
     const emit = (kind: RunEvent["kind"], message: string, data?: RunEvent["data"]) => {
       const at = this.dependencies.clock.now();
@@ -320,6 +322,11 @@ export class OpenRunOrchestrator {
           transition("HANDED_OFF", "인접 날짜를 선택할 수 없습니다.");
           return finish();
         }
+        adjacentTiming = {
+          actualAt: serverClock.now(),
+          scheduledAt: plan.adjacentClickAtMs,
+          phase: plan.phase,
+        };
         const targetWait = await waitUntil(plan.targetClickAtMs, {
           clock: serverClock,
           stopAtMs: config.stopAtMs,
@@ -334,10 +341,19 @@ export class OpenRunOrchestrator {
           return finish();
         }
         const targetClickedAt = serverClock.now();
+        targetTiming = {
+          actualAt: targetClickedAt,
+          scheduledAt: plan.targetClickAtMs,
+          phase: plan.phase,
+        };
         if (plan.targetClickAtMs === config.openAtMs) {
           emit("metric", "예약 오픈 정각에 목표 날짜를 클릭했습니다.", {
-            targetClickAtMs: targetClickedAt,
-            targetScheduleDriftMs: targetClickedAt - plan.targetClickAtMs,
+            timingStage: "target_date_click",
+            timingServerAtMs: targetClickedAt,
+            openDeltaMs: Math.round(targetClickedAt - config.openAtMs),
+            scheduledServerAtMs: plan.targetClickAtMs,
+            scheduleDriftMs: Math.round(targetClickedAt - plan.targetClickAtMs),
+            togglePhase: plan.phase,
           });
         }
 
@@ -387,7 +403,28 @@ export class OpenRunOrchestrator {
         );
         if (!candidate) continue;
 
-        transition("SLOT_DETECTED", `${candidate.label} 슬롯을 감지했습니다.`);
+        const slotDetectedAt = serverClock.now();
+        transition("SLOT_DETECTED", `${candidate.label} 슬롯을 감지했습니다.`, {
+          data: {
+            timingStage: "slot_detected",
+            timingServerAtMs: slotDetectedAt,
+            openDeltaMs: Math.round(slotDetectedAt - config.openAtMs),
+            ...(adjacentTiming ? {
+              adjacentTimingServerAtMs: adjacentTiming.actualAt,
+              adjacentOpenDeltaMs: Math.round(adjacentTiming.actualAt - config.openAtMs),
+              adjacentScheduledServerAtMs: adjacentTiming.scheduledAt,
+              adjacentScheduleDriftMs: Math.round(adjacentTiming.actualAt - adjacentTiming.scheduledAt),
+              adjacentTogglePhase: adjacentTiming.phase,
+            } : {}),
+            ...(targetTiming ? {
+              targetTimingServerAtMs: targetTiming.actualAt,
+              targetOpenDeltaMs: Math.round(targetTiming.actualAt - config.openAtMs),
+              targetScheduledServerAtMs: targetTiming.scheduledAt,
+              targetScheduleDriftMs: Math.round(targetTiming.actualAt - targetTiming.scheduledAt),
+              targetTogglePhase: targetTiming.phase,
+            } : {}),
+          },
+        });
         emit("detect", "예약 조건과 일치하는 슬롯을 찾았습니다.", { slotMinutes: candidate.minutes, slotLabel: candidate.label });
         if (config.dryRun) {
           transition("DRY_RUN_COMPLETED", "dry-run이므로 슬롯을 클릭하지 않았습니다.");
@@ -401,8 +438,13 @@ export class OpenRunOrchestrator {
           transition("REFRESHING_SLOTS", "슬롯이 사라져 날짜 토글을 재개합니다.");
           continue;
         }
+        const slotSelectedAt = serverClock.now();
         transition("SLOT_SELECTED", `${candidate.label} 시간 선택을 완료했습니다.`, {
-          data: { openDeltaMs: Math.round(serverClock.now() - config.openAtMs) },
+          data: {
+            timingStage: "slot_selected",
+            timingServerAtMs: slotSelectedAt,
+            openDeltaMs: Math.round(slotSelectedAt - config.openAtMs),
+          },
         });
         if (!config.postSlotEnabled) {
           transition("HANDED_OFF", "후속 선택 자동 진행이 꺼져 있어 슬롯 선택까지만 완료했습니다.");

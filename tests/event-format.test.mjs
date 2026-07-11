@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatEventMessage, formatEventTime } from "../dist/sidepanel/event-format.js";
+import { formatEventDetail, formatEventMessage, formatEventTime } from "../dist/sidepanel/event-format.js";
 
 test("event timestamps include milliseconds", () => {
   const timestamp = new Date(2026, 6, 10, 13, 0, 0, 123).getTime();
@@ -46,6 +46,32 @@ test("a measured server timestamp can differ from the later event time", () => {
   });
 
   assert.match(message, /서버 \d{2}:\d{2}:\d{2}\.250 \(\+1250ms\)/);
+});
+
+test("date timing detail shows opening delta and schedule drift", () => {
+  const serverAt = new Date(2026, 6, 11, 20, 9, 0, 4).getTime();
+  const detail = formatEventDetail({
+    at: serverAt,
+    serverAt,
+    runId: "run-date",
+    kind: "action",
+    message: "목표 날짜를 클릭했습니다.",
+    data: {
+      timingStage: "slot_detected",
+      timingServerAtMs: serverAt,
+      openDeltaMs: 4,
+      adjacentTimingServerAtMs: serverAt - 44,
+      adjacentOpenDeltaMs: -40,
+      adjacentScheduleDriftMs: 0,
+      targetTimingServerAtMs: serverAt - 4,
+      targetOpenDeltaMs: 0,
+      targetScheduleDriftMs: 4,
+    },
+  });
+
+  assert.match(detail, /인접 서버 \d{2}:\d{2}:\d{2}\.960 · 오픈 -40ms · 계획 \+0ms/);
+  assert.match(detail, /목표 서버 \d{2}:\d{2}:\d{2}\.000 · 오픈 \+0ms · 계획 \+4ms/);
+  assert.match(detail, /감지 서버 \d{2}:\d{2}:\d{2}\.004 · 오픈 \+4ms/);
 });
 
 test("unknown post-slot diagnostics are visible in the event message", () => {
