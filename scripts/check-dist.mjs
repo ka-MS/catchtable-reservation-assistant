@@ -7,6 +7,7 @@ const requiredFiles = [
   "dist/sidepanel/index.js",
   "dist/sidepanel/sidepanel.html",
   "dist/sidepanel/sidepanel.css",
+  "dist/assets/icon-128.png",
 ];
 
 await Promise.all(requiredFiles.map((file) => access(file)));

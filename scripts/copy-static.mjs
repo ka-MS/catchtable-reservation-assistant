@@ -6,3 +6,4 @@ copyFileSync("manifest.json", "dist/manifest.json");
 copyFileSync("src/sidepanel/sidepanel.html", "dist/sidepanel/sidepanel.html");
 copyFileSync("src/sidepanel/sidepanel.css", "dist/sidepanel/sidepanel.css");
 copyFileSync("src/assets/icon.svg", "dist/assets/icon.svg");
+copyFileSync("src/assets/icon-128.png", "dist/assets/icon-128.png");

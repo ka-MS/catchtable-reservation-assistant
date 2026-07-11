@@ -9,8 +9,14 @@
     "service_worker": "background/index.js",
     "type": "module"
   },
+  "icons": {
+    "128": "assets/icon-128.png"
+  },
   "action": {
-    "default_title": "Catchtable Reserve Assistant"
+    "default_title": "Catchtable Reserve Assistant",
+    "default_icon": {
+      "128": "assets/icon-128.png"
+    }
   },
   "side_panel": {
     "default_path": "sidepanel/sidepanel.html"

@@ -108,9 +108,13 @@ async function recordEvent(event: RunEvent, tabId: number | undefined): Promise<
       // 운영체제 알림 실패는 상태 저장과 Side Panel 표시를 막지 않는다.
       chrome.notifications.create({
         type: "basic",
-        iconUrl: chrome.runtime.getURL("assets/icon.svg"),
+        iconUrl: chrome.runtime.getURL("assets/icon-128.png"),
         title: "Catchtable Reserve",
         message: event.message,
+      }, () => {
+        if (chrome.runtime.lastError) {
+          console.warn("운영체제 알림을 표시하지 못했습니다.", chrome.runtime.lastError.message);
+        }
       });
     }
   }

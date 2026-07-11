@@ -7,6 +7,10 @@ test("manifest uses MV3 and on-demand content injection", async () => {
   assert.equal(manifest.manifest_version, 3);
   assert.equal("content_scripts" in manifest, false);
   assert.deepEqual(manifest.host_permissions, ["https://app.catchtable.co.kr/*"]);
+  assert.equal(manifest.icons["128"], "assets/icon-128.png");
+  assert.equal(manifest.action.default_icon["128"], "assets/icon-128.png");
+  const icon = await readFile("dist/assets/icon-128.png");
+  assert.deepEqual([...icon.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 });
 
 test("content script is an import-free IIFE bundle", async () => {
