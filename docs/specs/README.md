@@ -7,5 +7,6 @@
 - [자동 진입 파이프라인 패키지](nav-pipeline/10-analysis.md)
 - [설정 히스토리·즐겨찾기 패키지](saved-configs/10-analysis.md)
 - [정밀 타이밍 로그·고급 설정 패키지](timing-diagnostics/10-analysis.md)
+- [단조 서버 시계 패키지](monotonic-server-clock/10-analysis.md)
 
 과거 번호형 사양 파일은 폐기 안내문으로만 남아 있으며 위 문서가 현재 공식 기준입니다.

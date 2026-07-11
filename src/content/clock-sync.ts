@@ -6,6 +6,7 @@ export async function syncServerClock(
   sampleCount: number,
   dependencies: {
     clock: Clock;
+    monotonicClock: Clock;
     signal: AbortSignal;
     fetch?: typeof fetch;
     sleep: Sleep;
@@ -15,6 +16,7 @@ export async function syncServerClock(
   const samples = [];
   for (let index = 0; index < sampleCount && !dependencies.signal.aborted; index += 1) {
     const requestStartedAt = dependencies.clock.now();
+    const requestStartedMonotonic = dependencies.monotonicClock.now();
     try {
       const response = await fetcher(targetUrl, {
         method: "HEAD",
@@ -22,10 +24,16 @@ export async function syncServerClock(
         credentials: "include",
         signal: dependencies.signal,
       });
+      const responseReceivedMonotonic = dependencies.monotonicClock.now();
       const responseReceivedAt = dependencies.clock.now();
       const serverDateMs = Date.parse(response.headers.get("Date") ?? "");
       if (Number.isFinite(serverDateMs)) {
-        samples.push(createMeasurement({ requestStartedAt, responseReceivedAt, serverDateMs }));
+        samples.push(createMeasurement({
+          requestStartedAt,
+          responseReceivedAt,
+          serverDateMs,
+          measurementLatencyMs: responseReceivedMonotonic - requestStartedMonotonic,
+        }));
       }
     } catch (error) {
       if (dependencies.signal.aborted) break;

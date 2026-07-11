@@ -11,6 +11,17 @@ test("clock measurement compensates HTTP Date resolution and half RTT", () => {
   assert.equal(measurement.serverDateMs, 2_000);
 });
 
+test("clock measurement accepts monotonic RTT when the wall clock jumps", () => {
+  const measurement = createMeasurement({
+    requestStartedAt: 1_000,
+    responseReceivedAt: 6_100,
+    serverDateMs: 7_000,
+    measurementLatencyMs: 100,
+  });
+  assert.equal(measurement.measurementLatency, 100);
+  assert.equal(measurement.estimatedServerNow, 7_550);
+});
+
 test("clock estimate uses the median of the lowest-latency samples", () => {
   const samples = [
     { clockOffset: 100, measurementLatency: 20 },

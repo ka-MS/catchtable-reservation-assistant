@@ -1,6 +1,7 @@
 import { validateReservationConfig } from "../shared/config.js";
 import type { ClockEstimate } from "../shared/clock.js";
 import { waitUntil, type Clock, type Sleep } from "../shared/scheduler.js";
+import { MonotonicEpochClock } from "../shared/monotonic-clock.js";
 import { selectPreferredSlot, type SlotCandidate } from "../shared/slot-selection.js";
 import { RunStateMachine } from "../shared/state-machine.js";
 import { nextTogglePlan } from "../shared/toggle-schedule.js";
@@ -38,6 +39,7 @@ interface PostSlotPort {
 
 interface Dependencies {
   clock: Clock;
+  monotonicClock: Clock;
   syncClock(config: ReservationConfig, signal: AbortSignal): Promise<ClockEstimate>;
   entry: EntryPort;
   calendar: CalendarPort;
@@ -100,12 +102,14 @@ export class OpenRunOrchestrator {
     const runId = this.dependencies.runId();
     const machine = new RunStateMachine({ dryRun: config.dryRun, now: () => this.dependencies.clock.now() });
     let offsetMs: number | null = null;
+    const serverClock = new MonotonicEpochClock(this.dependencies.monotonicClock);
+    let serverClockReady = false;
     let adjacentTiming: { actualAt: number; scheduledAt: number; phase: string } | null = null;
     let targetTiming: { actualAt: number; scheduledAt: number; phase: string } | null = null;
 
     const emit = (kind: RunEvent["kind"], message: string, data?: RunEvent["data"]) => {
       const at = this.dependencies.clock.now();
-      this.dependencies.emit({ at, serverAt: offsetMs === null ? null : at + offsetMs, runId, kind, message, data });
+      this.dependencies.emit({ at, serverAt: serverClockReady ? serverClock.now() : null, runId, kind, message, data });
     };
     const transition = (
       state: RunState,
@@ -144,6 +148,8 @@ export class OpenRunOrchestrator {
         return finish();
       }
       offsetMs = estimate.offsetMs;
+      serverClock.anchor(this.dependencies.clock.now() + offsetMs);
+      serverClockReady = true;
       emit("metric", estimate.fallback ? "서버 시계 측정 실패로 로컬 시계를 사용합니다." : "서버 시계 보정을 완료했습니다.", {
         clockOffsetMs: estimate.offsetMs,
         clockSamples: estimate.sampleCount,
@@ -154,7 +160,6 @@ export class OpenRunOrchestrator {
         clockPhase: "initial",
       });
 
-      const serverClock: Clock = { now: () => this.dependencies.clock.now() + (offsetMs ?? 0) };
       if (config.entryMode === "auto") {
         transition("ENTERING_RESERVATION", "예약창 진입 상태를 확인합니다.");
         const entryDeadline = Math.min(serverClock.now() + 5_000, config.stopAtMs);
@@ -274,7 +279,10 @@ export class OpenRunOrchestrator {
           transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
           return finish();
         }
-        if (!finalEstimate.fallback) offsetMs = finalEstimate.offsetMs;
+        if (!finalEstimate.fallback) {
+          offsetMs = finalEstimate.offsetMs;
+          serverClock.anchor(this.dependencies.clock.now() + offsetMs);
+        }
         emit("metric", finalEstimate.fallback ? "오픈 직전 시계 재측정에 실패해 기존 기준을 유지합니다." : "오픈 직전 서버 시계를 다시 보정했습니다.", {
           clockOffsetMs: offsetMs ?? 0,
           clockSamples: finalEstimate.sampleCount,

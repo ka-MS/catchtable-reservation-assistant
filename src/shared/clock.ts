@@ -20,8 +20,12 @@ export function createMeasurement(input: {
   requestStartedAt: number;
   responseReceivedAt: number;
   serverDateMs: number;
+  measurementLatencyMs?: number;
 }): ClockMeasurement {
-  const measurementLatency = Math.max(0, input.responseReceivedAt - input.requestStartedAt);
+  const measurementLatency = Math.max(
+    0,
+    input.measurementLatencyMs ?? input.responseReceivedAt - input.requestStartedAt,
+  );
   const estimatedServerNow = input.serverDateMs + 500 + measurementLatency / 2;
   return {
     localNow: input.responseReceivedAt,

@@ -17,10 +17,13 @@ declare global {
 if (!window.__ctReserveInjected) {
   window.__ctReserveInjected = true;
   const clock = { now: () => Date.now() };
+  const monotonicClock = { now: () => performance.now() };
   const orchestrator = new OpenRunOrchestrator({
     clock,
+    monotonicClock,
     syncClock: (config, signal) => syncServerClock(config.targetUrl, config.clockSampleCount, {
       clock,
+      monotonicClock,
       signal,
       sleep: abortableSleep,
     }),

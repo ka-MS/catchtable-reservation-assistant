@@ -7,6 +7,7 @@ test("clock sync performs bounded HEAD samples", async () => {
   let requests = 0;
   const result = await syncServerClock("https://app.catchtable.co.kr/ct/shop/kea", 5, {
     clock: { now: () => now },
+    monotonicClock: { now: () => now },
     signal: new AbortController().signal,
     fetch: async (_url, init) => {
       requests += 1;
@@ -24,6 +25,7 @@ test("clock sync performs bounded HEAD samples", async () => {
 test("clock sync falls back when Date headers are unavailable", async () => {
   const result = await syncServerClock("https://app.catchtable.co.kr/ct/shop/kea", 3, {
     clock: { now: () => 1_000 },
+    monotonicClock: { now: () => 1_000 },
     signal: new AbortController().signal,
     fetch: async () => new Response(null),
     sleep: async () => true,
@@ -32,10 +34,30 @@ test("clock sync falls back when Date headers are unavailable", async () => {
   assert.equal(result.offsetMs, 0);
 });
 
+test("clock sync measures RTT with a monotonic clock during a wall-clock jump", async () => {
+  let wallNow = 1_000;
+  let monotonicNow = 50;
+  const result = await syncServerClock("https://app.catchtable.co.kr/ct/shop/kea", 1, {
+    clock: { now: () => wallNow },
+    monotonicClock: { now: () => monotonicNow },
+    signal: new AbortController().signal,
+    fetch: async () => {
+      wallNow += 5_100;
+      monotonicNow += 100;
+      return new Response(null, { headers: { Date: new Date(7_000).toUTCString() } });
+    },
+    sleep: async () => true,
+  });
+
+  assert.equal(result.method, "median");
+  assert.equal(result.precisionMs, 550);
+});
+
 test("default nine samples span enough time to observe a Date boundary", async () => {
   let now = 400;
   const result = await syncServerClock("https://app.catchtable.co.kr/ct/shop/kea", 9, {
     clock: { now: () => now },
+    monotonicClock: { now: () => now },
     signal: new AbortController().signal,
     fetch: async () => {
       now += 10;

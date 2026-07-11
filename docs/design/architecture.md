@@ -67,6 +67,8 @@ interface ClockSyncAdapter {
 
 `ClockMeasurement`는 서버 Date 초 값, 로컬 요청 중간 시각, RTT를 포함한다. 연속 표본에서 서버 초 값이 바뀌면 그 로컬 구간의 중간점을 서버 초 경계로 사용한다. 경계를 관찰하지 못한 경우에만 최소 RTT 표본군의 중앙 오프셋을 선택한다. 비즈니스 로직은 직접 `Date.now()`를 호출하지 않는다.
 
+서버 동기화가 끝나면 `wall epoch + offset`을 `performance.now()`에 앵커링한다. 이후 wait, deadline, 토글 계획과 서버 로그는 단조 서버 시계를 사용한다. 로컬 이벤트 시각 `at`만 wall clock epoch를 유지한다. 오픈 직전 재동기화 성공 시 앵커를 교체하고 실패 시 기존 앵커를 유지한다.
+
 ## 5. Site Adapter 계약
 
 ```ts

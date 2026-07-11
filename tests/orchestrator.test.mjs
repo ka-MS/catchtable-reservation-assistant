@@ -30,19 +30,24 @@ function harness({
   person = { inspect: () => ({ ready: true, targetAvailable: true, targetSelected: true }), select: () => true },
   prepareTarget = () => ({ status: "ready", message: "목표 날짜가 준비됐습니다." }),
   postSlot = { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "unused" }) },
+  onCalendarInspect = () => undefined,
 } = {}) {
   let now = 0;
+  let monotonicNow = 0;
   let cycles = 0;
   let slotClicks = 0;
   const dateClicks = [];
   const dateClickTimes = [];
   const events = [];
   const calendar = {
-    inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: "2026-07-29" }),
+    inspect: () => {
+      onCalendarInspect();
+      return { targetAvailable: true, targetSelected: true, adjacentDate: "2026-07-29" };
+    },
     prepareTarget,
     clickDate: (date) => {
       dateClicks.push(date);
-      dateClickTimes.push({ date, at: now });
+      dateClickTimes.push({ date, at: now, monotonicAt: monotonicNow });
       if (date === "2026-07-30") cycles += 1;
       return true;
     },
@@ -56,6 +61,7 @@ function harness({
   };
   const orchestrator = new OpenRunOrchestrator({
     clock: { now: () => now },
+    monotonicClock: { now: () => monotonicNow },
     syncClock: async () => ({
       offsetMs: 0,
       sampleCount: 3,
@@ -72,6 +78,7 @@ function harness({
     sleep: async (ms, signal) => {
       if (signal.aborted) return false;
       now += ms;
+      monotonicNow += ms;
       return true;
     },
     emit: (event) => events.push(event),
@@ -84,6 +91,7 @@ function harness({
     events,
     get slotClicks() { return slotClicks; },
     get now() { return now; },
+    jumpWall(ms) { now += ms; },
   };
 }
 
@@ -114,6 +122,25 @@ test("dry-run detects a prioritized slot without clicking", async () => {
     "SLOT_DETECTED",
     "DRY_RUN_COMPLETED",
   ]);
+});
+
+test("wall-clock jumps do not move the server schedule after synchronization", async () => {
+  let h;
+  let jumped = false;
+  h = harness({
+    slotAfterCycles: 2,
+    onCalendarInspect: () => {
+      if (jumped) return;
+      jumped = true;
+      h.jumpWall(5_000);
+    },
+  });
+
+  const result = await h.orchestrator.start(config());
+  const lastTarget = h.dateClickTimes.filter((click) => click.date === "2026-07-30").at(-1);
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(lastTarget?.monotonicAt, 1_000);
+  assert.equal(lastTarget?.at, 6_000);
 });
 
 test("auto entry opens the reservation, prepares date and person, then uses the existing safety check", async () => {
@@ -394,6 +421,7 @@ test("long waits resynchronize the server clock shortly before opening", async (
   let targetClicks = 0;
   const orchestrator = new OpenRunOrchestrator({
     clock: { now: () => now },
+    monotonicClock: { now: () => now },
     syncClock: async () => {
       syncCalls += 1;
       return {
@@ -450,6 +478,7 @@ test("deadline wins over a slot that appears during target-date settling", async
   let clicks = 0;
   const orchestrator = new OpenRunOrchestrator({
     clock: { now: () => now },
+    monotonicClock: { now: () => now },
     syncClock: async () => ({
       offsetMs: 0,
       sampleCount: 3,
@@ -493,6 +522,7 @@ test("missing adjacent date hands control to the user", async () => {
   const h = harness();
   h.orchestrator = new OpenRunOrchestrator({
     clock: { now: () => 0 },
+    monotonicClock: { now: () => 0 },
     syncClock: async () => ({
       offsetMs: 0,
       sampleCount: 3,
