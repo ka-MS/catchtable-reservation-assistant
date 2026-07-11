@@ -47,3 +47,25 @@ test("a measured server timestamp can differ from the later event time", () => {
 
   assert.match(message, /서버 \d{2}:\d{2}:\d{2}\.250 \(\+1250ms\)/);
 });
+
+test("unknown post-slot diagnostics are visible in the event message", () => {
+  const message = formatEventMessage({
+    at: Date.now(),
+    serverAt: null,
+    runId: "run-unknown",
+    kind: "state",
+    message: "새로운 예약 단계 화면은 자동 진행하지 않습니다.",
+    data: {
+      postSlotCertainty: "unknown",
+      dialogTitle: "고객 요청 확인",
+      dialogButtons: "이전 | 계속",
+      dialogRadioCount: 0,
+      dialogCheckboxCount: 1,
+      dialogQuantityControlCount: 0,
+    },
+  });
+
+  assert.match(message, /진단: 고객 요청 확인/);
+  assert.match(message, /버튼 이전 \| 계속/);
+  assert.match(message, /radio 0 · checkbox 1 · quantity 0/);
+});

@@ -168,6 +168,49 @@ test("optional post-slot stages are advanced in observed order", async () => {
   assert.match(h.events.at(-1)?.message ?? "", /예약 폼/);
 });
 
+test("unknown post-slot screens hand off with safe structural diagnostics", async () => {
+  let advances = 0;
+  const unknown = {
+    kind: "unknown",
+    label: "새로운 예약 단계",
+    certainty: "unknown",
+    strategy: "unknown-dialog-v1",
+    evidence: ["unsupported dialog structure"],
+    fingerprint: "ps-a1b2c3d4",
+    diagnostics: {
+      urlKind: "shop",
+      label: "새로운 예약 단계",
+      title: "고객 요청 확인",
+      buttons: ["이전", "계속"],
+      disabledButtonCount: 1,
+      radioCount: 0,
+      checkboxCount: 0,
+      quantityControlCount: 0,
+      zeroDepositControlCount: 0,
+    },
+  };
+  const h = harness({
+    postSlot: {
+      inspect: () => unknown,
+      advance: () => {
+        advances += 1;
+        return { status: "acted", message: "unexpected" };
+      },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ dryRun: false }));
+  const handoff = h.events.at(-1);
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.equal(advances, 0);
+  assert.equal(handoff?.data?.postSlotCertainty, "unknown");
+  assert.equal(handoff?.data?.postSlotStrategy, "unknown-dialog-v1");
+  assert.equal(handoff?.data?.postSlotFingerprint, "ps-a1b2c3d4");
+  assert.equal(handoff?.data?.dialogTitle, "고객 요청 확인");
+  assert.equal(handoff?.data?.dialogButtons, "이전 | 계속");
+});
+
 test("a promo notice appearing after form arrival is dismissed before handing off", async () => {
   // The promo dialog renders non-deterministically after the form loads, so the
   // orchestrator dwells on the form briefly instead of handing off on first sight.

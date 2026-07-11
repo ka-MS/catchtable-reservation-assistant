@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { JSDOM } from "jsdom";
 import { PostSlotAdapter } from "../dist/content/adapter/post-slot.js";
 
 function documentFor(body, url = "https://app.catchtable.co.kr/ct/shop/taeo") {
   return new JSDOM(`<!doctype html><body>${body}</body>`, { url }).window.document;
+}
+
+function fixture(name) {
+  return readFileSync(new URL(`fixtures/${name}`, import.meta.url), "utf8");
 }
 
 function wireChoice(document, selector) {
@@ -34,7 +39,9 @@ test("table type uses the configured option and advances", () => {
   const adapter = new PostSlotAdapter(document);
 
   const inspection = adapter.inspect();
-  assert.deepEqual(inspection, { kind: "table_type", options: ["홀", "바"] });
+  assert.equal(inspection.kind, "table_type");
+  assert.deepEqual(inspection.options, ["홀", "바"]);
+  assert.equal(inspection.certainty, "exact");
   assert.equal(adapter.advance(inspection, { tablePreference: "bar", menuKeyword: "" }).status, "acted");
   assert.equal(document.querySelector('[aria-label="바"]').getAttribute("aria-checked"), "true");
   assert.equal(adapter.advance(adapter.inspect(), { tablePreference: "bar", menuKeyword: "" }).status, "acted");
@@ -76,10 +83,9 @@ test("menu selection matches a keyword before advancing", () => {
   const adapter = new PostSlotAdapter(document);
 
   const inspection = adapter.inspect();
-  assert.deepEqual(inspection, {
-    kind: "menu",
-    options: ["디너 오마카세", "디너 오마카세 사케 페어링 코스"],
-  });
+  assert.equal(inspection.kind, "menu");
+  assert.deepEqual(inspection.options, ["디너 오마카세", "디너 오마카세 사케 페어링 코스"]);
+  assert.equal(inspection.certainty, "exact");
   assert.equal(adapter.advance(inspection, { tablePreference: "any", menuKeyword: "사케" }).status, "acted");
   assert.equal(document.querySelector('[aria-label*="사케"]').getAttribute("aria-checked"), "true");
   adapter.advance(adapter.inspect(), { tablePreference: "any", menuKeyword: "사케" });
@@ -126,8 +132,10 @@ test("latest extra-products dialog wins over a stale table dialog and skips prod
   document.querySelector("button[data-next]").addEventListener("click", () => { nextClicks += 1; });
   const adapter = new PostSlotAdapter(document);
 
-  assert.deepEqual(adapter.inspect(), { kind: "extras" });
-  assert.equal(adapter.advance(adapter.inspect(), { tablePreference: "any", menuKeyword: "" }).status, "acted");
+  const inspection = adapter.inspect();
+  assert.equal(inspection.kind, "extras");
+  assert.equal(inspection.certainty, "exact");
+  assert.equal(adapter.advance(inspection, { tablePreference: "any", menuKeyword: "" }).status, "acted");
   assert.equal(productClicks, 0);
   assert.equal(nextClicks, 1);
 });
@@ -219,6 +227,23 @@ test("quantity menu honors the menu keyword", () => {
   assert.equal(document.querySelector('[aria-label="한우맡김차림 수량"]').value, "0");
 });
 
+test("a hidden stale checkbox does not mask visible quantity controls", () => {
+  const document = quantityMenuDocument();
+  document.querySelector('[role="dialog"]').insertAdjacentHTML(
+    "afterbegin",
+    '<button role="checkbox" aria-label="이전 메뉴" hidden></button>',
+  );
+  const adapter = new PostSlotAdapter(document);
+
+  const result = adapter.advance(
+    adapter.inspect(),
+    { tablePreference: "any", menuKeyword: "", personCount: 1 },
+  );
+
+  assert.equal(result.status, "acted");
+  assert.equal(document.querySelector('[aria-label="한우맡김차림 수량"]').value, "1");
+});
+
 test("quantity menu clears another menu's quantity before filling the target", () => {
   const document = quantityMenuDocument({ secondValue: 1 });
   const adapter = new PostSlotAdapter(document);
@@ -268,7 +293,8 @@ test("deposit notice dialog advances with the confirm button", () => {
   const adapter = new PostSlotAdapter(document);
 
   const inspection = adapter.inspect();
-  assert.deepEqual(inspection, { kind: "deposit_notice" });
+  assert.equal(inspection.kind, "deposit_notice");
+  assert.equal(inspection.certainty, "exact");
   assert.equal(adapter.advance(inspection, { tablePreference: "any", menuKeyword: "" }).status, "acted");
   assert.equal(confirmClicks, 1);
   assert.equal(prevClicks, 0);
@@ -299,12 +325,34 @@ test("deposit-free flow advances but a paid-only dialog blocks", () => {
   assert.equal(paidOnly.advance(paidOnly.inspect(), { tablePreference: "any", menuKeyword: "" }).status, "blocked");
 });
 
+test("deposit-free flow tolerates a descriptive zero-deposit aria-label", () => {
+  const document = documentFor(`
+    <div role="dialog" aria-label="reservation step">
+      <h2>예약금 결제 방법 선택</h2>
+      <input type="radio" aria-label="예약금 0원 결제 혜택" checked>
+      <input type="radio" aria-label="일반 예약금 결제">
+      <button data-next>다음</button>
+    </div>
+  `);
+  let nextClicks = 0;
+  document.querySelector("button[data-next]").addEventListener("click", () => { nextClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+  const inspection = adapter.inspect();
+
+  assert.equal(inspection.kind, "deposit");
+  assert.equal(inspection.certainty, "supported");
+  assert.equal(adapter.advance(inspection, { tablePreference: "any", menuKeyword: "", personCount: 2 }).status, "acted");
+  assert.equal(nextClicks, 1);
+});
+
 test("reservation form and unknown dialogs are distinguished", () => {
   const form = new PostSlotAdapter(documentFor("<main></main>", "https://app.catchtable.co.kr/ct/reservation/form?isDepositFree=1"));
-  assert.deepEqual(form.inspect(), { kind: "form" });
+  assert.equal(form.inspect().kind, "form");
 
   const unknown = new PostSlotAdapter(documentFor('<div role="dialog" aria-label="알 수 없는 단계"></div>'));
-  assert.deepEqual(unknown.inspect(), { kind: "unknown", label: "알 수 없는 단계" });
+  const unknownInspection = unknown.inspect();
+  assert.equal(unknownInspection.kind, "unknown");
+  assert.equal(unknownInspection.label, "알 수 없는 단계");
 });
 
 test("promotional notice on the reservation form is dismissed before handing off", () => {
@@ -323,8 +371,113 @@ test("promotional notice on the reservation form is dismissed before handing off
   const adapter = new PostSlotAdapter(document);
 
   const inspection = adapter.inspect();
-  assert.deepEqual(inspection, { kind: "form_notice" });
+  assert.equal(inspection.kind, "form_notice");
+  assert.equal(inspection.certainty, "exact");
   assert.equal(adapter.advance(inspection, { tablePreference: "any", menuKeyword: "", personCount: 2 }).status, "acted");
   assert.equal(dismissClicks, 1);
-  assert.deepEqual(adapter.inspect(), { kind: "form" });
+  assert.equal(adapter.inspect().kind, "form");
+});
+
+test("dialog title and control structure survive an aria-label change", () => {
+  const document = documentFor(fixture("post-slot-extras-title-fallback.html"));
+  let nextClicks = 0;
+  document.querySelector("button[data-next]").addEventListener("click", () => { nextClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+
+  const inspection = adapter.inspect();
+
+  assert.equal(inspection.kind, "extras");
+  assert.equal(inspection.certainty, "supported");
+  assert.equal(inspection.strategy, "extras-title-structure-v1");
+  assert.match(inspection.fingerprint, /^ps-/);
+  assert.equal(adapter.advance(inspection, { tablePreference: "any", menuKeyword: "", personCount: 2 }).status, "acted");
+  assert.equal(nextClicks, 1);
+});
+
+test("advance refuses a dialog whose structure changed after inspection", () => {
+  const document = documentFor(`
+    <div role="dialog" aria-label="추가 상품">
+      <button data-next>다음</button>
+    </div>
+  `);
+  let nextClicks = 0;
+  document.querySelector("button[data-next]").addEventListener("click", () => { nextClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+  const inspection = adapter.inspect();
+
+  document.querySelector('[role="dialog"]').insertAdjacentHTML(
+    "afterbegin",
+    '<input type="checkbox" aria-label="새 필수 선택">',
+  );
+  const result = adapter.advance(inspection, { tablePreference: "any", menuKeyword: "", personCount: 2 });
+
+  assert.equal(result.status, "waiting");
+  assert.equal(nextClicks, 0);
+});
+
+test("unknown diagnostics expose structure but not input values or body text", () => {
+  const document = documentFor(fixture("post-slot-unknown.html"));
+  const inspection = new PostSlotAdapter(document).inspect();
+
+  assert.equal(inspection.kind, "unknown");
+  assert.equal(inspection.certainty, "unknown");
+  assert.equal(inspection.strategy, "unknown-dialog-v1");
+  assert.deepEqual(inspection.diagnostics.buttons, ["이전", "계속"]);
+  assert.equal(inspection.diagnostics.disabledButtonCount, 1);
+  assert.equal(inspection.diagnostics.checkboxCount, 0);
+  assert.match(inspection.fingerprint, /^ps-/);
+  assert.doesNotMatch(JSON.stringify(inspection), /private request|사용자 이름/);
+});
+
+test("hidden controls cannot support a fallback classification", () => {
+  const document = documentFor(`
+    <div role="dialog" aria-label="reservation step">
+      <h2>추가 상품</h2>
+      <button hidden>다음</button>
+    </div>
+  `);
+
+  const inspection = new PostSlotAdapter(document).inspect();
+
+  assert.equal(inspection.kind, "unknown");
+  assert.deepEqual(inspection.diagnostics.buttons, []);
+});
+
+test("a hidden form notice button is ignored", () => {
+  const document = documentFor(`
+    <main></main>
+    <div hidden><button>확인했어요</button></div>
+  `, "https://app.catchtable.co.kr/ct/reservation/form?isDepositFree=1");
+
+  assert.equal(new PostSlotAdapter(document).inspect().kind, "form");
+});
+
+test("controls under a CSS-hidden ancestor are ignored", () => {
+  const document = documentFor(`
+    <div role="dialog" aria-label="reservation step">
+      <h2>추가 상품</h2>
+      <div style="display: none"><button>다음</button></div>
+    </div>
+  `);
+
+  assert.equal(new PostSlotAdapter(document).inspect().kind, "unknown");
+});
+
+test("an aria-disabled progress button is never clicked", () => {
+  const document = documentFor(`
+    <div role="dialog" aria-label="추가 상품">
+      <button data-next aria-disabled="true">다음</button>
+    </div>
+  `);
+  let nextClicks = 0;
+  document.querySelector("button[data-next]").addEventListener("click", () => { nextClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+
+  const result = adapter.advance(
+    adapter.inspect(),
+    { tablePreference: "any", menuKeyword: "", personCount: 2 },
+  );
+
+  assert.equal(result.status, "waiting");
+  assert.equal(nextClicks, 0);
 });

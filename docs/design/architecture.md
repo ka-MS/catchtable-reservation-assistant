@@ -80,7 +80,9 @@ interface ReservationSiteAdapter {
 - `refreshSlots`: 인접 날짜와 목표 날짜를 한 번씩 클릭한다.
 - `readAvailableSlots`: 표시 중이고 `data-busy="false"`인 유니크 슬롯만 반환한다.
 - `clickSlot`: 논리 후보를 DOM에 다시 매칭하고 연결·표시·가용 상태를 재검증한 뒤 한 번 클릭한다.
-- `PostSlotAdapter`: 실측된 dialog aria-label과 radio/checkbox 상태만 사용해 선택적 중간 단계를 진행한다. 렌더된 dialog 중 마지막 항목을 현재 화면으로 사용하며 `다음/확인` 버튼 활성화를 제한 시간 안에서 기다린다.
+- `PostSlotAdapter`: 판별된 후속 단계에서 visible radio/checkbox/수량 control과 진행 버튼을 다시 조회해 선택적 중간 단계를 진행한다. `다음/확인` 버튼 활성화를 제한 시간 안에서 기다린다.
+- `PostSlotInspection`: 최신 visible dialog를 개인정보 없는 구조 snapshot으로 만들고 `exact | supported | unknown`으로 분류한다. exact aria-label 경로를 우선하며, 라벨 변경 시에만 제목과 단계 고유 control 구조를 함께 요구한다.
+- 후속 행동은 inspection 이후 현재 kind와 구조 fingerprint가 유지되는지 재검증하고 DOM target을 다시 조회한 뒤 한 번만 수행한다. unknown은 클릭하지 않고 제한된 진단 정보를 실행 기록에 남긴다.
 
 인원 자동 설정은 안정 선택 상태가 미실측이므로 계약에 포함하지 않는다. Side Panel의 페이지 준비 확인으로 경계를 명시한다.
 

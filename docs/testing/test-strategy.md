@@ -50,6 +50,11 @@
 - 예약 폼 최초 관측 시각 기준 오픈 대비 signed ms 기록
 - 일반 후속 처리 제한 시간 직전에 폼이 나타나도 1.5초 홍보 안내 감시 보장
 - 예약 폼 위 홍보 안내(확인했어요) 닫은 뒤 폼 인계
+- 후속 dialog의 aria-label 변경 시 제목+control 구조 fallback 판별
+- inspect 이후 fingerprint 변경 시 click 0회와 재시도
+- hidden dialog 자식 control과 hidden 폼 안내 버튼 제외
+- unknown 구조 진단의 input value·body text·전체 HTML 비수집
+- unknown 진단의 Side Panel 실행 기록 표시
 
 ## 4. 빌드 회귀 테스트
 

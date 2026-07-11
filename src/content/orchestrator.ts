@@ -48,6 +48,27 @@ const TERMINAL = new Set<RunState>([
   "FAILED",
 ]);
 
+function postSlotEventData(inspection: PostSlotInspection): NonNullable<RunEvent["data"]> {
+  const diagnostics = inspection.diagnostics;
+  if (!diagnostics) return { postSlotStage: inspection.kind };
+  return {
+    postSlotStage: inspection.kind,
+    postSlotCertainty: inspection.certainty,
+    postSlotStrategy: inspection.strategy,
+    postSlotFingerprint: inspection.fingerprint,
+    postSlotEvidence: inspection.evidence.join(" | "),
+    dialogUrlKind: diagnostics.urlKind,
+    dialogLabel: diagnostics.label,
+    dialogTitle: diagnostics.title,
+    dialogButtons: diagnostics.buttons.join(" | "),
+    dialogDisabledButtonCount: diagnostics.disabledButtonCount,
+    dialogRadioCount: diagnostics.radioCount,
+    dialogCheckboxCount: diagnostics.checkboxCount,
+    dialogQuantityControlCount: diagnostics.quantityControlCount,
+    dialogZeroDepositControlCount: diagnostics.zeroDepositControlCount,
+  };
+}
+
 export class OpenRunOrchestrator {
   private activeController: AbortController | null = null;
 
@@ -295,6 +316,7 @@ export class OpenRunOrchestrator {
             }
             transition("HANDED_OFF", "예약 폼에 도착했습니다. 약관 확인과 최종 예약은 직접 진행하세요.", {
               data: {
+                ...postSlotEventData(inspection),
                 openDeltaMs: Math.round(formSeenAtMs - config.openAtMs),
                 timingServerAtMs: formSeenAtMs,
               },
@@ -302,7 +324,9 @@ export class OpenRunOrchestrator {
             return finish();
           }
           if (inspection.kind === "unknown") {
-            transition("HANDED_OFF", `${inspection.label} 화면은 자동 진행하지 않습니다.`);
+            transition("HANDED_OFF", `${inspection.label} 화면은 자동 진행하지 않습니다.`, {
+              data: postSlotEventData(inspection),
+            });
             return finish();
           }
           if (inspection.kind === "waiting") {
@@ -323,7 +347,7 @@ export class OpenRunOrchestrator {
             if (action.status === "acted") formNoticeDismissed = true;
           }
           const actionData: NonNullable<RunEvent["data"]> = {
-            postSlotStage: inspection.kind,
+            ...postSlotEventData(inspection),
             postSlotStatus: action.status,
           };
           emit("action", action.message, actionData);
