@@ -14,36 +14,34 @@ navigate → inject(기존 ensureContent)  →  enter_reservation → select_dat
 - background의 `sameRestaurant` 거부를 navigate 단계로 대체한다(다르면 `chrome.tabs.update` + 로드 감지 후 위임).
 - 긴 대기(`WAITING_FOR_OPEN`)는 콘텐츠 스크립트에 유지한다.
 
-## D2. 모드 = runUntil 체크포인트 (프레임워크 금지)
+## D2. 구간별 독립 토글 (runUntil 아님)
 
-범용 파이프라인 엔진·DAG를 만들지 않는다(AGENTS.md 단순함). 선형 흐름에 순서형 경계 하나를 둔다.
+파이프라인은 구간으로 나뉘지만, 실행 여부는 **하나의 순서형 멈춤 지점(runUntil)이 아니라 기존 boolean 토글 조합**으로 정한다. 단일 runUntil은 "맨 앞부터 어디까지"라 앞 구간(이동)을 건너뛰는 조합을 표현하지 못하므로 채택하지 않는다.
 
-```ts
-type RunUntil =
-  | "navigated"          // URL 이동만
-  | "reservation_open"   // 예약 모달 진입까지
-  | "date_selected"      // 목표 날짜 선택까지
-  | "slot_selected"      // 오픈런 루프 실행 + 슬롯 클릭까지 (구 postSlotEnabled=false)
-  | "form";              // 후속 단계 진행해 예약 폼 도착까지 (구 postSlotEnabled=true)
+```
+[이동모드] → 슬롯감지 → 슬롯클릭 → [후속→예약폼]
+   ↑ 토글        └─── 기본(항상) ───┘      ↑ 토글
 ```
 
-- 경계 도달 시 설정된 `runUntil`과 비교해 멈추면 종료. 다섯 모드가 같은 코드 경로를 지나 중복 구현이 없다.
-- "특정 단계부터"는 startAt이 아니라 **단계 멱등성**으로 해결한다. 이미 목표 URL이면 navigate no-op, 이미 모달이 열려 있으면 enter no-op, 이미 목표 날짜 선택이면 select no-op. 어디서 시작하든 각 단계가 "달성됐으면 통과"한다.
+- **슬롯감지 → 슬롯클릭 = 기본.** 파이프라인 구분일 뿐 별도 토글이 없다.
+- **이동모드 = 이번 개발 대상.** `url이동 → 예약창열기 → 날짜선택 → 인원선택`을 하나로 묶은 선택 구간. 이번 범위에서는 통째로 on/off (내부 세부 멈춤 없음).
+- **후속선택 자동진행(폼) = 기존 토글** 그대로.
+- 안전점검(dry-run)은 별개 안전장치로 유지한다.
 
-### 통합: 두 boolean → 하나의 순서형 (핵심 결정)
+### 기존 두 체크박스가 이미 토글이다 (새 설정 없음)
 
-`runUntil`은 기존 두 필드를 흡수한다. 이것이 이 작업의 단순화 이득이다.
+이번 작업은 설정 필드를 늘리지 않는다. 기존 사이드패널 체크박스 두 개가 그대로 구간 토글이다.
 
-| 기존 필드 | 의미 | runUntil로 대체 |
+| 기존 체크박스 (config 필드) | 의미 | 이번 작업에서의 역할 |
 |---|---|---|
-| `postSlotEnabled: false` | 슬롯 클릭 후 정지 | `runUntil: "slot_selected"` |
-| `postSlotEnabled: true` | 폼까지 진행 | `runUntil: "form"` |
-| `pagePrepared: true` | "모달을 수동으로 열어뒀음" 사용자 단언 | `enter_reservation` 단계가 자동화 → 필드 제거 |
+| `pagePrepared` "페이지에서 예약 모달과 인원을 준비했습니다" | 지금은 수동 준비 단언(필수) | **이동모드 on/off 스위치.** 해제 = 이동모드 실행(자동 이동·진입·날짜·인원), 체크 = 이동 건너뛰기(이미 준비됨) |
+| `postSlotEnabled` "후속 선택 자동 진행" | 슬롯 클릭 후 폼까지 진행 여부 | 변경 없음 |
 
-- `postSlotEnabled`, `pagePrepared` 두 boolean을 삭제하고 `runUntil` 하나로 대체한다.
-- 저장된 구 설정 마이그레이션은 하지 않는다(단일 사용자 개발 도구, 최초 1회 재설정). 사이드패널 로드시 `runUntil` 부재면 기본값 `"form"`을 쓴다.
+- `pagePrepared`는 **삭제하지 않는다.** 의미가 "수동으로 준비했다"에서 "이동을 건너뛴다"로 확장될 뿐이다.
+- 지금 `pagePrepared`는 `required`(필수 체크)지만, 이제 **해제도 유효한 선택**(자동 이동)이므로 그 제약을 푼다.
+- 조합 제약: 폼 진행은 슬롯클릭을 전제한다(안전점검 dry-run이면 폼 진행 불가).
 
-## D3. 단계 계약
+## D3. 단계 계약 (이동모드 = `pagePrepared` 해제 시)
 
 | 단계 | 층 | 입력 | 성공 | 실패 |
 |---|---|---|---|---|
@@ -51,18 +49,22 @@ type RunUntil =
 | inject | background | tabId | PING ok (기존 `ensureContent`) | FAILED |
 | enter_reservation | content | — | 날짜 셀 관측 폴링 성공 | `예약하기` 부재(웨이팅 전용 등) → HANDED_OFF |
 | select_date | content | reservationDate | `targetSelected` (기존 inspect 재사용) | HANDED_OFF |
-| open_run | content | 기존 config | 기존 그대로 | 기존 그대로 |
+| select_person | content | personCount | `input[name=personCount]:checked`.value === personCount | HANDED_OFF |
+| (기존 오픈런) | content | 기존 config | 기존 그대로 | 기존 그대로 |
 
+- `pagePrepared` 체크 시 위 4단계를 건너뛰고 기존 `PREPARING_PAGE`부터 시작(현행 동작).
 - 진입 앵커는 `aside#dock`의 `예약하기` 버튼(텍스트 판별). 가게별 위젯 변형에 의존하지 않는다.
 - 진입 성공은 시간이 아니라 날짜 셀 출현 관측으로 판정한다.
+- **`select_person` 실측 완료**(site-behavior §5.1): 앵커 `input[type="radio"][name="personCount"][value="<N>"]`(label 래핑), 상태 `input.checked`. 기본 `2명`이라 `personCount=2`는 무동작. 복제 노드가 많으므로 visible 스코핑 + value 중복 제거 필요. 표시 상한 초과 값은 대상 매장에서 확인.
 
 ## D4. 인터페이스 변경
 
-- `ReservationConfig`: `postSlotEnabled: boolean`·`pagePrepared: boolean` 삭제, `runUntil: RunUntil` 추가. `validateReservationConfig`·`form-model`·사이드패널 폼(체크박스 2개 → 셀렉트 1개) 동반 수정.
+- **`ReservationConfig` 필드 변경 없음.** `postSlotEnabled`·`pagePrepared` 유지, 새 필드 없음. `pagePrepared`의 `required` 제약만 해제.
 - content에 `EntryPort { inspect(): 진입상태, openReservation(): boolean }` 신설 — 기존 포트 패턴 준수. 진입 앵커는 `aside#dock`의 `예약하기`(텍스트 판별).
 - 날짜 선택은 기존 `CalendarPort.clickDate` 재사용.
-- 상태 추가: `NAVIGATING`, `ENTERING_RESERVATION`, `SELECTING_DATE`. `docs/design/state-machine.md`·사이드패널 라벨(`STATE_LABEL`/`STATE_BADGE`)·이벤트 포맷 동반 수정.
+- 상태 추가: `NAVIGATING`, `ENTERING_RESERVATION`, `SELECTING_DATE`(인원 포함 여부는 select_person 실측 후 결정). `docs/design/state-machine.md`·사이드패널 라벨(`STATE_LABEL`/`STATE_BADGE`)·이벤트 포맷 동반 수정.
 - `PREPARING_PAGE` 검증은 안전망으로 유지한다. 자동 진입이 성공하면 이 검증은 통과하고, 실패하면 기존대로 `HANDED_OFF`.
+- 사이드패널: `pagePrepared` 체크박스 라벨을 이동모드 의미가 드러나게 다듬는다(예: 해제 시 자동 이동함을 명시). 체크박스 자체는 유지.
 
 ## D5. 미결 항목 결정
 
