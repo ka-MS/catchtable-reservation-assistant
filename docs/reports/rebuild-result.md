@@ -32,4 +32,4 @@
 
 ## 2단계
 
-오픈런 MVP 안정화 뒤 같은 Clock·StateEvent·SiteAdapter 경계를 사용해 30초 이상의 취소 자리 감시 모드를 추가할 수 있다. 인원 자동 설정이나 슬롯 이후 단계는 각각 추가 실측과 별도 ADR이 필요하다.
+오픈런 MVP 안정화 뒤 같은 Clock·StateEvent·SiteAdapter 경계를 사용해 30초 이상의 취소 자리 감시 모드를 추가할 수 있다. 인원 자동 설정과 슬롯 이후 단계는 후속 실측·spec·ADR을 거쳐 구현됐다.

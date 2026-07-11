@@ -9,6 +9,7 @@ import type {
   RunState,
 } from "../shared/types.js";
 import { appendRunEvent, SerialTaskQueue } from "./storage.js";
+import { navigateTab, sameRestaurant } from "./navigation.js";
 
 const TERMINAL_STATES = new Set<RunState>([
   "DRY_RUN_COMPLETED",
@@ -19,19 +20,9 @@ const TERMINAL_STATES = new Set<RunState>([
   "FAILED",
 ]);
 const eventWrites = new SerialTaskQueue();
+const cancelledPendingRuns = new Set<string>();
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => undefined);
-
-function sameRestaurant(tabUrl: string | undefined, targetUrl: string): boolean {
-  if (!tabUrl) return false;
-  try {
-    const tab = new URL(tabUrl);
-    const target = new URL(targetUrl);
-    return tab.origin === target.origin && tab.pathname === target.pathname;
-  } catch {
-    return false;
-  }
-}
 
 async function ensureContent(tabId: number): Promise<void> {
   try {
@@ -51,28 +42,74 @@ async function startRun(config: ReservationConfig): Promise<CommandResponse> {
     return { ok: false, error: "이미 실행 중인 작업이 있습니다." };
   }
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (!tab?.id || !sameRestaurant(tab.url, config.targetUrl)) {
+  if (!tab?.id) return { ok: false, error: "실행할 Chrome 탭을 활성화하세요." };
+  if (config.entryMode === "prepared" && !sameRestaurant(tab.url, config.targetUrl)) {
     return { ok: false, error: "설정한 식당의 Catchtable 탭을 활성화하세요." };
   }
-  await ensureContent(tab.id);
   const now = Date.now();
+  const pendingRunId = `pending-${crypto.randomUUID()}`;
+  const needsNavigation = config.entryMode === "auto" && !sameRestaurant(tab.url, config.targetUrl);
   const pendingRun: ActiveRun = {
-    runId: "pending",
+    runId: pendingRunId,
     tabId: tab.id,
-    state: "CONFIGURED",
+    state: needsNavigation ? "NAVIGATING" : "CONFIGURED",
     startedAt: now,
     updatedAt: now,
   };
   await chrome.storage.local.set({ reservationConfig: config, activeRun: pendingRun, runEvents: [] });
-  const response = await chrome.tabs.sendMessage(tab.id, { type: "START", config } satisfies ContentCommand);
-  if (response?.ok) return { ok: true };
-  await chrome.storage.local.set({ activeRun: null });
-  return { ok: false, error: response?.error ?? "실행을 시작할 수 없습니다." };
+  const assertPending = async (): Promise<void> => {
+    const current = await chrome.storage.local.get("activeRun") as { activeRun?: ActiveRun | null };
+    if (cancelledPendingRuns.has(pendingRunId)
+      || current.activeRun?.runId !== pendingRunId
+      || TERMINAL_STATES.has(current.activeRun.state)) {
+      throw new Error("페이지 준비 중 실행이 중지됐습니다.");
+    }
+  };
+  try {
+    if (needsNavigation) {
+      await navigateTab(tab.id, config.targetUrl, {
+        get: (tabId) => chrome.tabs.get(tabId),
+        update: async (tabId, properties) => (await chrome.tabs.update(tabId, properties)) ?? {},
+        onUpdated: chrome.tabs.onUpdated,
+      });
+    }
+    await assertPending();
+    await ensureContent(tab.id);
+    await assertPending();
+    await chrome.storage.local.set({
+      activeRun: { ...pendingRun, state: "CONFIGURED", updatedAt: Date.now() },
+    });
+    await assertPending();
+    const response = await chrome.tabs.sendMessage(tab.id, { type: "START", config } satisfies ContentCommand);
+    if (response?.ok) return { ok: true };
+    throw new Error(response?.error ?? "실행을 시작할 수 없습니다.");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "실행을 시작할 수 없습니다.";
+    const current = await chrome.storage.local.get("activeRun") as { activeRun?: ActiveRun | null };
+    if (current.activeRun?.runId === pendingRunId && !TERMINAL_STATES.has(current.activeRun.state)) {
+      await chrome.storage.local.set({
+        activeRun: { ...current.activeRun, state: "FAILED", updatedAt: Date.now() },
+      });
+    }
+    return { ok: false, error: message };
+  } finally {
+    cancelledPendingRuns.delete(pendingRunId);
+  }
 }
 
 async function stopRun(): Promise<CommandResponse> {
   const { activeRun } = await chrome.storage.local.get("activeRun") as { activeRun?: ActiveRun | null };
   if (!activeRun) return { ok: false, error: "실행 중인 작업이 없습니다." };
+  if (activeRun.runId.startsWith("pending-")) {
+    cancelledPendingRuns.add(activeRun.runId);
+    await chrome.storage.local.set({ activeRun: { ...activeRun, state: "STOPPED", updatedAt: Date.now() } });
+    try {
+      await chrome.tabs.sendMessage(activeRun.tabId, { type: "STOP" } satisfies ContentCommand);
+    } catch {
+      // Content Script가 아직 주입되지 않은 이동 단계에서도 Background가 중지를 확정한다.
+    }
+    return { ok: true };
+  }
   try {
     await chrome.tabs.sendMessage(activeRun.tabId, { type: "STOP" } satisfies ContentCommand);
     return { ok: true };

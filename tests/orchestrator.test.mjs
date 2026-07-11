@@ -14,7 +14,7 @@ function config(overrides = {}) {
     tablePreference: "any",
     menuKeyword: "",
     stopAtMs: 3_000,
-    pagePrepared: true,
+    entryMode: "prepared",
     dryRun: true,
     preOpenLeadMs: 300,
     toggleIntervalMs: 400,
@@ -26,6 +26,9 @@ function config(overrides = {}) {
 function harness({
   slotAfterCycles = 1,
   clickResult = true,
+  entry = { inspect: () => ({ reservationOpen: true, ctaAvailable: true, waitingOnly: false }), openReservation: () => true },
+  person = { inspect: () => ({ ready: true, targetAvailable: true, targetSelected: true }), select: () => true },
+  prepareTarget = () => ({ status: "ready", message: "목표 날짜가 준비됐습니다." }),
   postSlot = { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "unused" }) },
 } = {}) {
   let now = 0;
@@ -36,6 +39,7 @@ function harness({
   const events = [];
   const calendar = {
     inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: "2026-07-29" }),
+    prepareTarget,
     clickDate: (date) => {
       dateClicks.push(date);
       dateClickTimes.push({ date, at: now });
@@ -61,6 +65,8 @@ function harness({
       precisionMs: 20,
     }),
     calendar,
+    entry,
+    person,
     slots,
     postSlot,
     sleep: async (ms, signal) => {
@@ -98,6 +104,85 @@ test("dry-run detects a prioritized slot without clicking", async () => {
     "SLOT_DETECTED",
     "DRY_RUN_COMPLETED",
   ]);
+});
+
+test("auto entry opens the reservation, prepares date and person, then uses the existing safety check", async () => {
+  let reservationOpen = false;
+  let datePrepared = false;
+  let personSelected = false;
+  const actions = [];
+  const h = harness({
+    entry: {
+      inspect: () => ({ reservationOpen, ctaAvailable: true, waitingOnly: false }),
+      openReservation: () => {
+        reservationOpen = true;
+        actions.push("entry");
+        return true;
+      },
+    },
+    prepareTarget: () => {
+      if (datePrepared) return { status: "ready", message: "목표 날짜가 준비됐습니다." };
+      datePrepared = true;
+      actions.push("date");
+      return { status: "acted", message: "목표 날짜를 선택했습니다." };
+    },
+    person: {
+      inspect: () => ({ ready: true, targetAvailable: true, targetSelected: personSelected }),
+      select: () => {
+        personSelected = true;
+        actions.push("person");
+        return true;
+      },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ entryMode: "auto" }));
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.deepEqual(actions, ["entry", "date", "person"]);
+  assert.deepEqual(h.events.filter((event) => event.kind === "state").map((event) => event.data?.state).slice(0, 8), [
+    "CONFIGURED",
+    "VALIDATING",
+    "SYNCING_CLOCK",
+    "ENTERING_RESERVATION",
+    "SELECTING_DATE",
+    "SELECTING_PERSON",
+    "PREPARING_PAGE",
+    "WAITING_FOR_OPEN",
+  ]);
+});
+
+test("auto entry hands off safely when the restaurant is waiting-only", async () => {
+  const h = harness({
+    entry: {
+      inspect: () => ({ reservationOpen: false, ctaAvailable: false, waitingOnly: true }),
+      openReservation: () => false,
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ entryMode: "auto" }));
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.match(h.events.at(-1)?.message ?? "", /웨이팅/);
+});
+
+test("auto entry never substitutes an unavailable person count", async () => {
+  let selections = 0;
+  const h = harness({
+    person: {
+      inspect: () => ({ ready: true, targetAvailable: false, targetSelected: false }),
+      select: () => {
+        selections += 1;
+        return true;
+      },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ entryMode: "auto", personCount: 20 }));
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.equal(selections, 0);
+  assert.match(h.events.at(-1)?.message ?? "", /20명/);
 });
 
 test("actual mode clicks one slot and hands off at the reservation form", async () => {

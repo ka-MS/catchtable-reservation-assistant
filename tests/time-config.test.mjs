@@ -40,7 +40,7 @@ function validConfig() {
     tablePreference: "any",
     menuKeyword: "",
     stopAtMs: 2_600_000,
-    pagePrepared: true,
+    entryMode: "auto",
     dryRun: true,
     preOpenLeadMs: 3_000,
     toggleIntervalMs: 400,
@@ -58,7 +58,7 @@ test("invalid time relationships and unsafe settings are rejected", () => {
   config.stopAtMs = config.openAtMs - 1;
   config.timeRange = { startMinutes: 1200, endMinutes: 1080 };
   config.priorityTimes = [1140, 1140, 900];
-  config.pagePrepared = false;
+  config.entryMode = "invalid";
   config.toggleIntervalMs = 50;
   config.tablePreference = "window";
   config.postSlotEnabled = "yes";
@@ -67,5 +67,5 @@ test("invalid time relationships and unsafe settings are rejected", () => {
   assert.ok(errors.length >= 6);
   assert.ok(errors.some((error) => error.includes("URL")));
   assert.ok(errors.some((error) => error.includes("감시 종료")));
-  assert.ok(errors.some((error) => error.includes("페이지 준비")));
+  assert.ok(errors.some((error) => error.includes("준비 방식")));
 });

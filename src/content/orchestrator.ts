@@ -5,12 +5,25 @@ import { selectPreferredSlot, type SlotCandidate } from "../shared/slot-selectio
 import { RunStateMachine } from "../shared/state-machine.js";
 import { nextTogglePlan } from "../shared/toggle-schedule.js";
 import type { ReservationConfig, RunEvent, RunState } from "../shared/types.js";
-import type { CalendarInspection } from "./adapter/calendar.js";
+import type { CalendarInspection, CalendarPreparationResult } from "./adapter/calendar.js";
+import type { EntryInspection } from "./adapter/entry.js";
+import type { PersonInspection } from "./adapter/person.js";
 import type { PostSlotActionResult, PostSlotInspection } from "./adapter/post-slot.js";
 
 interface CalendarPort {
   inspect(targetDate: string): CalendarInspection;
+  prepareTarget(targetDate: string): CalendarPreparationResult;
   clickDate(date: string): boolean;
+}
+
+interface EntryPort {
+  inspect(): EntryInspection;
+  openReservation(): boolean;
+}
+
+interface PersonPort {
+  inspect(personCount: number): PersonInspection;
+  select(personCount: number): boolean;
 }
 
 interface SlotPort {
@@ -26,7 +39,9 @@ interface PostSlotPort {
 interface Dependencies {
   clock: Clock;
   syncClock(config: ReservationConfig, signal: AbortSignal): Promise<ClockEstimate>;
+  entry: EntryPort;
   calendar: CalendarPort;
+  person: PersonPort;
   slots: SlotPort;
   postSlot: PostSlotPort;
   sleep: Sleep;
@@ -137,6 +152,103 @@ export class OpenRunOrchestrator {
         clockPhase: "initial",
       });
 
+      const serverClock: Clock = { now: () => this.dependencies.clock.now() + (offsetMs ?? 0) };
+      if (config.entryMode === "auto") {
+        transition("ENTERING_RESERVATION", "예약창 진입 상태를 확인합니다.");
+        const entryDeadline = Math.min(serverClock.now() + 5_000, config.stopAtMs);
+        let entryClicked = false;
+        while (true) {
+          if (controller.signal.aborted) {
+            transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
+            return finish();
+          }
+          if (serverClock.now() >= config.stopAtMs) {
+            transition("TIMED_OUT", "예약 페이지 준비 중 감시 종료 시각에 도달했습니다.");
+            return finish();
+          }
+          const entry = this.dependencies.entry.inspect();
+          if (entry.reservationOpen) break;
+          if (entry.waitingOnly) {
+            transition("HANDED_OFF", "이 식당은 현장 웨이팅만 가능해 예약창을 열 수 없습니다.");
+            return finish();
+          }
+          if (!entryClicked && entry.ctaAvailable && this.dependencies.entry.openReservation()) {
+            entryClicked = true;
+            emit("action", "예약하기 버튼을 클릭했습니다.");
+          }
+          if (serverClock.now() >= entryDeadline) {
+            transition("HANDED_OFF", entryClicked
+              ? "예약하기 클릭 후 달력 화면을 확인할 수 없습니다."
+              : "식당 페이지에서 예약하기 버튼을 찾을 수 없습니다.");
+            return finish();
+          }
+          if (!(await this.dependencies.sleep(50, controller.signal))) {
+            transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
+            return finish();
+          }
+        }
+
+        transition("SELECTING_DATE", "목표 월과 예약 날짜를 준비합니다.");
+        const dateDeadline = Math.min(serverClock.now() + 10_000, config.stopAtMs);
+        while (true) {
+          if (controller.signal.aborted) {
+            transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
+            return finish();
+          }
+          if (serverClock.now() >= config.stopAtMs) {
+            transition("TIMED_OUT", "예약 날짜 준비 중 감시 종료 시각에 도달했습니다.");
+            return finish();
+          }
+          const preparation = this.dependencies.calendar.prepareTarget(config.reservationDate);
+          if (preparation.status === "ready") break;
+          if (preparation.status === "blocked") {
+            transition("HANDED_OFF", preparation.message);
+            return finish();
+          }
+          if (preparation.status === "acted") emit("action", preparation.message);
+          if (serverClock.now() >= dateDeadline) {
+            transition("HANDED_OFF", "목표 월 또는 날짜 선택 상태를 제한 시간 안에 확인할 수 없습니다.");
+            return finish();
+          }
+          if (!(await this.dependencies.sleep(50, controller.signal))) {
+            transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
+            return finish();
+          }
+        }
+
+        transition("SELECTING_PERSON", "예약 인원을 준비합니다.");
+        const personDeadline = Math.min(serverClock.now() + 3_000, config.stopAtMs);
+        let personClicked = false;
+        while (true) {
+          if (controller.signal.aborted) {
+            transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
+            return finish();
+          }
+          if (serverClock.now() >= config.stopAtMs) {
+            transition("TIMED_OUT", "예약 인원 준비 중 감시 종료 시각에 도달했습니다.");
+            return finish();
+          }
+          const person = this.dependencies.person.inspect(config.personCount);
+          if (person.targetSelected) break;
+          if (person.ready && !person.targetAvailable) {
+            transition("HANDED_OFF", `이 식당에서 ${config.personCount}명을 선택할 수 없습니다.`);
+            return finish();
+          }
+          if (!personClicked && person.targetAvailable && this.dependencies.person.select(config.personCount)) {
+            personClicked = true;
+            emit("action", `${config.personCount}명으로 설정했습니다.`);
+          }
+          if (serverClock.now() >= personDeadline) {
+            transition("HANDED_OFF", "예약 인원 선택 상태를 제한 시간 안에 확인할 수 없습니다.");
+            return finish();
+          }
+          if (!(await this.dependencies.sleep(50, controller.signal))) {
+            transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
+            return finish();
+          }
+        }
+      }
+
       transition("PREPARING_PAGE", "예약 모달과 목표 날짜를 확인합니다.");
       const setup = this.dependencies.calendar.inspect(config.reservationDate);
       if (!setup.targetAvailable || !setup.targetSelected || setup.adjacentDate === null) {
@@ -144,7 +256,6 @@ export class OpenRunOrchestrator {
         return finish();
       }
 
-      const serverClock: Clock = { now: () => this.dependencies.clock.now() + (offsetMs ?? 0) };
       transition("WAITING_FOR_OPEN", "예약 오픈 직전까지 대기합니다.");
       const finalSyncAt = config.openAtMs - config.preOpenLeadMs - 2_000;
       if (serverClock.now() < finalSyncAt) {

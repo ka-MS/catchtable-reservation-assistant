@@ -1,8 +1,12 @@
 export type RunState =
   | "IDLE"
   | "CONFIGURED"
+  | "NAVIGATING"
   | "VALIDATING"
   | "SYNCING_CLOCK"
+  | "ENTERING_RESERVATION"
+  | "SELECTING_DATE"
+  | "SELECTING_PERSON"
   | "PREPARING_PAGE"
   | "WAITING_FOR_OPEN"
   | "REFRESHING_SLOTS"
@@ -17,6 +21,7 @@ export type RunState =
   | "FAILED";
 
 export type TablePreference = "any" | "hall" | "bar" | "room";
+export type EntryMode = "auto" | "prepared";
 
 export interface ReservationConfig {
   targetUrl: string;
@@ -29,7 +34,7 @@ export interface ReservationConfig {
   tablePreference: TablePreference;
   menuKeyword: string;
   stopAtMs: number;
-  pagePrepared: boolean;
+  entryMode: EntryMode;
   dryRun: boolean;
   preOpenLeadMs: number;
   toggleIntervalMs: number;

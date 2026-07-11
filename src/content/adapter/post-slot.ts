@@ -2,11 +2,11 @@ import type { ReservationConfig, TablePreference } from "../../shared/types.js";
 import {
   findActiveDialog,
   inspectPostSlot,
-  isElementHidden,
   isZeroDepositControl,
   normalized,
   type PostSlotInspection,
 } from "./post-slot-inspection.js";
+import { isElementHidden } from "./dom.js";
 
 export type { PostSlotCertainty, PostSlotDiagnostics, PostSlotInspection } from "./post-slot-inspection.js";
 

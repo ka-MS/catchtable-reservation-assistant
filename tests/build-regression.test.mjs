@@ -17,7 +17,15 @@ test("content script is an import-free IIFE bundle", async () => {
   const content = await readFile("dist/content/index.js", "utf8");
   assert.doesNotMatch(content, /^\s*import\s/m);
   assert.match(content, /__ctReserveInjected/);
-  assert.doesNotMatch(content, /모두 동의합니다\.|자동결제로 예약하기|예약하기/);
+  assert.doesNotMatch(content, /모두 동의합니다\.|자동결제로 예약하기/);
+});
+
+test("sidepanel exposes an explicit entry mode instead of pagePrepared", async () => {
+  const html = await readFile("dist/sidepanel/sidepanel.html", "utf8");
+  assert.match(html, /id="entry-mode"/);
+  assert.match(html, /value="auto"/);
+  assert.match(html, /value="prepared"/);
+  assert.doesNotMatch(html, /id="page-prepared"/);
 });
 
 test("post-slot automation is opt-in in the sidepanel", async () => {

@@ -1,12 +1,12 @@
 # MVP 검증 체크리스트
 
-**검증일:** 2026-07-10  
-**브랜치:** `main`
+**검증일:** 2026-07-11
+**브랜치:** `codex/feat-entry-pipeline`
 
 ## 자동 검증
 
 - [x] `npm run typecheck`
-- [x] `npm test` — 34 pass, 0 fail
+- [x] `npm test` — 93 pass, 0 fail
 - [x] `npm run check:dist`
 - [x] `npm run check:independence`
 - [x] Manifest V3이며 `content_scripts`가 없음
@@ -15,6 +15,9 @@
 - [x] 실제 모드 통합 시나리오 슬롯 click 1회 후 `HANDED_OFF`
 - [x] 종료 시각 도달 시 click 0회와 `TIMED_OUT`
 - [x] 이벤트 storage 쓰기 직렬화
+- [x] 자동 탭 이동 완료 대기와 URL 정규화
+- [x] 예약 CTA·월 이동·날짜·인원 Adapter fixture
+- [x] 자동 준비 상태 전이와 웨이팅/미지원 인원 안전 인계
 
 실행 명령:
 
@@ -37,7 +40,7 @@ npm run check
 - [x] 빌드된 `dist/sidepanel/sidepanel.html` 렌더링
 - [x] 예약 오픈 일시와 감시 종료 시각이 별도 필드로 표시됨
 - [x] 희망 시간 범위와 시간 우선순위 편집 UI 표시
-- [x] 페이지 준비 확인과 dry-run 기본 체크 표시
+- [x] 명시적 자동/현재 페이지 준비 모드와 dry-run 표시
 - [x] 상태·시계·실행 기록 영역 표시
 - [x] 필드 텍스트 겹침 없음
 
@@ -47,9 +50,9 @@ Chrome 특수 페이지는 자동 제어 정책상 접근하지 못했으므로 
 
 - [ ] `chrome://extensions`에서 확장 카드 새로고침
 - [ ] Side Panel에 새 “예약 오픈런” UI가 표시됨
-- [ ] Catchtable 예약 모달과 인원을 준비
+- [ ] 자동 페이지 준비 모드 선택
 - [ ] 1분 뒤 오픈 시각, dry-run으로 시작
-- [ ] `CONFIGURED -> VALIDATING -> SYNCING_CLOCK -> PREPARING_PAGE -> WAITING_FOR_OPEN` 확인
+- [ ] `NAVIGATING -> CONFIGURED -> VALIDATING -> SYNCING_CLOCK -> ENTERING_RESERVATION -> SELECTING_DATE -> SELECTING_PERSON -> PREPARING_PAGE -> WAITING_FOR_OPEN` 확인
 - [ ] T-3초부터 인접 날짜·목표 날짜 토글 확인
 - [ ] 슬롯 감지 시 `DRY_RUN_COMPLETED`, 실제 슬롯 화면 이동 없음 확인
 - [ ] 중지 또는 감시 종료 뒤 추가 날짜 토글 없음 확인

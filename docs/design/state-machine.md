@@ -6,8 +6,12 @@
 |---|---|---|
 | `IDLE` | 실행 없음 | 아니오 |
 | `CONFIGURED` | 검증 가능한 설정 생성 | 아니오 |
+| `NAVIGATING` | Background가 설정한 식당 탭으로 이동 | 아니오 |
 | `VALIDATING` | 값·탭·페이지 조건 검증 | 아니오 |
 | `SYNCING_CLOCK` | 서버 시계 표본 수집 | 아니오 |
+| `ENTERING_RESERVATION` | dock 예약 CTA와 달력 출현 확인 | 아니오 |
+| `SELECTING_DATE` | 목표 월 이동과 날짜 선택 | 아니오 |
+| `SELECTING_PERSON` | 정확한 예약 인원 선택 | 아니오 |
 | `PREPARING_PAGE` | 목표 날짜와 인접 가용 날짜 확인 | 아니오 |
 | `WAITING_FOR_OPEN` | 서버 기준 사전 토글 시각까지 대기 | 아니오 |
 | `REFRESHING_SLOTS` | 날짜 토글과 슬롯 탐색 | 아니오 |
@@ -30,6 +34,9 @@ IDLE
   -> CONFIGURED
   -> VALIDATING
   -> SYNCING_CLOCK
+  -> ENTERING_RESERVATION   (entryMode=auto)
+  -> SELECTING_DATE         (entryMode=auto)
+  -> SELECTING_PERSON       (entryMode=auto)
   -> PREPARING_PAGE
   -> WAITING_FOR_OPEN
   -> REFRESHING_SLOTS
@@ -44,7 +51,7 @@ IDLE
 ## 3. 종료 전이
 
 - 모든 비종료 상태 + 사용자 중지 -> `STOPPED`
-- `WAITING_FOR_OPEN`, `REFRESHING_SLOTS` + 종료 시각 도달 -> `TIMED_OUT`
+- 자동 준비 상태, `WAITING_FOR_OPEN`, `REFRESHING_SLOTS` + 종료 시각 도달 -> `TIMED_OUT`
 - 페이지 사전 준비가 필요한 검증 실패 -> `HANDED_OFF`
 - 예외, 잘못된 전이, 지원하지 않는 URL -> `FAILED`
 - `SLOT_SELECTED`는 설정에 따라 `HANDED_OFF` 또는 `ADVANCING_RESERVATION`으로 전이한다.
@@ -78,3 +85,4 @@ interface StateTransition {
 - 슬롯 선택 전 서버 기준 현재 시각이 `stopAtMs` 이상이면 DOM을 클릭할 수 없다.
 - 예약 폼에서는 최종 `예약하기`를 클릭하지 않는다.
 - 새 시작은 새 runId와 빈 논리 클릭 기록을 가진다.
+- pending 내비게이션 중 사용자가 중지하면 Content Script 시작 전에 `STOPPED`를 확정한다.

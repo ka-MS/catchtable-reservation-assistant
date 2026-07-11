@@ -10,7 +10,9 @@ Side Panel
                  -> StateMachine
                  -> ClockService / Scheduler
                  -> CatchtableSiteAdapter
+                      -> EntryAdapter
                       -> CalendarAdapter
+                      -> PersonAdapter
                       -> SlotAdapter
                       -> PostSlotAdapter
 ```
@@ -43,7 +45,7 @@ interface ReservationConfig {
   tablePreference: "any" | "hall" | "bar" | "room";
   menuKeyword: string;
   stopAtMs: number;
-  pagePrepared: boolean;
+  entryMode: "auto" | "prepared";
   dryRun: boolean;
   preOpenLeadMs: number;
   toggleIntervalMs: number;
@@ -76,6 +78,9 @@ interface ReservationSiteAdapter {
 }
 ```
 
+- `EntryAdapter`: `aside#dock`의 예약 CTA와 웨이팅 전용 상태만 판별한다.
+- `CalendarAdapter.prepareTarget`: 목표 월로 한 달씩 이동하고 목표 날짜를 선택한다. 월 텍스트 변화 전 같은 이동 버튼을 재클릭하지 않는다.
+- `PersonAdapter`: 정확한 `personCount` 라디오만 선택하며 다른 인원으로 대체하지 않는다.
 - `inspectSetup`: 목표 날짜 선택 여부와 인접 가용 날짜를 반환한다.
 - `refreshSlots`: 인접 날짜와 목표 날짜를 한 번씩 클릭한다.
 - `readAvailableSlots`: 표시 중이고 `data-busy="false"`인 유니크 슬롯만 반환한다.
@@ -84,11 +89,12 @@ interface ReservationSiteAdapter {
 - `PostSlotInspection`: 최신 visible dialog를 개인정보 없는 구조 snapshot으로 만들고 `exact | supported | unknown`으로 분류한다. exact aria-label 경로를 우선하며, 라벨 변경 시에만 제목과 단계 고유 control 구조를 함께 요구한다.
 - 후속 행동은 inspection 이후 현재 kind와 구조 fingerprint가 유지되는지 재검증하고 DOM target을 다시 조회한 뒤 한 번만 수행한다. unknown은 클릭하지 않고 제한된 진단 정보를 실행 기록에 남긴다.
 
-인원 자동 설정은 안정 선택 상태가 미실측이므로 계약에 포함하지 않는다. Side Panel의 페이지 준비 확인으로 경계를 명시한다.
+자동 준비가 끝난 뒤에도 `inspectSetup`을 다시 실행해 목표 날짜와 토글 가능한 인접 날짜를 검증한다.
 
 ## 6. 주입과 번들
 
 - manifest에는 `content_scripts`가 없다.
+- `entryMode=auto`에서 Background는 다른 활성 탭을 목표 매장 URL로 이동하고 load complete를 확인한다.
 - Background는 START 전에 PING하고 응답이 없을 때만 `chrome.scripting.executeScript`를 호출한다.
 - Content Script 전역 가드로 동일 프레임의 중복 부트스트랩을 막는다.
 - Content Script는 esbuild IIFE 단일 번들로 만들며 정적 `import`가 남아 있으면 빌드 검증 실패다.
@@ -97,6 +103,7 @@ interface ReservationSiteAdapter {
 ## 7. 실행 수명주기
 
 - 시작마다 RunContext와 AbortController를 새로 만든다.
+- 자동 준비는 예약 CTA 5초, 목표 월·날짜 10초, 인원 3초의 제한된 관측 구간을 사용한다.
 - 중지, 시간 초과, 인계, 실패 시 timer와 observer를 모두 해제한다.
 - 날짜 토글 기본 간격은 150ms이며, 정밀 구간의 목표 날짜 클릭은 서버 오픈 시각 기준 150ms 격자에 고정한다.
 - 장시간 대기는 오픈 직전 시계를 다시 측정하고, 재측정 실패 시 초기 오프셋을 유지한다.

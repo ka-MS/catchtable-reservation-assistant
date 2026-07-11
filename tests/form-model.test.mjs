@@ -15,7 +15,7 @@ function values(overrides = {}) {
     tablePreference: "bar",
     menuKeyword: "디너 오마카세",
     stopAt: "2026-07-10T13:10",
-    pagePrepared: true,
+    entryMode: "auto",
     dryRun: true,
     preOpenLeadMs: "3000",
     toggleIntervalMs: "400",
@@ -32,8 +32,14 @@ test("sidepanel values produce an epoch-based configuration", () => {
   assert.equal(config.postSlotEnabled, true);
   assert.equal(config.tablePreference, "bar");
   assert.equal(config.menuKeyword, "디너 오마카세");
+  assert.equal(config.entryMode, "auto");
 });
 
 test("sidepanel model reports validation errors", () => {
-  assert.throws(() => configFromFormValues(values({ stopAt: "2026-07-10T12:59", pagePrepared: false }), new Date("2026-07-10T12:00").getTime()), /감시 종료|페이지 준비/);
+  assert.throws(() => configFromFormValues(values({ stopAt: "2026-07-10T12:59", entryMode: "invalid" }), new Date("2026-07-10T12:00").getTime()), /감시 종료|준비 방식/);
+});
+
+test("legacy pagePrepared drafts migrate to an explicit entry mode", () => {
+  const config = configFromFormValues(values({ entryMode: undefined, pagePrepared: true }), new Date("2026-07-10T12:00").getTime());
+  assert.equal(config.entryMode, "prepared");
 });

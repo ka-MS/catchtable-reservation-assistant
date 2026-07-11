@@ -1,6 +1,6 @@
 import { defaultStopAt } from "../shared/config.js";
 import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
-import type { ActiveRun, CommandResponse, PanelCommand, ReservationConfig, RunEvent, RunState, TablePreference } from "../shared/types.js";
+import type { ActiveRun, CommandResponse, EntryMode, PanelCommand, ReservationConfig, RunEvent, RunState, TablePreference } from "../shared/types.js";
 import { formatEventTime } from "./event-format.js";
 import { configFromFormValues, type FormValues } from "./form-model.js";
 
@@ -38,7 +38,7 @@ const fields = {
   tablePreference: byId<HTMLSelectElement>("table-preference"),
   menuKeyword: byId<HTMLInputElement>("menu-keyword"),
   stopAt: byId<HTMLInputElement>("stop-at"),
-  pagePrepared: byId<HTMLInputElement>("page-prepared"),
+  entryMode: byId<HTMLSelectElement>("entry-mode"),
   dryRun: byId<HTMLInputElement>("dry-run"),
   preOpenLeadMs: byId<HTMLInputElement>("pre-open-lead"),
   toggleIntervalMs: byId<HTMLInputElement>("toggle-interval"),
@@ -57,8 +57,12 @@ const TERMINAL = new Set<RunState>([
 const STATE_LABEL: Record<RunState, string> = {
   IDLE: "설정 대기 중",
   CONFIGURED: "설정을 저장했습니다.",
+  NAVIGATING: "설정한 식당으로 이동 중입니다.",
   VALIDATING: "설정과 페이지를 검증 중입니다.",
   SYNCING_CLOCK: "서버 시계를 측정 중입니다.",
+  ENTERING_RESERVATION: "예약창을 여는 중입니다.",
+  SELECTING_DATE: "예약 날짜를 준비 중입니다.",
+  SELECTING_PERSON: "예약 인원을 준비 중입니다.",
   PREPARING_PAGE: "예약 페이지를 확인 중입니다.",
   WAITING_FOR_OPEN: "예약 오픈 시각을 기다리는 중입니다.",
   REFRESHING_SLOTS: "예약 슬롯을 갱신 중입니다.",
@@ -76,8 +80,12 @@ const STATE_LABEL: Record<RunState, string> = {
 const STATE_BADGE: Record<RunState, string> = {
   IDLE: "준비 필요",
   CONFIGURED: "시작 중",
+  NAVIGATING: "식당 이동",
   VALIDATING: "검증 중",
   SYNCING_CLOCK: "시계 동기화",
+  ENTERING_RESERVATION: "예약창 진입",
+  SELECTING_DATE: "날짜 준비",
+  SELECTING_PERSON: "인원 준비",
   PREPARING_PAGE: "페이지 준비",
   WAITING_FOR_OPEN: "오픈 대기",
   REFRESHING_SLOTS: "슬롯 탐색",
@@ -112,7 +120,8 @@ function renderSummary(): void {
   summaryMain.textContent = parts.length > 0 ? parts.join(" · ") : "예약 정보를 입력해 주세요.";
   const mode = fields.dryRun.checked ? "안전 점검" : "실제 실행";
   const postSlot = fields.postSlotEnabled.checked ? "후속 선택 진행" : "후속 선택 안 함";
-  summarySub.textContent = `${mode} · ${postSlot}`;
+  const entry = fields.entryMode.value === "auto" ? "자동 페이지 준비" : "현재 페이지 사용";
+  summarySub.textContent = `${mode} · ${entry} · ${postSlot}`;
 }
 
 function readValues(): FormValues {
@@ -128,7 +137,7 @@ function readValues(): FormValues {
     tablePreference: fields.tablePreference.value as TablePreference,
     menuKeyword: fields.menuKeyword.value,
     stopAt: fields.stopAt.value,
-    pagePrepared: fields.pagePrepared.checked,
+    entryMode: fields.entryMode.value as EntryMode,
     dryRun: fields.dryRun.checked,
     preOpenLeadMs: fields.preOpenLeadMs.value,
     toggleIntervalMs: fields.toggleIntervalMs.value,
@@ -147,7 +156,7 @@ function applyValues(values: FormValues): void {
   fields.tablePreference.value = values.tablePreference ?? "any";
   fields.menuKeyword.value = values.menuKeyword ?? "";
   fields.stopAt.value = values.stopAt;
-  fields.pagePrepared.checked = values.pagePrepared;
+  fields.entryMode.value = values.entryMode ?? (values.pagePrepared === false ? "auto" : "prepared");
   fields.dryRun.checked = values.dryRun;
   fields.preOpenLeadMs.value = values.preOpenLeadMs;
   fields.toggleIntervalMs.value = values.toggleIntervalMs;
@@ -177,7 +186,7 @@ function valuesFromConfig(config: ReservationConfig): FormValues {
     tablePreference: config.tablePreference ?? "any",
     menuKeyword: config.menuKeyword ?? "",
     stopAt: epochToLocalInput(config.stopAtMs),
-    pagePrepared: config.pagePrepared,
+    entryMode: config.entryMode ?? ((config as ReservationConfig & { pagePrepared?: boolean }).pagePrepared === false ? "auto" : "prepared"),
     dryRun: config.dryRun,
     preOpenLeadMs: String(config.preOpenLeadMs),
     toggleIntervalMs: String(config.toggleIntervalMs),
@@ -377,6 +386,7 @@ form.addEventListener("input", (event) => {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   formError.textContent = "";
+  startButton.disabled = true;
   try {
     const config = configFromFormValues(readValues(), Date.now());
     const response = await send({ type: "PANEL_START", config });
@@ -389,6 +399,8 @@ form.addEventListener("submit", async (event) => {
     stopButton.disabled = false;
   } catch (error) {
     formError.textContent = error instanceof Error ? error.message : "입력값을 확인하세요.";
+  } finally {
+    startButton.disabled = false;
   }
 });
 

@@ -47,3 +47,22 @@ test("invalid state jumps are rejected", () => {
   const machine = new RunStateMachine({ dryRun: false, now: () => 1 });
   assert.throws(() => machine.transition("SLOT_SELECTED", "skip"), /허용되지 않는 상태 전이/);
 });
+
+test("auto entry states lead back into the existing page safety check", () => {
+  const machine = new RunStateMachine({ dryRun: false, now: () => 1 });
+  machine.transition("CONFIGURED", "config");
+  machine.transition("VALIDATING", "validate");
+  machine.transition("SYNCING_CLOCK", "clock");
+  machine.transition("ENTERING_RESERVATION", "entry");
+  machine.transition("SELECTING_DATE", "date");
+  machine.transition("SELECTING_PERSON", "person");
+  machine.transition("PREPARING_PAGE", "safety");
+  assert.equal(machine.state, "PREPARING_PAGE");
+});
+
+test("background navigation is a valid pre-configuration state", () => {
+  const machine = new RunStateMachine({ dryRun: false, now: () => 1 });
+  machine.transition("NAVIGATING", "navigate");
+  machine.transition("CONFIGURED", "loaded");
+  assert.equal(machine.state, "CONFIGURED");
+});

@@ -1,3 +1,5 @@
+import { cleanText, isElementHidden } from "./dom.js";
+
 export type PostSlotCertainty = "exact" | "supported" | "unknown";
 
 export interface PostSlotDiagnostics {
@@ -39,10 +41,6 @@ interface DialogSnapshot {
   hasConfirm: boolean;
 }
 
-export function cleanText(value: string | null | undefined): string {
-  return value?.replace(/\s+/g, " ").trim() ?? "";
-}
-
 export function normalized(value: string | null | undefined): string {
   return cleanText(value).toLocaleLowerCase("ko-KR");
 }
@@ -50,18 +48,6 @@ export function normalized(value: string | null | undefined): string {
 export function isZeroDepositControl(element: Element): boolean {
   const label = normalized(element.getAttribute("aria-label"));
   return label.includes("예약금") && label.includes("0원") && label.includes("결제");
-}
-
-export function isElementHidden(element: Element): boolean {
-  const view = element.ownerDocument.defaultView;
-  for (let current: Element | null = element; current; current = current.parentElement) {
-    if (current.hasAttribute("hidden")
-      || current.hasAttribute("inert")
-      || current.getAttribute("aria-hidden") === "true") return true;
-    const style = view?.getComputedStyle(current);
-    if (style?.display === "none" || style?.visibility === "hidden") return true;
-  }
-  return false;
 }
 
 export function findActiveDialog(document: Document): HTMLElement | null {

@@ -57,7 +57,9 @@ export function validateReservationConfig(config: ReservationConfig, nowMs: numb
     errors.push("메뉴명 키워드는 80자 이하여야 합니다.");
   }
 
-  if (!config.pagePrepared) errors.push("페이지 준비 완료를 확인하세요.");
+  if (!(["auto", "prepared"] as const).includes(config.entryMode)) {
+    errors.push("예약 페이지 준비 방식을 확인하세요.");
+  }
   if (!Number.isInteger(config.preOpenLeadMs) || config.preOpenLeadMs < 0 || config.preOpenLeadMs > 10_000) {
     errors.push("사전 토글 시작값은 0~10000ms여야 합니다.");
   }

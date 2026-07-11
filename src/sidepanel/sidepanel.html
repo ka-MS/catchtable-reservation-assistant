@@ -105,9 +105,12 @@
                 <small>슬롯을 감지하지만 클릭하지 않습니다.</small>
               </span>
             </label>
-            <label class="toggle-row">
-              <input id="page-prepared" type="checkbox" required />
-              <span>페이지에서 예약 모달과 인원을 준비했습니다.</span>
+            <label class="field wide">
+              <span>예약 페이지 준비</span>
+              <select id="entry-mode">
+                <option value="auto">자동으로 식당 이동·날짜·인원 준비</option>
+                <option value="prepared">현재 준비된 예약 모달 사용</option>
+              </select>
             </label>
             <details>
               <summary>고급 설정</summary>
