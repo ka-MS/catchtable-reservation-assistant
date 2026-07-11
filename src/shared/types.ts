@@ -50,6 +50,23 @@ export interface SavedConfig {
   config: ReservationConfig;
 }
 
+export type ScheduledJobStatus = "scheduled" | "running" | "finished" | "missed";
+
+export interface ScheduledJobResult {
+  state: RunState;
+  message: string;
+  finishedAt: number;
+}
+
+export interface ScheduledJob {
+  id: string;
+  createdAt: number;
+  updatedAt: number;
+  status: ScheduledJobStatus;
+  config: ReservationConfig;
+  result: ScheduledJobResult | null;
+}
+
 export interface StateTransition {
   from: RunState;
   to: RunState;
@@ -76,6 +93,7 @@ export interface ActiveRun {
   state: RunState;
   startedAt: number;
   updatedAt: number;
+  scheduledJobId?: string;
 }
 
 export type ContentCommand =
@@ -88,7 +106,9 @@ export type PanelCommand =
   | { type: "PANEL_STOP" }
   | { type: "SAVE_FAVORITE"; config: ReservationConfig }
   | { type: "DELETE_SAVED"; list: SavedConfigList; id: string }
-  | { type: "CLEAR_SAVED"; list: SavedConfigList };
+  | { type: "CLEAR_SAVED"; list: SavedConfigList }
+  | { type: "SCHEDULE_JOB"; id: string | null; config: ReservationConfig }
+  | { type: "DELETE_JOB"; id: string };
 
 export interface RunEventMessage {
   type: "RUN_EVENT";

@@ -109,7 +109,7 @@ async function startRun(config: ReservationConfig): Promise<CommandResponse> {
   }
 }
 
-async function updateSavedConfigs(command: Exclude<PanelCommand, { type: "PANEL_START" } | { type: "PANEL_STOP" }>): Promise<CommandResponse> {
+async function updateSavedConfigs(command: Extract<PanelCommand, { type: "SAVE_FAVORITE" } | { type: "DELETE_SAVED" } | { type: "CLEAR_SAVED" }>): Promise<CommandResponse> {
   if (command.type === "SAVE_FAVORITE") {
     const errors = validateReservationConfig(command.config, Number.NEGATIVE_INFINITY);
     if (errors.length > 0) return { ok: false, error: errors.join(" ") };
