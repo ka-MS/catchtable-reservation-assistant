@@ -4,7 +4,7 @@ import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
 import type { ActiveRun, CommandResponse, EntryMode, PanelCommand, ReservationConfig, RunEvent, RunState, TablePreference } from "../shared/types.js";
 import { countdownModel } from "./countdown.js";
 import { formatEventTime } from "./event-format.js";
-import { configFromFormValues, configSnapshotFromFormValues, stopAtIsCustom, type FormValues } from "./form-model.js";
+import { configFromFormValues, configSnapshotFromFormValues, type FormValues } from "./form-model.js";
 import { SavedConfigsView } from "./saved-configs-view.js";
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -398,9 +398,8 @@ async function sendSavedCommand(command: PanelCommand): Promise<void> {
 
 const savedConfigsView = new SavedConfigsView(document, {
   load: (config) => {
-    const values = valuesFromConfig(config);
-    applyValues(values);
-    stopAtDirty = stopAtIsCustom(values);
+    applyValues(valuesFromConfig(config));
+    stopAtDirty = false;
     formError.textContent = "";
     saveDraft();
   },
@@ -506,11 +505,8 @@ void chrome.storage.local.get([
   const config = stored.reservationConfig as ReservationConfig | undefined;
   if (draft) {
     applyValues(draft);
-    stopAtDirty = stopAtIsCustom(draft);
   } else if (config) {
-    const values = valuesFromConfig(config);
-    applyValues(values);
-    stopAtDirty = stopAtIsCustom(values);
+    applyValues(valuesFromConfig(config));
   }
   syncPostSlotFields();
   renderRuntime(stored.activeRun as ActiveRun | null | undefined, (stored.runEvents as RunEvent[] | undefined) ?? []);

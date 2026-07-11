@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { configFromFormValues, configSnapshotFromFormValues, stopAtIsCustom } from "../dist/sidepanel/form-model.js";
+import { configFromFormValues, configSnapshotFromFormValues } from "../dist/sidepanel/form-model.js";
 
 function values(overrides = {}) {
   return {
@@ -42,13 +42,6 @@ test("sidepanel model reports validation errors", () => {
 test("legacy pagePrepared drafts migrate to an explicit entry mode", () => {
   const config = configFromFormValues(values({ entryMode: undefined, pagePrepared: true }), new Date("2026-07-10T12:00").getTime());
   assert.equal(config.entryMode, "prepared");
-});
-
-test("stopAt matching the open time plus ten minutes is not custom", () => {
-  assert.equal(stopAtIsCustom({ openAt: "2026-07-10T13:00", stopAt: "2026-07-10T13:10" }), false);
-  assert.equal(stopAtIsCustom({ openAt: "2026-07-10T13:00", stopAt: "2026-07-10T13:12" }), true);
-  assert.equal(stopAtIsCustom({ openAt: "", stopAt: "2026-07-10T13:10" }), false);
-  assert.equal(stopAtIsCustom({ openAt: "2026-07-10T13:00", stopAt: "" }), false);
 });
 
 test("favorite snapshots allow past times but keep structural validation", () => {
