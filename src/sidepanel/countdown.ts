@@ -1,7 +1,7 @@
 export interface CountdownInput {
   nowMs: number;
   openAtMs: number | null;
-  offsetMs: number | null;
+  serverBased: boolean;
   /** 오픈 이후 진행 중인 실행 단계 배지. 없으면 null. */
   activeStage: string | null;
 }
@@ -28,12 +28,11 @@ function formatDuration(totalMs: number): string {
 
 export function countdownModel(input: CountdownInput): CountdownModel {
   if (input.openAtMs === null) return HIDDEN;
-  const serverNow = input.nowMs + (input.offsetMs ?? 0);
-  const remainingMs = input.openAtMs - serverNow;
+  const remainingMs = input.openAtMs - input.nowMs;
   if (remainingMs <= 0 && input.activeStage) {
     return { visible: true, mode: "stage", text: input.activeStage, detail: "", urgent: false };
   }
-  const detail = input.offsetMs === null ? "로컬 시계 기준" : "서버 시계 기준";
+  const detail = input.serverBased ? "서버 시계 기준" : "로컬 시계 기준";
   if (remainingMs > 0) {
     return {
       visible: true,

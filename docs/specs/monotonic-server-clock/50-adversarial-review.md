@@ -14,5 +14,6 @@
 2. **중간, 수정 완료:** HEAD RTT도 wall clock 차이로 계산했다. monotonic 요청·응답 시각 차이를 측정값에 주입한다.
 3. **중간, 방지:** 최종 동기화 fallback은 기존 앵커와 offset을 모두 유지한다.
 4. **낮음, 수용:** 로컬 로그 `at`은 사용자에게 익숙한 wall epoch를 유지하므로 Windows 시계 변경 시 이동할 수 있다. 스케줄과 `serverAt`에는 영향이 없다.
+5. **낮음, 방지:** Content Script와 Side Panel은 서로 다른 실행 컨텍스트다. 앵커 객체를 공유하지 않고 동일 클래스만 재사용해 각 컨텍스트의 `performance.now()` 기준을 섞지 않는다.
 
 HTTP Date 해상도, 네트워크 비대칭, 브라우저 timer·DOM 지터는 남는 물리적 한계다. 치명적·높음 미해결 문제는 없다.

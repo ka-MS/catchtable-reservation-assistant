@@ -109,6 +109,7 @@ interface ReservationSiteAdapter {
 - 중지, 시간 초과, 인계, 실패 시 timer와 observer를 모두 해제한다.
 - 날짜 토글 기본 간격은 150ms이며, 정밀 구간의 목표 날짜 클릭은 서버 오픈 시각 기준 150ms 격자에 고정한다.
 - 장시간 대기는 오픈 직전 시계를 다시 측정하고, 재측정 실패 시 초기 오프셋을 유지한다.
+- Side Panel 카운트다운은 최신 서버 오프셋을 별도 `performance.now()` 앵커에 결합해 표시하며, 패널 컨텍스트가 새로 열리면 앵커도 새로 만든다.
 - 인접 날짜 클릭은 목표 날짜 클릭 40ms 전에 수행하며 목표 클릭 시각까지 5ms tick으로 대기한다.
 - 슬롯이 없으면 종료 시각까지 반복하되, 루프마다 AbortSignal과 서버 현재 시각을 확인한다.
 - `postSlotEnabled=false`면 actual click 직후 인계하고 후속 DOM을 판독하지 않는다.

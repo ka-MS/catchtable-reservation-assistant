@@ -8,7 +8,7 @@ function model(overrides = {}) {
   return countdownModel({
     nowMs: 1_000_000,
     openAtMs: 1_000_000 + 103_000,
-    offsetMs: null,
+    serverBased: false,
     activeStage: null,
     ...overrides,
   });
@@ -27,9 +27,8 @@ test("countdown before open uses the local clock when no offset is measured", ()
   assert.equal(result.urgent, false);
 });
 
-test("countdown applies the measured server offset", () => {
-  // server is 43 seconds ahead: only 1 minute remains on the server clock
-  const result = model({ offsetMs: 43_000 });
+test("countdown uses the resolved monotonic server time", () => {
+  const result = model({ nowMs: 1_043_000, serverBased: true });
   assert.equal(result.text, "오픈까지 0:01:00");
   assert.equal(result.detail, "서버 시계 기준");
 });

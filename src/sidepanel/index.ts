@@ -1,4 +1,5 @@
 import { defaultStopAt } from "../shared/config.js";
+import { MonotonicEpochClock } from "../shared/monotonic-clock.js";
 import { sanitizeSavedConfigs } from "../shared/saved-configs.js";
 import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
 import type { ActiveRun, CommandResponse, EntryMode, PanelCommand, ReservationConfig, RunEvent, RunState, TablePreference } from "../shared/types.js";
@@ -117,6 +118,8 @@ let priorityTimes: string[] = [];
 let importantEventsOnly = false;
 let latestActiveRun: ActiveRun | null | undefined;
 let latestEvents: RunEvent[] = [];
+const countdownServerClock = new MonotonicEpochClock({ now: () => performance.now() });
+let countdownClockOffsetMs: number | null = null;
 
 function formatDate(value: string): string {
   if (!value) return "";
@@ -286,11 +289,18 @@ function groupEvents(events: RunEvent[]): Array<{ event: RunEvent; count: number
 function renderCountdown(): void {
   const openAt = fields.openAt.value ? localInputToEpoch(fields.openAt.value) : null;
   const offsetEvent = [...latestEvents].reverse().find((event) => typeof event.data?.clockOffsetMs === "number");
+  const offsetMs = offsetEvent ? Number(offsetEvent.data?.clockOffsetMs) : null;
+  if (offsetMs === null) {
+    countdownClockOffsetMs = null;
+  } else if (offsetMs !== countdownClockOffsetMs) {
+    countdownServerClock.anchor(Date.now() + offsetMs);
+    countdownClockOffsetMs = offsetMs;
+  }
   const state = latestActiveRun?.state;
   const model = countdownModel({
-    nowMs: Date.now(),
+    nowMs: offsetMs === null ? Date.now() : countdownServerClock.now(),
     openAtMs: openAt !== null && Number.isFinite(openAt) ? openAt : null,
-    offsetMs: offsetEvent ? Number(offsetEvent.data?.clockOffsetMs) : null,
+    serverBased: offsetMs !== null,
     activeStage: state && POST_OPEN_STAGES.has(state) ? STATE_BADGE[state] : null,
   });
   countdownBanner.hidden = !model.visible;

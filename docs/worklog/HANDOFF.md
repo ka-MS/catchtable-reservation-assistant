@@ -2,11 +2,11 @@
 
 **갱신:** 2026-07-11  
 **브랜치:** `main`
-**작업 로그:** `docs/worklog/2026-07-11-13-monotonic-server-clock.md`
+**작업 로그:** `docs/worklog/2026-07-11-14-monotonic-countdown.md`
 
 ## 현재 상태
 
-서버 epoch를 `performance.now()`에 앵커링해 실행 중 Windows 시계 변경이 예약 스케줄로 유입되지 않게 했다. 대기, deadline, 날짜 토글과 서버 상세 로그가 단조 서버 시계를 사용하고, 로컬 실행 기록 시각은 기존 wall epoch를 유지한다. 서버 HEAD RTT도 monotonic 시간으로 측정한다.
+서버 epoch를 `performance.now()`에 앵커링해 실행 중 Windows 시계 변경이 예약 스케줄로 유입되지 않게 했다. Side Panel 카운트다운도 공유 시계 클래스로 별도 앵커를 만들어 서버 기준 표시가 wall clock 변경으로 급변하지 않는다. 로컬 실행 기록 시각은 기존 wall epoch를 유지한다.
 
 ## 다음 작업
 

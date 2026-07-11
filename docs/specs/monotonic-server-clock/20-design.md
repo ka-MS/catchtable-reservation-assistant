@@ -29,3 +29,9 @@ serverNow = serverEpochAnchor + (performance.now - monotonicAnchor)
 - Content Script에 `performance.now()` 시계 주입
 - Clock sync RTT와 Orchestrator 서버 시계 교체
 - DOM Adapter, 토글 계획, 슬롯 선택, Background 변경 없음
+
+## Side Panel
+
+- Content Script와 앵커 인스턴스는 공유하지 않는다.
+- 최신 `clockOffsetMs`가 생기거나 변경될 때 패널의 `Date.now() + offset`을 공유 단조 시계에 앵커링한다.
+- 카운트다운 렌더링은 앵커 이후 `performance.now()` 경과 시간만 사용한다.
