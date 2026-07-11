@@ -7,11 +7,14 @@ import type {
   RunEvent,
   RunEventMessage,
   RunState,
+  ScheduledJob,
 } from "../shared/types.js";
 import { validateReservationConfig } from "../shared/config.js";
 import { appendRunEvent, SerialTaskQueue } from "./storage.js";
 import { navigateTab, sameRestaurant } from "./navigation.js";
 import { SavedConfigRepository } from "./saved-config-repository.js";
+import { ScheduledJobRepository } from "./scheduled-job-repository.js";
+import { JobScheduler, type LaunchResult } from "./scheduler.js";
 
 const TERMINAL_STATES = new Set<RunState>([
   "DRY_RUN_COMPLETED",
@@ -55,6 +58,14 @@ async function startRun(config: ReservationConfig): Promise<CommandResponse> {
   if (config.entryMode === "prepared" && !sameRestaurant(tab.url, config.targetUrl)) {
     return { ok: false, error: "설정한 식당의 Catchtable 탭을 활성화하세요." };
   }
+  return runOnTab({ id: tab.id, url: tab.url }, config);
+}
+
+async function runOnTab(
+  tab: { id: number; url?: string },
+  config: ReservationConfig,
+  scheduledJobId?: string,
+): Promise<CommandResponse> {
   const now = Date.now();
   const pendingRunId = `pending-${crypto.randomUUID()}`;
   const needsNavigation = config.entryMode === "auto" && !sameRestaurant(tab.url, config.targetUrl);
@@ -64,6 +75,7 @@ async function startRun(config: ReservationConfig): Promise<CommandResponse> {
     state: needsNavigation ? "NAVIGATING" : "CONFIGURED",
     startedAt: now,
     updatedAt: now,
+    ...(scheduledJobId === undefined ? {} : { scheduledJobId }),
   };
   await chrome.storage.local.set({ reservationConfig: config, activeRun: pendingRun, runEvents: [] });
   void savedConfigWrites.enqueue(() => savedConfigs.upsert("history", config)).catch((error) => {
@@ -124,6 +136,55 @@ async function updateSavedConfigs(command: Extract<PanelCommand, { type: "SAVE_F
   return { ok: true };
 }
 
+async function launchScheduledJob(job: ScheduledJob): Promise<LaunchResult> {
+  const validationErrors = validateReservationConfig(job.config, Date.now());
+  if (validationErrors.length > 0) return { ok: false, kind: "failed", error: validationErrors.join(" ") };
+  const stored = await chrome.storage.local.get("activeRun") as { activeRun?: ActiveRun | null };
+  if (stored.activeRun && !TERMINAL_STATES.has(stored.activeRun.state)) {
+    return { ok: false, kind: "busy", error: "이미 실행 중인 작업이 있습니다." };
+  }
+  let tab: chrome.tabs.Tab;
+  try {
+    tab = await chrome.tabs.create({ url: job.config.targetUrl, active: true });
+    if (tab.windowId !== undefined) await chrome.windows.update(tab.windowId, { focused: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "예약 실행 탭을 만들 수 없습니다.";
+    return { ok: false, kind: "failed", error: message };
+  }
+  if (tab.id === undefined) return { ok: false, kind: "failed", error: "예약 실행 탭을 만들 수 없습니다." };
+  // url을 비워 needsNavigation을 강제한다. navigateTab이 생성 탭의 로드 완료까지 기다린다.
+  const response = await runOnTab({ id: tab.id, url: undefined }, job.config, job.id);
+  if (response.ok) return { ok: true };
+  return { ok: false, kind: "failed", error: response.error ?? "실행을 시작할 수 없습니다." };
+}
+
+const jobWrites = new SerialTaskQueue();
+const scheduledJobs = new ScheduledJobRepository({
+  get: (key) => chrome.storage.local.get(key),
+  set: (values) => chrome.storage.local.set(values),
+}, () => crypto.randomUUID(), () => Date.now());
+const jobScheduler = new JobScheduler({
+  repository: scheduledJobs,
+  alarms: {
+    create: (name, info) => chrome.alarms.create(name, info),
+    clear: (name) => chrome.alarms.clear(name),
+  },
+  launch: launchScheduledJob,
+  notify: (message) => {
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: chrome.runtime.getURL("assets/icon-128.png"),
+      title: "Catchtable Reserve",
+      message,
+    }, () => {
+      if (chrome.runtime.lastError) {
+        console.warn("운영체제 알림을 표시하지 못했습니다.", chrome.runtime.lastError.message);
+      }
+    });
+  },
+  now: () => Date.now(),
+});
+
 async function stopRun(): Promise<CommandResponse> {
   const { activeRun } = await chrome.storage.local.get("activeRun") as { activeRun?: ActiveRun | null };
   if (!activeRun) return { ok: false, error: "실행 중인 작업이 없습니다." };
@@ -158,11 +219,19 @@ async function recordEvent(event: RunEvent, tabId: number | undefined): Promise<
     state,
     startedAt: previous?.runId === event.runId ? previous.startedAt : event.at,
     updatedAt: event.at,
+    ...(previous?.scheduledJobId === undefined ? {} : { scheduledJobId: previous.scheduledJobId }),
   };
   await chrome.storage.local.set({
     runEvents: appendRunEvent(events, event, 300),
     activeRun,
   });
+
+  if (event.kind === "state" && TERMINAL_STATES.has(state) && activeRun.scheduledJobId !== undefined) {
+    const jobId = activeRun.scheduledJobId;
+    void jobWrites.enqueue(() => jobScheduler.onRunTerminal(jobId, state, event.message)).catch((error) => {
+      console.error("예약 작업 결과를 기록하지 못했습니다.", error);
+    });
+  }
 
   if (event.kind === "state" && TERMINAL_STATES.has(state)) {
     const needsAttention = state === "HANDED_OFF" || state === "DRY_RUN_COMPLETED";
@@ -210,6 +279,36 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
     });
     return true;
   }
+  if (message.type === "SCHEDULE_JOB") {
+    void jobWrites.enqueue(() => jobScheduler.schedule(message.id, message.config)).then(sendResponse).catch((error) => {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : "예약 작업을 저장할 수 없습니다." });
+    });
+    return true;
+  }
+  if (message.type === "DELETE_JOB") {
+    void jobWrites.enqueue(() => jobScheduler.delete(message.id)).then(sendResponse).catch((error) => {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : "예약 작업을 삭제할 수 없습니다." });
+    });
+    return true;
+  }
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  void jobWrites.enqueue(() => jobScheduler.onAlarm(alarm.name)).catch((error) => {
+    console.error("예약 작업 알람 처리에 실패했습니다.", error);
+  });
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  void jobWrites.enqueue(() => jobScheduler.reconcile()).catch((error) => {
+    console.error("예약 작업 복구에 실패했습니다.", error);
+  });
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+  void jobWrites.enqueue(() => jobScheduler.reconcile()).catch((error) => {
+    console.error("예약 작업 복구에 실패했습니다.", error);
+  });
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
