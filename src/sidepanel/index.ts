@@ -2,6 +2,7 @@ import { defaultStopAt } from "../shared/config.js";
 import { sanitizeSavedConfigs } from "../shared/saved-configs.js";
 import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
 import type { ActiveRun, CommandResponse, EntryMode, PanelCommand, ReservationConfig, RunEvent, RunState, TablePreference } from "../shared/types.js";
+import { countdownModel } from "./countdown.js";
 import { formatEventTime } from "./event-format.js";
 import { configFromFormValues, configSnapshotFromFormValues, type FormValues } from "./form-model.js";
 import { SavedConfigsView } from "./saved-configs-view.js";
@@ -28,6 +29,9 @@ const priorityList = byId<HTMLOListElement>("priority-list");
 const postSlotOptions = byId<HTMLElement>("post-slot-options");
 const summaryMain = byId<HTMLElement>("summary-main");
 const summarySub = byId<HTMLElement>("summary-sub");
+const countdownBanner = byId<HTMLElement>("countdown");
+const countdownText = byId<HTMLElement>("countdown-text");
+const countdownDetail = byId<HTMLElement>("countdown-detail");
 
 const fields = {
   targetUrl: byId<HTMLInputElement>("target-url"),
@@ -101,6 +105,13 @@ const STATE_BADGE: Record<RunState, string> = {
   TIMED_OUT: "시간 초과",
   FAILED: "실패",
 };
+
+const POST_OPEN_STAGES = new Set<RunState>([
+  "REFRESHING_SLOTS",
+  "SLOT_DETECTED",
+  "SLOT_SELECTED",
+  "ADVANCING_RESERVATION",
+]);
 
 let priorityTimes: string[] = [];
 let stopAtDirty = false;
@@ -287,9 +298,27 @@ function groupEvents(events: RunEvent[]): Array<{ event: RunEvent; count: number
   return groups;
 }
 
+function renderCountdown(): void {
+  const openAt = fields.openAt.value ? localInputToEpoch(fields.openAt.value) : null;
+  const offsetEvent = [...latestEvents].reverse().find((event) => typeof event.data?.clockOffsetMs === "number");
+  const state = latestActiveRun?.state;
+  const model = countdownModel({
+    nowMs: Date.now(),
+    openAtMs: openAt !== null && Number.isFinite(openAt) ? openAt : null,
+    offsetMs: offsetEvent ? Number(offsetEvent.data?.clockOffsetMs) : null,
+    activeStage: state && POST_OPEN_STAGES.has(state) ? STATE_BADGE[state] : null,
+  });
+  countdownBanner.hidden = !model.visible;
+  countdownBanner.dataset.mode = model.mode;
+  countdownBanner.dataset.urgent = String(model.urgent);
+  countdownText.textContent = model.text;
+  countdownDetail.textContent = model.detail;
+}
+
 function renderRuntime(activeRun: ActiveRun | null | undefined, events: RunEvent[]): void {
   latestActiveRun = activeRun;
   latestEvents = events;
+  renderCountdown();
   const state = activeRun?.state ?? "IDLE";
   stateBadge.textContent = STATE_BADGE[state];
   stateBadge.dataset.state = state;
@@ -405,7 +434,9 @@ fields.openAt.addEventListener("change", () => {
     fields.stopAt.value = epochToLocalInput(defaultStopAt(localInputToEpoch(fields.openAt.value)));
   }
   saveDraft();
+  renderCountdown();
 });
+setInterval(renderCountdown, 500);
 fields.stopAt.addEventListener("input", () => {
   stopAtDirty = true;
   saveDraft();
