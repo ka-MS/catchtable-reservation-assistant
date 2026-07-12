@@ -45,6 +45,13 @@ test("sidepanel includes history and favorites controls", async () => {
   assert.match(html, /data-saved-action="clear"/);
 });
 
+test("sidepanel includes persistent run trace controls", async () => {
+  const html = await readFile("dist/sidepanel/sidepanel.html", "utf8");
+  assert.match(html, /id="trace-run-select"/);
+  assert.match(html, /id="trace-run-delete"/);
+  assert.match(html, /id="trace-event-list"/);
+});
+
 test("post-slot automation is opt-in in the sidepanel", async () => {
   const html = await readFile("dist/sidepanel/sidepanel.html", "utf8");
   assert.match(html, /id="post-slot-enabled" type="checkbox"/);

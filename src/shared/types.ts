@@ -98,7 +98,7 @@ export interface ActiveRun {
 
 export type ContentCommand =
   | { type: "PING" }
-  | { type: "START"; config: ReservationConfig }
+  | { type: "START"; runId: string; scheduledJobId?: string; config: ReservationConfig }
   | { type: "STOP" };
 
 export type PanelCommand =
@@ -108,7 +108,10 @@ export type PanelCommand =
   | { type: "DELETE_SAVED"; list: SavedConfigList; id: string }
   | { type: "CLEAR_SAVED"; list: SavedConfigList }
   | { type: "SCHEDULE_JOB"; id: string | null; config: ReservationConfig }
-  | { type: "DELETE_JOB"; id: string };
+  | { type: "DELETE_JOB"; id: string }
+  | { type: "LIST_RUN_HISTORY" }
+  | { type: "GET_RUN_TRACE"; runId: string; limit?: number }
+  | { type: "DELETE_RUN_TRACE"; runId: string };
 
 export interface RunEventMessage {
   type: "RUN_EVENT";
@@ -118,4 +121,5 @@ export interface RunEventMessage {
 export interface CommandResponse {
   ok: boolean;
   error?: string;
+  data?: unknown;
 }

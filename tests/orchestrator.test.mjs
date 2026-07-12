@@ -39,6 +39,7 @@ function harness({
   const dateClicks = [];
   const dateClickTimes = [];
   const events = [];
+  const traces = [];
   const calendar = {
     inspect: () => {
       onCalendarInspect();
@@ -82,6 +83,8 @@ function harness({
       return true;
     },
     emit: (event) => events.push(event),
+    trace: (code, severity, message, options) => traces.push({ code, severity, message, options }),
+    flushTrace: async () => undefined,
     runId: () => "run-1",
   });
   return {
@@ -89,6 +92,7 @@ function harness({
     dateClicks,
     dateClickTimes,
     events,
+    traces,
     get slotClicks() { return slotClicks; },
     get now() { return now; },
     jumpWall(ms) { now += ms; },
@@ -112,6 +116,13 @@ test("dry-run detects a prioritized slot without clicking", async () => {
   assert.equal(detected?.data?.targetScheduleDriftMs, 0);
   assert.equal(detected?.data?.timingServerAtMs, 1_020);
   assert.equal(detected?.data?.openDeltaMs, 20);
+  assert.deepEqual(h.traces.filter((trace) => trace.code === "DATE_TOGGLE_CYCLE").map((trace) => ({
+    cycle: trace.options.attributes.cycle,
+    result: trace.options.attributes.result,
+  })), [
+    { cycle: 1, result: "NO_SLOT" },
+    { cycle: 2, result: "SLOT_FOUND" },
+  ]);
   assert.deepEqual(h.events.filter((event) => event.kind === "state").map((event) => event.data?.state), [
     "CONFIGURED",
     "VALIDATING",

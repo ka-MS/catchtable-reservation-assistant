@@ -136,6 +136,8 @@ configFavorites (최대 20개)
 
 Side Panel은 `storage.onChanged`로 상태와 저장 목록을 갱신한다. 지난 오픈 일시를 포함한 snapshot 복원은 허용하고 실제 실행 직전에 현재 시각 검증을 다시 수행한다.
 
+상세 실행 추적은 `chrome.storage.local` 배열과 분리해 IndexedDB `catchtable-reserve-telemetry`의 `runs`, `events` store에 저장한다. Content Script는 250ms 또는 20건 단위 Port batch를 보내고, Background는 수신 순서대로 한 transaction에 저장한 뒤 ACK한다. 최근 실행 20건을 보관하며 Side Panel은 live batch를 증분 표시한다.
+
 ## 9. 취소 스나이핑 확장점
 
 향후 `RunMode = OPEN_RUN | CANCELLATION`을 추가하고, 취소 모드는 동일 adapter를 30초 이상 간격으로 호출한다. 현재 MVP 타입과 UI에는 노출하지 않는다.

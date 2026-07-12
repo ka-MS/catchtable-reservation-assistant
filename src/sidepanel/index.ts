@@ -10,6 +10,8 @@ import { configFromFormValues, configSnapshotFromFormValues, type FormValues } f
 import { jobCardModel } from "./job-card.js";
 import { jobListModel, miniLogModel } from "./job-list-model.js";
 import { SavedConfigsView } from "./saved-configs-view.js";
+import type { TraceEvent, TraceLiveBatch, TraceRunRecord } from "../shared/telemetry/types.js";
+import { TraceHistoryView } from "./telemetry/trace-view.js";
 
 function byId<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -537,6 +539,54 @@ async function send(command: PanelCommand): Promise<CommandResponse> {
   return chrome.runtime.sendMessage(command) as Promise<CommandResponse>;
 }
 
+async function readTraceEvents(runId: string): Promise<TraceEvent[]> {
+  const response = await send({ type: "GET_RUN_TRACE", runId, limit: 100 });
+  if (!response.ok) throw new Error(response.error ?? "실행 로그를 읽을 수 없습니다.");
+  return Array.isArray(response.data) ? response.data as TraceEvent[] : [];
+}
+
+const traceView = new TraceHistoryView(document, {
+  select: (runId) => {
+    void readTraceEvents(runId).then((events) => traceView.renderEvents(events)).catch((error) => {
+      formError.textContent = error instanceof Error ? error.message : "실행 로그를 읽을 수 없습니다.";
+    });
+  },
+  remove: (runId) => {
+    if (!window.confirm("선택한 실행 이력과 상세 로그를 삭제할까요?")) return;
+    void send({ type: "DELETE_RUN_TRACE", runId }).then((response) => {
+      if (!response.ok) throw new Error(response.error ?? "실행 이력을 삭제할 수 없습니다.");
+      return refreshTraceHistory();
+    }).catch((error) => {
+      formError.textContent = error instanceof Error ? error.message : "실행 이력을 삭제할 수 없습니다.";
+    });
+  },
+});
+
+async function refreshTraceHistory(preferredRunId?: string): Promise<void> {
+  const response = await send({ type: "LIST_RUN_HISTORY" });
+  if (!response.ok) throw new Error(response.error ?? "실행 이력을 읽을 수 없습니다.");
+  const runs = Array.isArray(response.data) ? response.data as TraceRunRecord[] : [];
+  traceView.renderRuns(runs, preferredRunId);
+  const selected = traceView.selectedRunId();
+  traceView.renderEvents(selected ? await readTraceEvents(selected) : []);
+}
+
+function connectLiveTrace(): void {
+  let port: chrome.runtime.Port;
+  try {
+    port = chrome.runtime.connect({ name: "trace-live" });
+  } catch {
+    globalThis.setTimeout(connectLiveTrace, 500);
+    return;
+  }
+  port.onMessage.addListener((message: TraceLiveBatch) => {
+    if (message?.type === "TRACE_LIVE_BATCH") traceView.appendLive(message);
+  });
+  port.onDisconnect.addListener(() => globalThis.setTimeout(connectLiveTrace, 500));
+}
+
+connectLiveTrace();
+
 async function sendSavedCommand(command: PanelCommand): Promise<void> {
   formError.textContent = "";
   try {
@@ -716,4 +766,7 @@ void chrome.storage.local.get([
     sanitizeSavedConfigs(stored.configHistory),
     sanitizeSavedConfigs(stored.configFavorites),
   );
+  void refreshTraceHistory((stored.activeRun as ActiveRun | null | undefined)?.runId).catch((error) => {
+    formError.textContent = error instanceof Error ? error.message : "실행 이력을 읽을 수 없습니다.";
+  });
 });

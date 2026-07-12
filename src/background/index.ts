@@ -15,6 +15,10 @@ import { navigateTab, sameRestaurant } from "./navigation.js";
 import { SavedConfigRepository } from "./saved-config-repository.js";
 import { ScheduledJobRepository } from "./scheduled-job-repository.js";
 import { JobScheduler, type LaunchResult } from "./scheduler.js";
+import type { TraceBatch } from "../shared/telemetry/types.js";
+import { IndexedDbTraceRepository } from "./telemetry/indexeddb-repository.js";
+import { LiveTraceHub } from "./telemetry/live-trace-hub.js";
+import { TraceIngestor } from "./telemetry/trace-ingestor.js";
 
 const TERMINAL_STATES = new Set<RunState>([
   "DRY_RUN_COMPLETED",
@@ -25,8 +29,24 @@ const TERMINAL_STATES = new Set<RunState>([
   "FAILED",
 ]);
 const eventWrites = new SerialTaskQueue();
+const traceWrites = new SerialTaskQueue();
 const savedConfigWrites = new SerialTaskQueue();
 const cancelledPendingRuns = new Set<string>();
+const traceRepository = new IndexedDbTraceRepository();
+const liveTraceHub = new LiveTraceHub();
+const traceIngestor = new TraceIngestor(traceRepository, liveTraceHub, () => chrome.runtime.getManifest().version);
+
+async function recordStartFailure(
+  runId: string,
+  config: ReservationConfig,
+  message: string,
+  error?: unknown,
+  scheduledJobId?: string,
+): Promise<void> {
+  await traceWrites.enqueue(() => traceIngestor.recordBackgroundFailure(runId, config, message, error, scheduledJobId)).catch((traceError) => {
+    console.error("실행 실패 추적을 저장하지 못했습니다.", traceError);
+  });
+}
 const savedConfigs = new SavedConfigRepository({
   get: (key) => chrome.storage.local.get(key),
   set: (values) => chrome.storage.local.set(values),
@@ -47,27 +67,41 @@ async function ensureContent(tabId: number): Promise<void> {
 }
 
 async function startRun(config: ReservationConfig): Promise<CommandResponse> {
+  const runId = `run-${crypto.randomUUID()}`;
   const validationErrors = validateReservationConfig(config, Date.now());
-  if (validationErrors.length > 0) return { ok: false, error: validationErrors.join(" ") };
+  if (validationErrors.length > 0) {
+    const message = validationErrors.join(" ");
+    await recordStartFailure(runId, config, message);
+    return { ok: false, error: message };
+  }
   const stored = await chrome.storage.local.get("activeRun") as { activeRun?: ActiveRun | null };
   if (stored.activeRun && !TERMINAL_STATES.has(stored.activeRun.state)) {
-    return { ok: false, error: "이미 실행 중인 작업이 있습니다." };
+    const message = "이미 실행 중인 작업이 있습니다.";
+    await recordStartFailure(runId, config, message);
+    return { ok: false, error: message };
   }
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (!tab?.id) return { ok: false, error: "실행할 Chrome 탭을 활성화하세요." };
-  if (config.entryMode === "prepared" && !sameRestaurant(tab.url, config.targetUrl)) {
-    return { ok: false, error: "설정한 식당의 Catchtable 탭을 활성화하세요." };
+  if (!tab?.id) {
+    const message = "실행할 Chrome 탭을 활성화하세요.";
+    await recordStartFailure(runId, config, message);
+    return { ok: false, error: message };
   }
-  return runOnTab({ id: tab.id, url: tab.url }, config);
+  if (config.entryMode === "prepared" && !sameRestaurant(tab.url, config.targetUrl)) {
+    const message = "설정한 식당의 Catchtable 탭을 활성화하세요.";
+    await recordStartFailure(runId, config, message);
+    return { ok: false, error: message };
+  }
+  return runOnTab({ id: tab.id, url: tab.url }, config, undefined, runId);
 }
 
 async function runOnTab(
   tab: { id: number; url?: string },
   config: ReservationConfig,
   scheduledJobId?: string,
+  requestedRunId?: string,
 ): Promise<CommandResponse> {
   const now = Date.now();
-  const pendingRunId = `pending-${crypto.randomUUID()}`;
+  const pendingRunId = requestedRunId ?? `run-${crypto.randomUUID()}`;
   const needsNavigation = config.entryMode === "auto" && !sameRestaurant(tab.url, config.targetUrl);
   const pendingRun: ActiveRun = {
     runId: pendingRunId,
@@ -104,7 +138,12 @@ async function runOnTab(
       activeRun: { ...pendingRun, state: "CONFIGURED", updatedAt: Date.now() },
     });
     await assertPending();
-    const response = await chrome.tabs.sendMessage(tab.id, { type: "START", config } satisfies ContentCommand);
+    const response = await chrome.tabs.sendMessage(tab.id, {
+      type: "START",
+      runId: pendingRunId,
+      config,
+      ...(scheduledJobId === undefined ? {} : { scheduledJobId }),
+    } satisfies ContentCommand);
     if (response?.ok) return { ok: true };
     throw new Error(response?.error ?? "실행을 시작할 수 없습니다.");
   } catch (error) {
@@ -115,6 +154,7 @@ async function runOnTab(
         activeRun: { ...current.activeRun, state: "FAILED", updatedAt: Date.now() },
       });
     }
+    await recordStartFailure(pendingRunId, config, message, error, scheduledJobId);
     return { ok: false, error: message };
   } finally {
     cancelledPendingRuns.delete(pendingRunId);
@@ -137,11 +177,18 @@ async function updateSavedConfigs(command: Extract<PanelCommand, { type: "SAVE_F
 }
 
 async function launchScheduledJob(job: ScheduledJob): Promise<LaunchResult> {
+  const runId = `run-${crypto.randomUUID()}`;
   const validationErrors = validateReservationConfig(job.config, Date.now());
-  if (validationErrors.length > 0) return { ok: false, kind: "failed", error: validationErrors.join(" ") };
+  if (validationErrors.length > 0) {
+    const message = validationErrors.join(" ");
+    await recordStartFailure(runId, job.config, message, undefined, job.id);
+    return { ok: false, kind: "failed", error: message };
+  }
   const stored = await chrome.storage.local.get("activeRun") as { activeRun?: ActiveRun | null };
   if (stored.activeRun && !TERMINAL_STATES.has(stored.activeRun.state)) {
-    return { ok: false, kind: "busy", error: "이미 실행 중인 작업이 있습니다." };
+    const message = "이미 실행 중인 작업이 있습니다.";
+    await recordStartFailure(runId, job.config, message, undefined, job.id);
+    return { ok: false, kind: "busy", error: message };
   }
   let tab: chrome.tabs.Tab;
   try {
@@ -149,11 +196,16 @@ async function launchScheduledJob(job: ScheduledJob): Promise<LaunchResult> {
     if (tab.windowId !== undefined) await chrome.windows.update(tab.windowId, { focused: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "예약 실행 탭을 만들 수 없습니다.";
+    await recordStartFailure(runId, job.config, message, error, job.id);
     return { ok: false, kind: "failed", error: message };
   }
-  if (tab.id === undefined) return { ok: false, kind: "failed", error: "예약 실행 탭을 만들 수 없습니다." };
+  if (tab.id === undefined) {
+    const message = "예약 실행 탭을 만들 수 없습니다.";
+    await recordStartFailure(runId, job.config, message, undefined, job.id);
+    return { ok: false, kind: "failed", error: message };
+  }
   // url을 비워 needsNavigation을 강제한다. navigateTab이 생성 탭의 로드 완료까지 기다린다.
-  const response = await runOnTab({ id: tab.id, url: undefined }, job.config, job.id);
+  const response = await runOnTab({ id: tab.id, url: undefined }, job.config, job.id, runId);
   if (response.ok) return { ok: true };
   return { ok: false, kind: "failed", error: response.error ?? "실행을 시작할 수 없습니다." };
 }
@@ -188,13 +240,25 @@ const jobScheduler = new JobScheduler({
 async function stopRun(): Promise<CommandResponse> {
   const { activeRun } = await chrome.storage.local.get("activeRun") as { activeRun?: ActiveRun | null };
   if (!activeRun) return { ok: false, error: "실행 중인 작업이 없습니다." };
-  if (activeRun.runId.startsWith("pending-")) {
+  if (activeRun.state === "NAVIGATING" || activeRun.state === "CONFIGURED") {
     cancelledPendingRuns.add(activeRun.runId);
     await chrome.storage.local.set({ activeRun: { ...activeRun, state: "STOPPED", updatedAt: Date.now() } });
     try {
       await chrome.tabs.sendMessage(activeRun.tabId, { type: "STOP" } satisfies ContentCommand);
     } catch {
       // Content Script가 아직 주입되지 않은 이동 단계에서도 Background가 중지를 확정한다.
+      const stored = await chrome.storage.local.get("reservationConfig") as { reservationConfig?: ReservationConfig };
+      const config = stored.reservationConfig;
+      if (config) {
+        await traceWrites.enqueue(() => traceIngestor.recordBackgroundTerminal(
+          activeRun.runId,
+          activeRun.startedAt,
+          config,
+          "STOPPED",
+          "페이지 준비 중 사용자가 실행을 중지했습니다.",
+          activeRun.scheduledJobId,
+        )).catch((error) => console.error("중지 추적을 저장하지 못했습니다.", error));
+      }
     }
     return { ok: true };
   }
@@ -279,6 +343,26 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
     });
     return true;
   }
+  if (message.type === "LIST_RUN_HISTORY") {
+    void traceWrites.enqueue(() => traceRepository.listRuns(20)).then((runs) => sendResponse({ ok: true, data: runs })).catch((error) => {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : "실행 이력을 읽을 수 없습니다." });
+    });
+    return true;
+  }
+  if (message.type === "GET_RUN_TRACE") {
+    void traceWrites.enqueue(() => traceRepository.readEvents(message.runId, Math.min(message.limit ?? 100, 500))).then((events) => {
+      sendResponse({ ok: true, data: events });
+    }).catch((error) => {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : "실행 로그를 읽을 수 없습니다." });
+    });
+    return true;
+  }
+  if (message.type === "DELETE_RUN_TRACE") {
+    void traceWrites.enqueue(() => traceRepository.deleteRun(message.runId)).then(() => sendResponse({ ok: true })).catch((error) => {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : "실행 이력을 삭제할 수 없습니다." });
+    });
+    return true;
+  }
   if (message.type === "SCHEDULE_JOB") {
     void jobWrites.enqueue(() => jobScheduler.schedule(message.id, message.config)).then(sendResponse).catch((error) => {
       sendResponse({ ok: false, error: error instanceof Error ? error.message : "예약 작업을 저장할 수 없습니다." });
@@ -291,6 +375,20 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
     });
     return true;
   }
+});
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === "trace-live") {
+    liveTraceHub.add(port);
+    return;
+  }
+  if (port.name !== "trace-ingest") return;
+  port.onMessage.addListener((message: TraceBatch) => {
+    if (message?.type !== "TRACE_BATCH" || !Array.isArray(message.events)) return;
+    void traceWrites.enqueue(() => traceIngestor.ingest(message, (ack) => port.postMessage(ack))).catch((error) => {
+      console.error("실행 추적 batch를 저장하지 못했습니다.", error);
+    });
+  });
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -312,10 +410,14 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  void chrome.storage.local.get("activeRun").then(({ activeRun }) => {
+  void chrome.storage.local.get(["activeRun", "reservationConfig"]).then(({ activeRun, reservationConfig }) => {
     const run = activeRun as ActiveRun | null | undefined;
     if (run?.tabId === tabId && !TERMINAL_STATES.has(run.state)) {
-      return chrome.storage.local.set({ activeRun: { ...run, state: "STOPPED", updatedAt: Date.now() } });
+      const update = chrome.storage.local.set({ activeRun: { ...run, state: "STOPPED", updatedAt: Date.now() } });
+      const trace = reservationConfig
+        ? traceWrites.enqueue(() => traceIngestor.recordBackgroundTerminal(run.runId, run.startedAt, reservationConfig as ReservationConfig, "STOPPED", "실행 탭이 닫혔습니다.", run.scheduledJobId))
+        : Promise.resolve();
+      return Promise.all([update, trace]);
     }
   });
 });
@@ -331,7 +433,16 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
       !TERMINAL_STATES.has(run.state) &&
       !sameRestaurant(changeInfo.url, config.targetUrl)
     ) {
-      return chrome.storage.local.set({ activeRun: { ...run, state: "STOPPED", updatedAt: Date.now() } });
+      const update = chrome.storage.local.set({ activeRun: { ...run, state: "STOPPED", updatedAt: Date.now() } });
+      const trace = traceWrites.enqueue(() => traceIngestor.recordBackgroundTerminal(
+        run.runId,
+        run.startedAt,
+        config,
+        "STOPPED",
+        "실행 탭이 설정한 식당을 벗어났습니다.",
+        run.scheduledJobId,
+      ));
+      return Promise.all([update, trace]);
     }
   });
 });

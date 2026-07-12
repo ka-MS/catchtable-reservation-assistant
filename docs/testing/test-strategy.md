@@ -26,6 +26,10 @@
 - 손상된 저장 snapshot 폐기와 fingerprint 복구
 - 히스토리·즐겨찾기 repository의 저장·단건 삭제·전체 삭제
 - 지난 오픈 일시를 포함한 설정 snapshot 복원과 실행 시 재검증
+- 실행 trace의 250ms·20건 batch, ACK 전 보존, queue overflow와 terminal flush
+- IndexedDB batch 멱등 저장, 실행별 조회·삭제와 최근 20건 보존
+- Port disconnect 재연결, URL query 제거와 오류 stack 제한
+- Side Panel trace 증분 렌더링과 최근 100행 제한
 
 ## 3. Fixture 통합 테스트
 

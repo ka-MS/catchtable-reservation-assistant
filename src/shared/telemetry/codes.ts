@@ -1,0 +1,24 @@
+export const TRACE_CODES = [
+  "RUN_STARTED",
+  "STATE_CHANGED",
+  "ACTION_PERFORMED",
+  "METRIC_RECORDED",
+  "CLOCK_SYNCED",
+  "DATE_TOGGLE_CYCLE",
+  "SLOT_DETECTED",
+  "SLOT_CLICKED",
+  "POST_SLOT_ACTION",
+  "RUN_FAILED",
+  "RUN_TERMINATED",
+  "BACKGROUND_FAILURE",
+] as const;
+
+export type TraceCode = typeof TRACE_CODES[number];
+
+export const CRITICAL_TRACE_CODES = new Set<TraceCode>([
+  "SLOT_DETECTED",
+  "SLOT_CLICKED",
+  "RUN_FAILED",
+  "RUN_TERMINATED",
+  "BACKGROUND_FAILURE",
+]);

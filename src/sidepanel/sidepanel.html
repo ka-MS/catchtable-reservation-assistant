@@ -211,6 +211,22 @@
         </div>
         <ol id="event-list" class="event-list"></ol>
       </section>
+      <section class="runtime panel-card trace-history" aria-labelledby="trace-history-title">
+        <div class="runtime-heading trace-history-heading">
+          <div>
+            <h2 id="trace-history-title">상세 추적</h2>
+            <span id="trace-event-count" class="event-count">0개</span>
+          </div>
+          <button id="trace-run-delete" class="filter-button" type="button" disabled>삭제</button>
+        </div>
+        <label class="field wide trace-run-field">
+          <span>실행 선택</span>
+          <select id="trace-run-select" disabled></select>
+        </label>
+        <ol id="trace-event-list" class="event-list trace-event-list">
+          <li class="event-empty">저장된 상세 로그가 없습니다.</li>
+        </ol>
+      </section>
       </section>
     </main>
 

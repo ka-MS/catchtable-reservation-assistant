@@ -6,6 +6,8 @@ import { selectPreferredSlot, type SlotCandidate } from "../shared/slot-selectio
 import { RunStateMachine } from "../shared/state-machine.js";
 import { nextTogglePlan } from "../shared/toggle-schedule.js";
 import type { ReservationConfig, RunEvent, RunState } from "../shared/types.js";
+import type { TraceCode } from "../shared/telemetry/codes.js";
+import type { TraceAttributes, TraceSeverity } from "../shared/telemetry/types.js";
 import type { CalendarInspection, CalendarPreparationResult } from "./adapter/calendar.js";
 import type { EntryInspection } from "./adapter/entry.js";
 import type { PersonInspection } from "./adapter/person.js";
@@ -48,6 +50,13 @@ interface Dependencies {
   postSlot: PostSlotPort;
   sleep: Sleep;
   emit(event: RunEvent): void;
+  trace?(code: TraceCode, severity: TraceSeverity, message: string, options?: {
+    serverAt?: number | null;
+    state?: RunState | null;
+    attributes?: TraceAttributes;
+    error?: unknown;
+  }): void;
+  flushTrace?(): Promise<void>;
   runId(): string;
 }
 
@@ -95,17 +104,18 @@ export class OpenRunOrchestrator {
     this.activeController?.abort();
   }
 
-  async start(config: ReservationConfig): Promise<RunResult> {
+  async start(config: ReservationConfig, requestedRunId?: string): Promise<RunResult> {
     if (this.activeController) throw new Error("이미 실행 중입니다.");
     const controller = new AbortController();
     this.activeController = controller;
-    const runId = this.dependencies.runId();
+    const runId = requestedRunId ?? this.dependencies.runId();
     const machine = new RunStateMachine({ dryRun: config.dryRun, now: () => this.dependencies.clock.now() });
     let offsetMs: number | null = null;
     const serverClock = new MonotonicEpochClock(this.dependencies.monotonicClock);
     let serverClockReady = false;
     let adjacentTiming: { actualAt: number; scheduledAt: number; phase: string } | null = null;
     let targetTiming: { actualAt: number; scheduledAt: number; phase: string } | null = null;
+    let toggleCycle = 0;
 
     const emit = (kind: RunEvent["kind"], message: string, data?: RunEvent["data"]) => {
       const at = this.dependencies.clock.now();
@@ -310,6 +320,39 @@ export class OpenRunOrchestrator {
         }
 
         const plan = nextTogglePlan(serverClock.now(), config.openAtMs, config.toggleIntervalMs);
+        const cycle = ++toggleCycle;
+        let adjacentClickedAt: number | null = null;
+        let targetClickedAt: number | null = null;
+        let targetSelectedAt: number | null = null;
+        let slotScanCount = 0;
+        let availableSlotCount = 0;
+        let matchedSlotCount = 0;
+        let adjacentDateValue: string | null = setup.adjacentDate;
+        const traceCycle = (result: string) => this.dependencies.trace?.(
+          "DATE_TOGGLE_CYCLE",
+          result === "NO_SLOT" || result === "SLOT_FOUND" ? "trace" : "warn",
+          `날짜 토글 #${cycle}: ${result}`,
+          {
+            serverAt: serverClock.now(),
+            state: "REFRESHING_SLOTS",
+            attributes: {
+              cycle,
+              phase: plan.phase,
+              adjacentDate: adjacentDateValue,
+              adjacentPlannedAt: plan.adjacentClickAtMs,
+              adjacentClickedAt,
+              adjacentClickOk: adjacentClickedAt !== null,
+              targetPlannedAt: plan.targetClickAtMs,
+              targetClickedAt,
+              targetClickOk: targetClickedAt !== null,
+              targetSelectedAt,
+              slotScanCount,
+              availableSlotCount,
+              matchedSlotCount,
+              result,
+            },
+          },
+        );
         const adjacentWait = await waitUntil(plan.adjacentClickAtMs, {
           clock: serverClock,
           stopAtMs: config.stopAtMs,
@@ -317,21 +360,26 @@ export class OpenRunOrchestrator {
           sleep: this.dependencies.sleep,
           tickMs: 10,
         });
+        if (adjacentWait !== "ready") traceCycle(adjacentWait === "stopped" ? "STOPPED_BEFORE_ADJACENT" : "TIMED_OUT_BEFORE_ADJACENT");
         const adjacentWaitExit = stopOrTimeout(adjacentWait);
         if (adjacentWaitExit) return adjacentWaitExit;
 
         const currentSetup = this.dependencies.calendar.inspect(config.reservationDate);
         const adjacentDate = currentSetup.adjacentDate;
+        adjacentDateValue = adjacentDate;
         if (!currentSetup.targetAvailable || adjacentDate === null) {
+          traceCycle("SETUP_INVALID");
           transition("HANDED_OFF", "달력 상태가 바뀌어 안전하게 슬롯을 갱신할 수 없습니다.");
           return finish();
         }
         if (!this.dependencies.calendar.clickDate(adjacentDate)) {
+          traceCycle("ADJACENT_CLICK_FAILED");
           transition("HANDED_OFF", "인접 날짜를 선택할 수 없습니다.");
           return finish();
         }
+        adjacentClickedAt = serverClock.now();
         adjacentTiming = {
-          actualAt: serverClock.now(),
+          actualAt: adjacentClickedAt,
           scheduledAt: plan.adjacentClickAtMs,
           phase: plan.phase,
         };
@@ -342,13 +390,15 @@ export class OpenRunOrchestrator {
           sleep: this.dependencies.sleep,
           tickMs: 5,
         });
+        if (targetWait !== "ready") traceCycle(targetWait === "stopped" ? "STOPPED_BEFORE_TARGET" : "TIMED_OUT_BEFORE_TARGET");
         const targetWaitExit = stopOrTimeout(targetWait);
         if (targetWaitExit) return targetWaitExit;
         if (!this.dependencies.calendar.clickDate(config.reservationDate)) {
+          traceCycle("TARGET_CLICK_FAILED");
           transition("HANDED_OFF", "목표 날짜를 다시 선택할 수 없습니다.");
           return finish();
         }
-        const targetClickedAt = serverClock.now();
+        targetClickedAt = serverClock.now();
         targetTiming = {
           actualAt: targetClickedAt,
           scheduledAt: plan.targetClickAtMs,
@@ -366,10 +416,12 @@ export class OpenRunOrchestrator {
         }
 
         if (!(await this.dependencies.sleep(20, controller.signal))) {
+          traceCycle("STOPPED_AFTER_TARGET");
           transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
           return finish();
         }
         if (serverClock.now() >= config.stopAtMs) {
+          traceCycle("TIMED_OUT_AFTER_TARGET");
           transition("TIMED_OUT", "감시 종료 시각에 도달했습니다.");
           return finish();
         }
@@ -379,14 +431,17 @@ export class OpenRunOrchestrator {
           && serverClock.now() < selectionDeadline
         ) {
           if (!(await this.dependencies.sleep(Math.min(10, selectionDeadline - serverClock.now()), controller.signal))) {
+            traceCycle("STOPPED_DURING_SELECTION");
             transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
             return finish();
           }
         }
         if (!this.dependencies.calendar.inspect(config.reservationDate).targetSelected) {
+          traceCycle("SELECTION_UNCONFIRMED");
           transition("HANDED_OFF", "목표 날짜 선택 상태를 확인할 수 없습니다.");
           return finish();
         }
+        targetSelectedAt = serverClock.now();
 
         const nextPlan = nextTogglePlan(serverClock.now(), config.openAtMs, config.toggleIntervalMs);
         const detectUntil = Math.min(
@@ -394,22 +449,27 @@ export class OpenRunOrchestrator {
           config.stopAtMs,
         );
         let candidate: SlotCandidate | null = null;
+        const inspectSlots = () => {
+          const slots = this.dependencies.slots.readAvailableSlots();
+          slotScanCount += 1;
+          availableSlotCount = slots.length;
+          matchedSlotCount = slots.filter((slot) => (
+            slot.minutes >= config.timeRange.startMinutes && slot.minutes <= config.timeRange.endMinutes
+          )).length;
+          return selectPreferredSlot(slots, config.timeRange, config.priorityTimes);
+        };
         while (!controller.signal.aborted && serverClock.now() < detectUntil) {
-          candidate = selectPreferredSlot(
-            this.dependencies.slots.readAvailableSlots(),
-            config.timeRange,
-            config.priorityTimes,
-          );
+          candidate = inspectSlots();
           if (candidate) break;
           const delay = Math.min(25, detectUntil - serverClock.now());
           if (delay <= 0 || !(await this.dependencies.sleep(delay, controller.signal))) break;
         }
-        candidate ??= selectPreferredSlot(
-          this.dependencies.slots.readAvailableSlots(),
-          config.timeRange,
-          config.priorityTimes,
-        );
-        if (!candidate) continue;
+        candidate ??= inspectSlots();
+        if (!candidate) {
+          traceCycle("NO_SLOT");
+          continue;
+        }
+        traceCycle("SLOT_FOUND");
 
         const slotDetectedAt = serverClock.now();
         transition("SLOT_DETECTED", `${candidate.label} 슬롯을 감지했습니다.`, {
@@ -443,10 +503,20 @@ export class OpenRunOrchestrator {
           return finish();
         }
         if (!this.dependencies.slots.clickSlot(candidate)) {
+          this.dependencies.trace?.("SLOT_CLICKED", "warn", `${candidate.label} 슬롯 클릭에 실패했습니다.`, {
+            serverAt: serverClock.now(),
+            state: "SLOT_DETECTED",
+            attributes: { slotMinutes: candidate.minutes, slotLabel: candidate.label, clickOk: false },
+          });
           transition("REFRESHING_SLOTS", "슬롯이 사라져 날짜 토글을 재개합니다.");
           continue;
         }
         const slotSelectedAt = serverClock.now();
+        this.dependencies.trace?.("SLOT_CLICKED", "info", `${candidate.label} 슬롯을 클릭했습니다.`, {
+          serverAt: slotSelectedAt,
+          state: "SLOT_SELECTED",
+          attributes: { slotMinutes: candidate.minutes, slotLabel: candidate.label, clickOk: true },
+        });
         transition("SLOT_SELECTED", `${candidate.label} 시간 선택을 완료했습니다.`, {
           data: {
             timingStage: "slot_selected",
@@ -531,10 +601,16 @@ export class OpenRunOrchestrator {
     } catch (error) {
       if (!TERMINAL.has(machine.state)) {
         const message = error instanceof Error ? error.message : "알 수 없는 실행 오류";
+        this.dependencies.trace?.("RUN_FAILED", "error", message, {
+          serverAt: serverClockReady ? serverClock.now() : null,
+          state: "FAILED",
+          error,
+        });
         transition("FAILED", message, { error: message });
       }
       return finish();
     } finally {
+      await this.dependencies.flushTrace?.().catch(() => undefined);
       this.activeController = null;
     }
   }

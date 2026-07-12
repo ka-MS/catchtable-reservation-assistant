@@ -7,6 +7,9 @@ import { SlotAdapter } from "./adapter/slots.js";
 import { PostSlotAdapter } from "./adapter/post-slot.js";
 import { syncServerClock } from "./clock-sync.js";
 import { OpenRunOrchestrator } from "./orchestrator.js";
+import { BatchTraceProcessor } from "./telemetry/batch-processor.js";
+import { PortTraceTransport } from "./telemetry/port-transport.js";
+import { TraceLogger } from "./telemetry/trace-logger.js";
 
 declare global {
   interface Window {
@@ -18,6 +21,10 @@ if (!window.__ctReserveInjected) {
   window.__ctReserveInjected = true;
   const clock = { now: () => Date.now() };
   const monotonicClock = { now: () => performance.now() };
+  const traceLogger = new TraceLogger(
+    new BatchTraceProcessor(new PortTraceTransport(), () => crypto.randomUUID()),
+    () => Date.now(),
+  );
   const orchestrator = new OpenRunOrchestrator({
     clock,
     monotonicClock,
@@ -34,10 +41,13 @@ if (!window.__ctReserveInjected) {
     postSlot: new PostSlotAdapter(document),
     sleep: abortableSleep,
     emit: (event) => {
+      traceLogger.recordRunEvent(event);
       const message: RunEventMessage = { type: "RUN_EVENT", event };
       // Service Worker 재시작 중 로그 전송이 실패해도 시간 임계 실행은 계속한다.
       void chrome.runtime.sendMessage(message).catch(() => undefined);
     },
+    trace: (code, severity, message, options) => traceLogger.record(code, severity, message, options),
+    flushTrace: () => traceLogger.forceFlush(),
     runId: () => crypto.randomUUID(),
   });
   let running = false;
@@ -54,7 +64,8 @@ if (!window.__ctReserveInjected) {
         return;
       }
       running = true;
-      void orchestrator.start(message.config).finally(() => {
+      traceLogger.start(message.runId, message.config, message.scheduledJobId);
+      void orchestrator.start(message.config, message.runId).finally(() => {
         running = false;
       });
       sendResponse({ ok: true });
