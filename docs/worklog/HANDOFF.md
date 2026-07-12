@@ -1,6 +1,6 @@
 # HANDOFF
 
-**갱신:** 2026-07-12  
+**갱신:** 2026-07-12
 **브랜치:** `codex/feat-reservation-scheduler`
 **작업 로그:** `docs/worklog/2026-07-12-01-sidepanel-ux.md`
 
