@@ -68,5 +68,30 @@ test("clock estimate falls back explicitly when no samples exist", () => {
     fallback: true,
     method: "local",
     precisionMs: null,
+    sampleDetail: null,
   });
+});
+
+test("boundary estimate carries per-sample offset, latency, and Date-tick deltas", () => {
+  const samples = [
+    createMeasurement({ requestStartedAt: 0, responseReceivedAt: 20, serverDateMs: 1_000 }),
+    createMeasurement({ requestStartedAt: 100, responseReceivedAt: 120, serverDateMs: 2_000 }),
+    createMeasurement({ requestStartedAt: 200, responseReceivedAt: 220, serverDateMs: 2_000 }),
+  ];
+  const result = selectClockEstimate(samples);
+  assert.equal(result.method, "boundary");
+  assert.equal(result.sampleDetail, "o1490 l20 d0 | o2390 l20 d1000 | o2290 l20 d1000");
+});
+
+test("median estimate keeps every sample in the detail, including discarded outliers", () => {
+  const samples = [
+    { clockOffset: 100, measurementLatency: 20 },
+    { clockOffset: 104.4, measurementLatency: 25 },
+    { clockOffset: 102, measurementLatency: 30 },
+    { clockOffset: 900, measurementLatency: 500 },
+    { clockOffset: -700, measurementLatency: 600 },
+  ];
+  const result = selectClockEstimate(samples);
+  assert.equal(result.method, "median");
+  assert.equal(result.sampleDetail, "o100 l20 | o104 l25 | o102 l30 | o900 l500 | o-700 l600");
 });

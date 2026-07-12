@@ -675,6 +675,9 @@ function clockMetricData(
     clockMethod: estimate.method,
     clockPrecisionMs: estimate.precisionMs ?? -1,
     clockPhase: phase,
+    ...(estimate.sampleDetail === null || estimate.sampleDetail === undefined
+      ? {}
+      : { clockSampleDetail: estimate.sampleDetail }),
   };
 }
 

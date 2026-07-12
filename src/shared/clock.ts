@@ -14,6 +14,7 @@ export interface ClockEstimate {
   fallback: boolean;
   method: "boundary" | "median" | "local";
   precisionMs: number | null;
+  sampleDetail: string | null;
 }
 
 const FINAL_SYNC_LEAD_MS = 5_000;
@@ -47,6 +48,22 @@ export function createMeasurement(input: {
   };
 }
 
+// 진단용 샘플 요약: o=샘플별 오프셋, l=측정 지연, d=첫 샘플 대비 Date 헤더 틱 차이.
+// 백엔드 시계 편차(샘플 간 오프셋 불일치)와 고지연 샘플을 실런 로그에서 판별하기 위한 것.
+function formatSampleDetail(
+  samples: Array<Pick<ClockMeasurement, "clockOffset" | "measurementLatency"> & Partial<Pick<ClockMeasurement, "serverDateMs">>>,
+): string | null {
+  if (samples.length === 0) return null;
+  const baseDateMs = samples.find((sample) => sample.serverDateMs !== undefined)?.serverDateMs;
+  return samples.map((sample) => {
+    const parts = [`o${Math.round(sample.clockOffset)}`, `l${Math.round(sample.measurementLatency)}`];
+    if (sample.serverDateMs !== undefined && baseDateMs !== undefined) {
+      parts.push(`d${sample.serverDateMs - baseDateMs}`);
+    }
+    return parts.join(" ");
+  }).join(" | ");
+}
+
 function median(values: number[]): number {
   const sorted = [...values].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
@@ -57,8 +74,9 @@ export function selectClockEstimate(
   samples: Array<Pick<ClockMeasurement, "clockOffset" | "measurementLatency"> & Partial<Pick<ClockMeasurement, "measuredAt" | "serverDateMs">>>,
 ): ClockEstimate {
   if (samples.length === 0) {
-    return { offsetMs: 0, sampleCount: 0, spreadMs: null, fallback: true, method: "local", precisionMs: null };
+    return { offsetMs: 0, sampleCount: 0, spreadMs: null, fallback: true, method: "local", precisionMs: null, sampleDetail: null };
   }
+  const sampleDetail = formatSampleDetail(samples);
 
   const chronological = samples
     .filter((sample): sample is typeof sample & Required<Pick<ClockMeasurement, "measuredAt" | "serverDateMs">> =>
@@ -83,6 +101,7 @@ export function selectClockEstimate(
       fallback: false,
       method: "boundary",
       precisionMs: boundary.precisionMs,
+      sampleDetail,
     };
   }
 
@@ -97,5 +116,6 @@ export function selectClockEstimate(
     fallback: false,
     method: "median",
     precisionMs: 500 + Math.min(...selected.map((sample) => sample.measurementLatency)) / 2,
+    sampleDetail,
   };
 }

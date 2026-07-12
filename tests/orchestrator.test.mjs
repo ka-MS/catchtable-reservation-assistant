@@ -31,6 +31,7 @@ function harness({
   prepareTarget = () => ({ status: "ready", message: "목표 날짜가 준비됐습니다." }),
   postSlot = { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "unused" }) },
   onCalendarInspect = () => undefined,
+  syncEstimate = {},
   captureSnapshot = () => ({
     urlKind: "shop", headings: [], buttons: ["확인"], disabledButtons: [false],
     disabledButtonCount: 0, dialogLabel: "", dialogTitle: "", textSnippet: "", fingerprint: "ss-test",
@@ -74,6 +75,8 @@ function harness({
       fallback: false,
       method: "boundary",
       precisionMs: 20,
+      sampleDetail: null,
+      ...syncEstimate,
     }),
     calendar,
     entry,
@@ -103,6 +106,24 @@ function harness({
     jumpWall(ms) { now += ms; },
   };
 }
+
+test("clock metrics forward the per-sample detail when the estimate provides one", async () => {
+  const h = harness({ syncEstimate: { sampleDetail: "o1490 l20 d0 | o2390 l20 d1000" } });
+  await h.orchestrator.start(config());
+  const metrics = h.events.filter((event) => typeof event.data?.clockPhase === "string");
+  assert.ok(metrics.length >= 1);
+  for (const metric of metrics) {
+    assert.equal(metric.data.clockSampleDetail, "o1490 l20 d0 | o2390 l20 d1000");
+  }
+});
+
+test("clock metrics omit the sample detail when the estimate has none", async () => {
+  const h = harness();
+  await h.orchestrator.start(config());
+  const metric = h.events.find((event) => typeof event.data?.clockPhase === "string");
+  assert.ok(metric);
+  assert.equal("clockSampleDetail" in metric.data, false);
+});
 
 test("dry-run detects a prioritized slot without clicking", async () => {
   const h = harness({ slotAfterCycles: 2 });
