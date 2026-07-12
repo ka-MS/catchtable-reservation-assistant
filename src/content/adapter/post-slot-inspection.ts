@@ -29,6 +29,8 @@ export type PostSlotInspection = (
   | { kind: "extras" }
   | { kind: "deposit_notice" }
   | { kind: "deposit" }
+  | { kind: "request_notice" }
+  | { kind: "promo_interstitial" }
   | { kind: "form" }
   | { kind: "form_notice" }
   | { kind: "unknown"; label: string }
@@ -215,10 +217,54 @@ function formInspection(document: Document, notice: boolean): PostSlotInspection
     : { kind: "form", ...meta(value, "exact", "reservation-form-url-v1", ["reservation form URL"]) };
 }
 
+// 실측 2026-07-12 이시즈에 (site-behavior §7.2): 승인제 안내는 role="dialog" 없이
+// role="presentation" 바텀시트로 뜬다. 제목 h2가 유일한 안정 앵커다.
+export function findRequestSheet(document: Document): HTMLElement | null {
+  return Array.from(document.querySelectorAll<HTMLElement>('div[role="presentation"]'))
+    .filter((sheet) => !isElementHidden(sheet))
+    .find((sheet) => Array.from(sheet.querySelectorAll<HTMLElement>('h1, h2, [role="heading"]'))
+      .some((heading) => !isElementHidden(heading)
+        && normalized(heading.textContent).includes("레스토랑 확인이 필요한 예약"))) ?? null;
+}
+
+// 실측 2026-07-12 이시즈에 (site-behavior §7.2): 홍보 인터스티셜은 role 계열 속성이 전혀 없어
+// 닫기 버튼 텍스트만 안정 앵커다.
+export function findPromoDismissButton(document: Document): HTMLButtonElement | null {
+  return Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
+    .find((button) => normalized(button.textContent) === "다음에 볼게요"
+      && !isElementHidden(button)
+      && !button.disabled
+      && button.getAttribute("aria-disabled") !== "true") ?? null;
+}
+
+function promoInspection(document: Document): PostSlotInspection {
+  const diagnostics = emptyDiagnostics(document);
+  diagnostics.buttons = ["다음에 볼게요"];
+  const value: DialogSnapshot = {
+    diagnostics,
+    fingerprint: createFingerprint(diagnostics, [false]),
+    hasNext: false,
+    hasConfirm: false,
+  };
+  return {
+    kind: "promo_interstitial",
+    ...meta(value, "supported", "promo-interstitial-v1", ["promo dismiss button"]),
+  };
+}
+
 export function inspectPostSlot(document: Document, hasFormNotice: boolean): PostSlotInspection {
   if (document.location.pathname === "/ct/reservation/form") return formInspection(document, hasFormNotice);
   const dialog = findActiveDialog(document);
   if (!dialog) {
+    const requestSheet = findRequestSheet(document);
+    if (requestSheet) {
+      const value = snapshot(document, requestSheet);
+      return {
+        kind: "request_notice",
+        ...meta(value, "supported", "request-sheet-v1", ["presentation drawer", "request heading", "apply button"]),
+      };
+    }
+    if (findPromoDismissButton(document)) return promoInspection(document);
     const diagnostics = emptyDiagnostics(document);
     const value: DialogSnapshot = {
       diagnostics,

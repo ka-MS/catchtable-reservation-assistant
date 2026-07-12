@@ -1,6 +1,8 @@
 import type { ReservationConfig, TablePreference } from "../../shared/types.js";
 import {
   findActiveDialog,
+  findPromoDismissButton,
+  findRequestSheet,
   inspectPostSlot,
   isZeroDepositControl,
   normalized,
@@ -63,6 +65,10 @@ export class PostSlotAdapter {
           : { status: "waiting", message: "다음 후속 화면을 기다립니다." };
       case "deposit":
         return dialog ? this.advanceDeposit(dialog) : { status: "waiting", message: "다음 후속 화면을 기다립니다." };
+      case "request_notice":
+        return this.advanceRequestNotice();
+      case "promo_interstitial":
+        return this.advancePromoInterstitial();
       case "form_notice":
         return this.advanceFormNotice();
       default:
@@ -175,6 +181,21 @@ export class PostSlotAdapter {
       return { status: "acted", message: "예약금 0원 결제를 선택했습니다." };
     }
     return this.clickProgress(dialog, ["다음", "확인"], "예약금 결제 방법을 확인했습니다.");
+  }
+
+  // 승인제 안내의 예약 신청은 즉시 신청 제출이 아니므로 자동 진행한다 (사용자 확인 2026-07-12).
+  // 다시 보지 않기 checkbox는 건드리지 않는다.
+  private advanceRequestNotice(): PostSlotActionResult {
+    const sheet = findRequestSheet(this.document);
+    if (!sheet) return { status: "waiting", message: "다음 후속 화면을 기다립니다." };
+    return this.clickProgress(sheet, ["예약 신청"], "승인제 예약 안내에서 예약 신청으로 진행했습니다.");
+  }
+
+  private advancePromoInterstitial(): PostSlotActionResult {
+    const dismiss = findPromoDismissButton(this.document);
+    if (!dismiss) return { status: "waiting", message: "다음 후속 화면을 기다립니다." };
+    dismiss.click();
+    return { status: "acted", message: "매장 홍보 안내 창을 닫았습니다." };
   }
 
   // 예약 폼 위 홍보 안내는 화면 증거만 있으므로 확인했어요 버튼 텍스트로만 판정한다.

@@ -200,6 +200,37 @@ test("auto entry opens the reservation, prepares date and person, then uses the 
   ]);
 });
 
+test("auto entry dismisses the promo interstitial and re-clicks the CTA", async () => {
+  // Measured 2026-07-12 at ishizue: the promo interstitial swallows the first CTA click,
+  // so the calendar only opens after dismissing the promo and clicking the CTA again.
+  let reservationOpen = false;
+  let promoVisible = false;
+  const actions = [];
+  const h = harness({
+    entry: {
+      inspect: () => ({ reservationOpen, ctaAvailable: true, waitingOnly: false }),
+      openReservation: () => {
+        actions.push("entry");
+        if (actions.filter((a) => a === "entry").length === 1) promoVisible = true;
+        else reservationOpen = true;
+        return true;
+      },
+      dismissPromo: () => {
+        if (!promoVisible) return false;
+        promoVisible = false;
+        actions.push("promo");
+        return true;
+      },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ entryMode: "auto" }));
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.deepEqual(actions, ["entry", "promo", "entry"]);
+  assert.equal(h.events.some((event) => event.kind === "action" && /홍보 안내/.test(event.message)), true);
+});
+
 test("auto entry hands off safely when the restaurant is waiting-only", async () => {
   const h = harness({
     entry: {
