@@ -19,5 +19,5 @@
 ## 잔여 위험
 
 - Catchtable이 dock ID, 월 이동 aria-label, 인원 input name을 바꾸면 자동 준비는 안전 인계한다.
-- 실제 확장 Side Panel과 Background 탭 이동 회귀는 새 dist를 Chrome에서 재로드한 뒤 사용자 주도 dry-run이 필요하다.
+- 실제 확장 Side Panel과 Background 탭 이동 회귀는 새 `dist`를 Chrome에서 새로고침한 뒤 Chrome DevTools MCP E2E로 검증한다.
 - 실제 오픈 순간과 슬롯 클릭은 자리 점유 위험 때문에 자동 실사이트 검증하지 않는다.

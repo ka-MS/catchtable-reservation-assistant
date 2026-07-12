@@ -30,6 +30,8 @@
 
 새 `dist/`의 Chrome 확장 재로드와 실제 사이트 dry-run은 Chrome 특수 페이지 자동 제어 제한으로 수행하지 못했다. `docs/verification/mvp-checklist.md`의 수동 항목을 완료하기 전에는 실사이트 MVP 완료로 선언하지 않는다.
 
+> 후속 상태(2026-07-12): Chrome DevTools MCP 도입으로 `chrome://extensions` 업데이트·새로고침, Side Panel 조작, 실행 로그 및 extension IndexedDB 판독이 가능해졌다. 현재 실확장 검증 절차는 `docs/testing/chrome-devtools-mcp-ai-guide.md`와 갱신된 MVP 체크리스트를 따른다.
+
 ## 2단계
 
 오픈런 MVP 안정화 뒤 같은 Clock·StateEvent·SiteAdapter 경계를 사용해 30초 이상의 취소 자리 감시 모드를 추가할 수 있다. 인원 자동 설정과 슬롯 이후 단계는 후속 실측·spec·ADR을 거쳐 구현됐다.

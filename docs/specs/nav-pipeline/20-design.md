@@ -70,7 +70,7 @@ navigate → inject(기존 ensureContent)  →  enter_reservation → select_dat
 
 - **하이드레이션 시점(콜드 로드):** 별도 타이밍 실측 불필요. background가 `chrome.tabs.onUpdated` status `complete` + 재주입(`ensureContent`) 완료 후 content로 위임하고, `enter_reservation`가 dock `예약하기` 버튼 출현을 폴링한다. 진입 성공은 시간이 아니라 날짜 셀 관측으로 판정하므로 콜드/웜 로드 편차를 관측이 흡수한다.
 - **지원 URL 형태:** v1은 매장 상세 경로(`/ct/shop/<slug>`, slug는 가독형·불투명 ID 모두)만 지원한다. `/ct/map/...` 검색 결과나 공유 단축 링크는 범위 밖 — `navigate` 전 검증에서 상세 경로가 아니면 `FAILED`로 명확히 실패시킨다.
-- **워크플로 B 회귀 검증:** 사이드패널을 AI가 읽을 수 없으므로(다른 확장 페이지 접근 차단) 확장 UI 검증은 사용자 주도로 남긴다. 자동 회귀는 기존 fixture 기반 단위/통합 테스트로 커버하고, 확장 디버그 출력 추가는 도입하지 않는다(YAGNI).
+- **워크플로 B 회귀 검증:** fixture 기반 단위·통합 테스트 뒤 Chrome DevTools MCP로 `dist` 확장을 새로고침하고 Side Panel 입력·상태·로그, Background 탭 이동, extension IndexedDB의 run/event를 E2E 검증한다. 별도 확장 디버그 출력은 추가하지 않고 기존 UI 로그와 telemetry를 근거로 사용한다.
 
 ## 이번 범위 밖 (Out)
 

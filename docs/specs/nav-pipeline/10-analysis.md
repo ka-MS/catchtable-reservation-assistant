@@ -30,7 +30,7 @@
 ## 확인된 제약
 
 - **MV3 서비스워커 수명:** 오픈까지 수 시간 대기를 background에 두면 SW가 죽는다. 긴 대기는 콘텐츠 스크립트에 유지해야 한다.
-- **AI는 사이드패널을 판독할 수 없다:** claude-in-chrome도 확장이라 다른 확장 페이지에 접근이 차단된다. 워크플로 B의 UI 검증은 사용자 주도다(`docs/analysis` 아님, 스킬에 기록).
+- **Chrome DevTools MCP로 확장 UI를 판독할 수 있다:** 확장 관리 페이지 target을 `chrome-extension://<id>/sidepanel/sidepanel.html`로 이동하면 Side Panel 조작, 실행 로그 판독, 동일 origin의 IndexedDB 검증이 가능하다. 구체 절차는 `$use-chrome-devtools`와 `docs/testing/chrome-devtools-mcp-ai-guide.md`를 따른다.
 
 ## 안전 경계 (기존 유지)
 

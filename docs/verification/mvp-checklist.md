@@ -44,9 +44,9 @@ npm run check
 - [x] 상태·시계·실행 기록 영역 표시
 - [x] 필드 텍스트 겹침 없음
 
-## Chrome 확장 수동 게이트
+## Chrome DevTools MCP 실확장 게이트
 
-Chrome 특수 페이지는 자동 제어 정책상 접근하지 못했으므로 다음 항목은 사용자가 새 `dist/`를 재로드한 뒤 확인해야 한다.
+Chrome DevTools MCP로 `chrome://extensions`, Side Panel, 캐치테이블 탭, Console·Network, extension IndexedDB를 직접 제어·검증할 수 있다. 새 `dist/`를 해당 확장에서 새로고침한 뒤 다음 항목을 AI E2E로 확인한다. 세부 절차는 `docs/testing/chrome-devtools-mcp-ai-guide.md`를 따른다.
 
 - [ ] `chrome://extensions`에서 확장 카드 새로고침
 - [ ] Side Panel에 새 “예약 오픈런” UI가 표시됨

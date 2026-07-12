@@ -32,4 +32,14 @@ git diff --check
 - 날짜 토글 `NO_SLOT`·`SLOT_FOUND` trace 테스트 통과
 - Side Panel 증분 렌더링·100행 제한 테스트 통과
 - `dist` 및 모듈 독립성 검사 통과
-- 실제 Chrome 제어 채널이 연결되지 않아 확장 재로드 뒤 수동 확인은 남아 있다.
+- 최초 작성 당시에는 실제 Chrome 제어 채널이 연결되지 않아 확장 재로드 뒤 확인이 남아 있었다.
+
+## 후속 실확장 검증 (2026-07-12)
+
+Chrome DevTools MCP로 확장 업데이트 후 Side Panel에 재접속하고 UI 실행 로그와 `catchtable-reserve-telemetry` IndexedDB를 대조했다.
+
+- Side Panel의 최신 실행 선택과 상세 추적 판독 성공
+- telemetry DB의 `runs` 18건, `events` 478건 조회 성공
+- 최신 run의 UI 이벤트 10건과 IndexedDB 이벤트 10건 일치
+- `droppedCount=0`, `seq` 연속성 확인
+- 최초 `RUN_STARTED`, 최종 `RUN_TERMINATED`, `finalState=STOPPED` 확인
