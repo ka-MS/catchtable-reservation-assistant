@@ -14,8 +14,10 @@
 - 게이트: `wsl.exe -d ubuntu -e bash -lc "cd ~/source/catchtable-reserve && npm run check"` + `git diff --check`
 - **성능 무영향**: 스냅샷은 실패/포기/catch 지점에서만. 성공 경로에 캡처 분기 없음.
 - `captureSnapshot`은 **옵셔널 포트** — 미주입 시 기존 동작 완전 동일(기존 orchestrator 18 테스트 무수정 통과가 게이트).
-- STOPPED(사용자 중지)·DRY_RUN_COMPLETED·SLOT_SELECTED에는 스냅샷 안 붙임.
-- 개인정보: textContent만(입력값 미포함), textSnippet 160자·headings/buttons 각 8개 상한.
+- STOPPED·DRY_RUN_COMPLETED·SLOT_SELECTED, **그리고 정상 인계 2곳(postSlotEnabled=false·폼 도착)**에는 스냅샷 안 붙임. 실패/포기만 `diagnosticHandOff`/`timedOut`.
+- 개인정보: snippet은 **활성 dialog/sheet에서만**·전화/이메일 마스킹·`reservation_form`이면 금지. main/body는 구조(heading·button)만. snippet 160자·headings/buttons 각 8개 상한.
+- fingerprint: 버튼별 disabled 포함 + 숫자 정규화(`\d+`→`#`).
+- `snapshotRunState`(전이 직전 machine.state)를 실패 data에 포함.
 - 베이스: `codex/feat-failure-snapshot`(A 브랜치 `codex/refactor-orchestrator-session` 위 스택). 착수 시 전체 166 green 확인.
 
 ---
@@ -33,18 +35,18 @@
 
 - [ ] **Step 1: fixture 작성**
 
-`tests/fixtures/snapshot-unknown-dialog.html` — label·title 없는 dialog(실사용 unknown 재현):
+`tests/fixtures/snapshot-unknown-dialog.html` — label·title 없는 dialog(실사용 unknown 재현). 마스킹 검증용 전화번호 포함:
 ```html
 <!doctype html><html><body>
 <main><h1>레스토랑</h1></main>
 <div role="dialog">
-  <p>예약 확정을 위해 추가 확인이 필요합니다. 담당자가 곧 연락드립니다.</p>
+  <p>예약 확정을 위해 추가 확인이 필요합니다. 담당자 010-1234-5678로 곧 연락드립니다.</p>
   <button>확인</button>
   <button disabled>취소</button>
 </div>
 </body></html>
 ```
-`tests/fixtures/snapshot-no-dialog.html` — dialog 없음:
+`tests/fixtures/snapshot-no-dialog.html` — dialog 없음(main 폴백, snippet 없어야 함):
 ```html
 <!doctype html><html><body>
 <main><h2>예약 가능한 시간</h2><button>오후 7:00</button><button>오후 7:30</button></main>
@@ -59,24 +61,37 @@ import test from "node:test";
 import { loadFixture } from "./fixture-helper.mjs";
 import { captureStageSnapshot } from "../dist/content/adapter/snapshot.js";
 
-test("captures an unknown dialog with empty label via text snippet", async () => {
+test("captures an unknown dialog with empty label via text snippet, masking phone", async () => {
   const dom = await loadFixture("snapshot-unknown-dialog.html");
   const s = captureStageSnapshot(dom.window.document);
   assert.equal(s.urlKind, "shop");
   assert.equal(s.dialogLabel, "");
   assert.equal(s.dialogTitle, "");
   assert.match(s.textSnippet, /추가 확인이 필요합니다/);
+  assert.doesNotMatch(s.textSnippet, /010-1234-5678/);   // 전화 마스킹
   assert.deepEqual(s.buttons, ["확인", "취소"]);
+  assert.deepEqual(s.disabledButtons, [false, true]);
   assert.equal(s.disabledButtonCount, 1);
   assert.ok(s.fingerprint.startsWith("ss-"));
 });
 
-test("falls back to main when no dialog is present", async () => {
+test("main fallback collects structure only, no snippet", async () => {
   const dom = await loadFixture("snapshot-no-dialog.html");
   const s = captureStageSnapshot(dom.window.document);
   assert.deepEqual(s.headings, ["예약 가능한 시간"]);
-  assert.match(s.textSnippet, /예약 가능한 시간/);
+  assert.equal(s.textSnippet, "");   // main 폴백은 snippet 없음
   assert.equal(s.dialogLabel, "");
+});
+
+test("fingerprint normalizes dynamic numbers", async () => {
+  const dom = await loadFixture("snapshot-unknown-dialog.html");
+  const doc = dom.window.document;
+  const button = doc.querySelector('[role="dialog"] button');
+  button.textContent = "50,000원 확인";
+  const first = captureStageSnapshot(doc).fingerprint;
+  button.textContent = "70,000원 확인";
+  const second = captureStageSnapshot(doc).fingerprint;
+  assert.equal(first, second);   // 금액만 달라진 동일 구조 → 같은 fingerprint
 });
 
 test("caps headings and buttons at eight", async () => {
@@ -117,6 +132,7 @@ export interface StageSnapshot {
   urlKind: "shop" | "reservation_form" | "other";
   headings: string[];
   buttons: string[];
+  disabledButtons: boolean[];
   disabledButtonCount: number;
   dialogLabel: string;
   dialogTitle: string;
@@ -137,43 +153,53 @@ function safeText(value: string | null | undefined): string {
   return cleanText(value).slice(0, 80);
 }
 
+function maskPii(value: string): string {
+  return value
+    .replace(/\d{2,3}-\d{3,4}-\d{4}/g, "###-####-####")
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "###@###");
+}
+
 function visible<T extends Element>(root: ParentNode, selector: string): T[] {
   return Array.from(root.querySelectorAll<T>(selector)).filter((el) => !isElementHidden(el));
 }
 
 function hash(value: string): string {
+  // 동적 숫자를 지워 구조 동일 화면이 같은 fingerprint를 받게 한다.
+  const normalized = value.replace(/\d+/g, "#");
   let h = 0x811c9dc5;
-  for (let i = 0; i < value.length; i += 1) {
-    h ^= value.charCodeAt(i);
+  for (let i = 0; i < normalized.length; i += 1) {
+    h ^= normalized.charCodeAt(i);
     h = Math.imul(h, 0x01000193);
   }
   return `ss-${(h >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 export function captureStageSnapshot(document: Document): StageSnapshot {
-  const container: ParentNode =
-    findActiveDialog(document)
-    ?? findRequestSheet(document)
-    ?? document.querySelector("main")
-    ?? document.body;
+  const dialogEl = findActiveDialog(document) ?? findRequestSheet(document);
+  const container: ParentNode = dialogEl ?? document.querySelector("main") ?? document.body;
   const headings = visible<HTMLElement>(container, 'h1, h2, [role="heading"]')
     .map((el) => safeText(el.textContent)).filter(Boolean).slice(0, MAX_ITEMS);
-  const buttonEls = visible<HTMLButtonElement>(container, "button");
-  const buttons = buttonEls.map((b) => safeText(b.textContent)).filter(Boolean).slice(0, MAX_ITEMS);
-  const disabledButtonCount = buttonEls.filter((b) => b.disabled || b.getAttribute("aria-disabled") === "true").length;
-  const dialogEl = findActiveDialog(document) ?? findRequestSheet(document);
+  const buttonEls = visible<HTMLButtonElement>(container, "button").slice(0, MAX_ITEMS);
+  const buttons = buttonEls.map((b) => safeText(b.textContent)).filter(Boolean);
+  const disabledButtons = buttonEls.map((b) => b.disabled || b.getAttribute("aria-disabled") === "true");
+  const disabledButtonCount = disabledButtons.filter(Boolean).length;
+  const kind = urlKind(document);
   const dialogLabel = dialogEl ? safeText(dialogEl.getAttribute("aria-label")) : "";
   const dialogTitle = dialogEl
     ? safeText(visible<HTMLElement>(dialogEl, 'h1, h2, [role="heading"]').at(0)?.textContent)
     : "";
-  const textSnippet = cleanText((container as HTMLElement).textContent).slice(0, SNIPPET_LEN);
+  // snippet은 활성 dialog/sheet에서만, 예약 폼에서는 금지, 전화·이메일 마스킹.
+  const textSnippet = (dialogEl && kind !== "reservation_form")
+    ? maskPii(cleanText(dialogEl.textContent)).slice(0, SNIPPET_LEN)
+    : "";
   const fingerprint = hash(JSON.stringify({
-    urlKind: urlKind(document), headings, buttons, disabledButtonCount, dialogLabel, dialogTitle,
+    kind, headings, buttons, disabledButtons, dialogLabel, dialogTitle,
   }));
   return {
-    urlKind: urlKind(document),
+    urlKind: kind,
     headings,
     buttons,
+    disabledButtons,
     disabledButtonCount,
     dialogLabel,
     dialogTitle,
@@ -183,7 +209,7 @@ export function captureStageSnapshot(document: Document): StageSnapshot {
 }
 ```
 
-주의: `container` fallback 순서는 dialog → request sheet → main → body. `dialogLabel`/`dialogTitle`은 dialog/sheet가 있을 때만 채운다(main 폴백 시 빈 문자열).
+주의: `container`는 dialog/sheet가 있으면 그것, 없으면 main→body. `dialogLabel`/`dialogTitle`/`textSnippet`은 dialog/sheet가 있을 때만(main 폴백·예약 폼은 빈 문자열). `disabledButtons`는 버튼 8개 상한 이후 슬라이스와 정렬을 맞추려 `buttonEls`를 먼저 8개로 자른 뒤 계산한다.
 
 - [ ] **Step 5: 통과 확인** — 같은 명령, Expected: PASS (4 테스트)
 
@@ -268,84 +294,103 @@ export function stageSnapshotData(s: StageSnapshot | null): NonNullable<RunEvent
 
 ---
 
-### Task 3: RunSession `handOff`/`timedOut` 헬퍼 + 실패 사이트 교체
+### Task 3: RunSession 실패/정상 인계 헬퍼 + 사이트 교체
 
 **Files:**
 - Modify: `src/content/orchestrator.ts`
 - Test: `tests/orchestrator.test.mjs` (신규 케이스 추가만; 기존 18개 무수정)
 
 **Interfaces:**
-- Consumes: `stageSnapshotData`, `Dependencies.captureSnapshot`
-- Produces: RunSession `private snapshotData(extra?)`, `private handOff(reason, extra?): RunResult`, `private timedOut(reason): RunResult`
+- Consumes: `stageSnapshotData`, `StageSnapshot`, `Dependencies.captureSnapshot`
+- Produces: RunSession `private failureData(extra?)`, `private diagnosticHandOff(reason, extra?): RunResult`, `private handOff(reason, extra?): RunResult`, `private timedOut(reason): RunResult`
 
 - [ ] **Step 1: baseline 확인** — `node --test tests/orchestrator.test.mjs` → pass 18
 
 - [ ] **Step 2: 헬퍼 추가** — `finishStopped` 아래
 
 ```ts
-private snapshotData(extra?: RunEvent["data"]): RunEvent["data"] {
-  const snapshot = this.deps.captureSnapshot?.() ?? null;
-  return { ...stageSnapshotData(snapshot), ...extra };
+private failureData(extra?: RunEvent["data"]): RunEvent["data"] {
+  let snapshot: StageSnapshot | null = null;
+  try {
+    snapshot = this.deps.captureSnapshot?.() ?? null;   // 캡처 예외가 실패 처리를 덮지 않게 guard
+  } catch {
+    snapshot = null;
+  }
+  return {
+    ...stageSnapshotData(snapshot),
+    snapshotRunState: this.machine.state,   // transition 전 = 실패한 단계
+    ...extra,
+  };
 }
 
-private handOff(reason: string, extra?: RunEvent["data"]): RunResult {
-  this.transition("HANDED_OFF", reason, { data: this.snapshotData(extra) });
+private diagnosticHandOff(reason: string, extra?: RunEvent["data"]): RunResult {
+  const data = this.failureData(extra);     // machine.state 읽기 → 그 다음 transition
+  this.transition("HANDED_OFF", reason, { data });
+  return this.finish();
+}
+
+private handOff(reason: string, extra?: RunEvent["data"]): RunResult {   // 정상 인계, 스냅샷 X
+  this.transition("HANDED_OFF", reason, extra ? { data: extra } : {});
   return this.finish();
 }
 
 private timedOut(reason: string): RunResult {
-  this.transition("TIMED_OUT", reason, { data: this.snapshotData() });
+  const data = this.failureData();
+  this.transition("TIMED_OUT", reason, { data });
   return this.finish();
 }
 ```
 
-- [ ] **Step 3: 포기 전이 사이트 교체**
+- [ ] **Step 3: 사이트 교체**
 
-각 단계 메서드에서 아래 패턴을 치환한다. **STOPPED와 SLOT_SELECTED/DRY_RUN_COMPLETED는 건드리지 않는다.**
+메시지 문자열은 **현행 그대로 유지(변경 금지)**. **STOPPED·SLOT_SELECTED·DRY_RUN_COMPLETED는 안 건드린다.**
 
-`stopOrTimeout`의 timed_out 분기:
-```ts
-if (result === "timed_out") return this.timedOut("감시 종료 시각에 도달했습니다.");
-```
+- `stopOrTimeout`의 timed_out 분기 → `if (result === "timed_out") return this.timedOut("감시 종료 시각에 도달했습니다.");`
+- `prepareEntry`/`prepareDate`/`preparePerson`/`confirmPageReady`의 HANDED_OFF·TIMED_OUT: 실패/포기이므로 각각 `return this.diagnosticHandOff(MSG);` / `return this.timedOut(MSG);` (waitingOnly HANDED_OFF 포함 = diagnostic).
+- `runToggleCycle` 터미널: `return { kind: "terminal", result: this.diagnosticHandOff(MSG) };` / TIMED_OUT은 `this.timedOut(MSG)`. traceCycle 호출은 전이 앞에 그대로.
+- `advanceFromSlot`:
+  - TIMED_OUT("클릭 직전…") → `return this.timedOut("클릭 직전 감시 종료 시각에 도달했습니다.");`
+  - **postSlotEnabled=false HANDED_OFF는 정상 인계 → `return this.handOff("후속 선택 자동 진행이 꺼져 있어 슬롯 선택까지만 완료했습니다.");`** (스냅샷 없음)
+- `advancePostSlot`:
+  - **폼 도착 = 정상 인계 → plain `handOff`(스냅샷 없음), post-slot 진단은 유지**:
+    `return this.handOff("예약 폼에 도착했습니다. 약관 확인과 최종 예약은 직접 진행하세요.", { ...postSlotEventData(inspection), openDeltaMs: Math.round(formSeenAtMs - config.openAtMs), timingServerAtMs: formSeenAtMs });`
+  - unknown = 실패 → `return this.diagnosticHandOff(`${inspection.label} 화면은 자동 진행하지 않습니다.`, postSlotEventData(inspection));`
+  - blocked = 실패 → `return this.diagnosticHandOff(action.message, postSlotEventData(inspection));` (기존은 진단 미첨부였음. 기존 테스트가 blocked data를 단언하면 유지 우선 — 확인 후 적용.)
+  - 5초 미확인 = 실패 → `return this.diagnosticHandOff("후속 예약 화면을 5초 안에 확인하지 못했습니다.", lastInspection ? postSlotEventData(lastInspection) : undefined);`
 
-`prepareEntry`/`prepareDate`/`preparePerson`/`confirmPageReady`의 각 `this.transition("HANDED_OFF", MSG); return this.finish();` → `return this.handOff(MSG);`, `this.transition("TIMED_OUT", MSG); return this.finish();` → `return this.timedOut(MSG);`. 해당 메시지 문자열은 현행 그대로 유지(변경 금지).
-
-`runToggleCycle`의 터미널 반환: `this.transition("HANDED_OFF", MSG); return { kind: "terminal", result: this.finish() };` → `return { kind: "terminal", result: this.handOff(MSG) };`. TIMED_OUT 도 `this.timedOut(MSG)`로. (traceCycle 호출은 전이 앞에 그대로 유지.)
-
-`advanceFromSlot`의 TIMED_OUT("클릭 직전…")과 HANDED_OFF("후속 선택 자동 진행이 꺼져…") 동일 치환.
-
-`advancePostSlot` (도메인 진단 병합):
-- 폼 도착: `return this.handOff("예약 폼에 도착했습니다. 약관 확인과 최종 예약은 직접 진행하세요.", { ...postSlotEventData(inspection), openDeltaMs: Math.round(formSeenAtMs - config.openAtMs), timingServerAtMs: formSeenAtMs });`
-- unknown: `return this.handOff(`${inspection.label} 화면은 자동 진행하지 않습니다.`, postSlotEventData(inspection));`
-- blocked: `return this.handOff(action.message, postSlotEventData(inspection));` — 현재는 `postSlotEventData` 미첨부였으나 blocked도 실패이므로 진단 첨부(개선). 단 기존 테스트가 blocked data를 검사하지 않는지 확인(검사 시 유지 우선).
-- 5초 미확인 폴백: `return this.handOff("후속 예약 화면을 5초 안에 확인하지 못했습니다.", lastInspection ? postSlotEventData(lastInspection) : undefined);`
-
-주의: `advancePostSlot`는 `RunResult` 반환이므로 `return this.handOff(...)` 그대로 맞다.
-
-- [ ] **Step 4: 예외 경로 스냅샷** — `execute()` catch
+- [ ] **Step 4: 예외 경로 — 캡처 1회** — `execute()` catch
 
 ```ts
 } catch (error) {
   if (!TERMINAL.has(this.machine.state)) {
     const message = error instanceof Error ? error.message : "알 수 없는 실행 오류";
-    const snapshot = this.deps.captureSnapshot?.() ?? null;
+    const failure = this.failureData();   // 캡처 1회 (내부 guard 포함)
     this.deps.trace?.("RUN_FAILED", "error", message, {
       serverAt: this.serverClockReady ? this.serverClock.now() : null,
       state: "FAILED",
-      attributes: stageSnapshotData(snapshot) as TraceAttributes,
+      attributes: failure as TraceAttributes,
       error,
     });
-    this.transition("FAILED", message, { data: this.snapshotData() });
+    this.transition("FAILED", message, { data: failure });
   }
   return this.finish();
 }
 ```
-`stageSnapshotData` 산출은 string|number만이라 `TraceAttributes`(string|number|boolean|null)에 안전 대입.
 
-- [ ] **Step 5: 신규 테스트 케이스 추가** — `tests/orchestrator.test.mjs` 맨 끝
+- [ ] **Step 5: harness에 `captureSnapshot` 주입** — `tests/orchestrator.test.mjs` harness deps(`trace:` 아래)
+
+```ts
+    captureSnapshot: () => ({
+      urlKind: "shop", headings: [], buttons: ["확인"], disabledButtons: [false],
+      disabledButtonCount: 0, dialogLabel: "", dialogTitle: "", textSnippet: "", fingerprint: "ss-test",
+    }),
+```
+기존 18개는 이 필드를 검사하지 않으므로 영향 없음.
+
+- [ ] **Step 6: 신규 테스트 3개 추가** — `tests/orchestrator.test.mjs` 맨 끝
 
 ```js
-test("attaches a stage snapshot to a hand-off give-up", async () => {
+test("attaches a diagnostic snapshot on a waiting-only hand-off", async () => {
   const h = harness({
     entry: { inspect: () => ({ reservationOpen: false, ctaAvailable: false, waitingOnly: true }), openReservation: () => false },
   });
@@ -353,25 +398,35 @@ test("attaches a stage snapshot to a hand-off give-up", async () => {
   assert.equal(result.state, "HANDED_OFF");
   const handoff = h.events.find((e) => e.data?.state === "HANDED_OFF");
   assert.equal(handoff?.data?.snapshotFingerprint, "ss-test");
-  assert.equal(handoff?.data?.snapshotButtons, "확인");
+  assert.equal(handoff?.data?.snapshotRunState, "ENTERING_RESERVATION");
+});
+
+test("normal form-arrival hand-off carries no snapshot", async () => {
+  const h = harness({ slotAfterCycles: 1, postSlot: { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "unused" }) } });
+  const result = await h.orchestrator.start(config({ dryRun: false }));   // dryRun off → 슬롯 클릭 → 폼 도착
+  assert.equal(result.state, "HANDED_OFF");
+  const handoff = h.events.find((e) => e.data?.state === "HANDED_OFF");
+  assert.equal(handoff?.data?.snapshotFingerprint, undefined);   // 정상 인계 → 스냅샷 없음
+  assert.equal(handoff?.data?.postSlotStage, "form");            // post-slot 진단은 유지
+});
+
+test("a throwing captureSnapshot does not mask the give-up", async () => {
+  const h = harness({
+    entry: { inspect: () => ({ reservationOpen: false, ctaAvailable: false, waitingOnly: true }), openReservation: () => false },
+    captureSnapshot: () => { throw new Error("boom"); },
+  });
+  const result = await h.orchestrator.start(config({ entryMode: "auto" }));
+  assert.equal(result.state, "HANDED_OFF");   // 원래 포기가 정상 진행
+  const handoff = h.events.find((e) => e.data?.state === "HANDED_OFF");
+  assert.equal(handoff?.data?.snapshotFingerprint, undefined);   // 캡처 실패 → 스냅샷 키 없음, snapshotRunState는 있음
+  assert.equal(handoff?.data?.snapshotRunState, "ENTERING_RESERVATION");
 });
 ```
-이 케이스가 통과하려면 `harness`가 `captureSnapshot`을 주입해야 한다(Step 6).
+`harness`가 `captureSnapshot` override를 받도록 시그니처에 `captureSnapshot` 파라미터를 추가한다(기본값 = Step 5의 목). 폼 도착 케이스는 config `entryMode` 기본 "prepared"라 entry 단계를 건너뛰고 바로 슬롯→폼으로 간다.
 
-- [ ] **Step 6: harness에 `captureSnapshot` 주입 추가**
+- [ ] **Step 7: 게이트** — `npm run check` → pass(기존 18 + 신규 3) + `git diff --check`. 기존 케이스가 깨지면 스냅샷 키가 기존 단언과 충돌하는지 확인(신규 키뿐이라 없어야 정상).
 
-`tests/orchestrator.test.mjs`의 `harness` deps 객체(`trace:` 아래)에 추가:
-```ts
-    captureSnapshot: () => ({
-      urlKind: "shop", headings: [], buttons: ["확인"], disabledButtonCount: 0,
-      dialogLabel: "", dialogTitle: "", textSnippet: "", fingerprint: "ss-test",
-    }),
-```
-기존 18개는 이 필드를 검사하지 않으므로 영향 없음. (waitingOnly 케이스가 기존에 없으면 신규 케이스가 첫 사용.)
-
-- [ ] **Step 7: 게이트** — `npm run check` → pass(기존 18 + 신규) + `git diff --check`. 기존 케이스가 깨지면 스냅샷 키가 기존 단언과 충돌하는지 확인(신규 키뿐이라 없어야 정상).
-
-- [ ] **Step 8: Commit** — `feat: capture a failure snapshot at every give-up and exception`
+- [ ] **Step 8: Commit** — `feat: capture a diagnostic snapshot on failure give-ups and exceptions`
 
 ---
 

@@ -15,9 +15,12 @@
 ## 확정된 결정
 
 1. **범위: 전 단계 일반화** — post-slot뿐 아니라 모든 포기 전이 + throw 예외.
-2. **캡처 모델: 단일 범용 캡처** — 새 `captureSnapshot()` 포트 하나를 실패/포기/catch 지점에서만 호출. 어댑터 `inspect()` 시그니처·테스트는 안 건드린다.
-3. **출력: 터미널 전이 `data`(RunEvent)에 flatten 첨부** — post-slot 선례와 동일. 사이드패널 이벤트 로그 + trace(`RUN_TERMINATED`/`RUN_FAILED`)에 자동 표시. 새 trace code 없음.
+2. **캡처 모델: 단일 범용 캡처** — `captureSnapshot?()` 옵셔널 포트(`trace?`·`flushTrace?`와 동일 패턴) 하나를 실패/포기/catch 지점에서만 호출. 어댑터 `inspect()` 시그니처·테스트는 안 건드린다.
+3. **출력: 터미널 전이 `data`(RunEvent)에 flatten 첨부** — post-slot 선례와 동일. 사이드패널 이벤트 로그 + trace(`RUN_TERMINATED`/`RUN_FAILED`)에 실린다. 단 사이드패널 렌더는 자동이 아니므로 `event-format.ts`를 명시적으로 고친다(§사이드패널 표시). 새 trace code 없음.
 4. **성능: 실패 시에만** — 성공 경로에는 캡처 분기 자체가 없다.
+5. **정상 인계 vs 실패 인계 구분** — 스냅샷은 **실패/포기**에만. 정상 종료 HANDED_OFF 2곳(postSlotEnabled=false로 슬롯까지만, 예약 폼 정상 도착)에는 스냅샷을 붙이지 않는다. waitingOnly는 diagnostic(우리 판독 검증에 도움)로 분류.
+6. **PII 최소화** — snippet은 활성 dialog/sheet에서만. main/body 폴백은 heading·button 구조만(snippet 없음). `reservation_form` URL에서는 snippet 금지. 수집한 snippet은 전화·이메일 패턴 마스킹.
+7. **실패 단계 식별** — 터미널 전이 **직전** `this.machine.state`를 `snapshotRunState`로 함께 남긴다(별도 상태 관리 불필요).
 
 ## 컴포넌트
 
@@ -28,22 +31,24 @@
 ```ts
 export interface StageSnapshot {
   urlKind: "shop" | "reservation_form" | "other";
-  headings: string[];        // 보이는 h1/h2/[role="heading"] 텍스트 (각 safeText 80자)
-  buttons: string[];         // 보이는 button 텍스트
+  headings: string[];        // 보이는 h1/h2/[role="heading"] 텍스트 (각 safeText 80자, 최대 8)
+  buttons: string[];         // 보이는 button 텍스트 (최대 8)
+  disabledButtons: boolean[];// 버튼별 disabled 상태 (fingerprint용)
   disabledButtonCount: number;
   dialogLabel: string;       // 활성 dialog 또는 presentation sheet의 aria-label
   dialogTitle: string;       // 활성 dialog/sheet의 첫 heading 텍스트
-  textSnippet: string;       // ★ 활성 dialog/sheet(없으면 main)의 가시 텍스트 앞 160자
-  fingerprint: string;       // 위 필드 정규화 해시 (post-slot fingerprint와 동일 알고리즘)
+  textSnippet: string;       // 활성 dialog/sheet에서만 (마스킹·160자). main/body·form이면 ""
+  fingerprint: string;       // 구조 해시 (숫자 정규화, textSnippet 제외)
 }
 
 export function captureStageSnapshot(document: Document): StageSnapshot;
 ```
 
 - 활성 컨테이너 선택: `findActiveDialog` → 없으면 `findRequestSheet` → 없으면 `document.querySelector("main")` → 없으면 `document.body`.
-- `textSnippet`은 컨테이너 `textContent`를 `cleanText` 후 160자 절단. 개인정보 최소화를 위해 입력값(input value)은 포함하지 않는다(textContent는 폼 입력값을 포함하지 않음).
+- **`textSnippet`은 활성 dialog/sheet가 있을 때만** 채운다. main/body 폴백이거나 `urlKind === "reservation_form"`이면 `""`(빈 문자열). dialog/sheet의 `textContent`를 `cleanText` → 전화(`010-…`, `\d{2,3}-\d{3,4}-\d{4}`)·이메일 마스킹 → 160자 절단.
 - `headings`/`buttons`는 최대 각 8개로 제한(로그 비대 방지).
-- `fingerprint`는 urlKind+headings+buttons+dialogLabel+dialogTitle 구조 해시(textSnippet 제외 — 내용 변동에 안정적).
+- `disabledButtons`: 보이는 버튼별 disabled 불리언 배열(fingerprint용, 표시 안 함). `disabledButtonCount`는 그 합.
+- `fingerprint`는 urlKind+headings+buttons+**disabledButtons**+dialogLabel+dialogTitle 구조 해시. **숫자 정규화**: 해시 입력의 모든 `\d+`를 `#`로 치환한 뒤 계산(금액·인원·날짜가 달라도 구조 동일 화면은 같은 fingerprint). textSnippet은 해시에서 제외.
 
 ### `stageSnapshotData(snapshot)` flatten 빌더 (orchestrator.ts, `postSlotEventData` 옆)
 
@@ -78,44 +83,68 @@ captureSnapshot: () => { try { return captureStageSnapshot(document); } catch { 
 
 ## RunSession 배선 — 헬퍼 중앙집중
 
-포기 전이가 25곳에 흩어져 있으므로 헬퍼로 중앙화한다. `finish`/`finishStopped` 옆에 추가:
+포기 전이가 흩어져 있으므로 헬퍼로 중앙화하되, **정상 인계와 실패 인계를 분리**한다. `finish`/`finishStopped` 옆에 추가:
 
 ```ts
-private snapshotData(extra?: RunEvent["data"]): RunEvent["data"] {
-  const snapshot = this.deps.captureSnapshot?.() ?? null;
-  const base = snapshot ? stageSnapshotData(snapshot) : {};
-  return { ...base, ...extra };   // stage-specific(extra)가 generic 위에 보강
+// 실패 시점 data: generic 스냅샷 + 전이 직전 단계(snapshotRunState) + stage-specific extra
+private failureData(extra?: RunEvent["data"]): RunEvent["data"] {
+  let snapshot: StageSnapshot | null = null;
+  try {
+    snapshot = this.deps.captureSnapshot?.() ?? null;   // 캡처 예외가 실패 처리를 덮지 않게 guard
+  } catch {
+    snapshot = null;
+  }
+  return {
+    ...stageSnapshotData(snapshot),
+    snapshotRunState: this.machine.state,   // transition 전 = 실패한 단계
+    ...extra,
+  };
 }
 
-private handOff(reason: string, extra?: RunEvent["data"]): RunResult {
-  this.transition("HANDED_OFF", reason, { data: this.snapshotData(extra) });
+private diagnosticHandOff(reason: string, extra?: RunEvent["data"]): RunResult {
+  const data = this.failureData(extra);       // machine.state 읽기 → 그 다음 transition
+  this.transition("HANDED_OFF", reason, { data });
+  return this.finish();
+}
+
+private handOff(reason: string, extra?: RunEvent["data"]): RunResult {   // 정상 인계, 스냅샷 X
+  this.transition("HANDED_OFF", reason, extra ? { data: extra } : {});
   return this.finish();
 }
 
 private timedOut(reason: string): RunResult {
-  this.transition("TIMED_OUT", reason, { data: this.snapshotData() });
+  const data = this.failureData();
+  this.transition("TIMED_OUT", reason, { data });
   return this.finish();
 }
 ```
 
 교체 규칙:
-- `this.transition("HANDED_OFF", msg); return this.finish();` → `return this.handOff(msg);`
-- post-slot의 stage-specific data 첨부부(`postSlotEventData(...)`)는 `return this.handOff(msg, postSlotEventData(inspection))` 형태로 **generic + 도메인 진단 병합**.
-- `this.transition("TIMED_OUT", msg); return this.finish();` → `return this.timedOut(msg);`
-- `stopOrTimeout`의 TIMED_OUT/STOPPED 분기도 `timedOut`/`finishStopped` 사용으로 통일(STOPPED는 사용자 중지라 스냅샷 불필요 — 기존대로 finishStopped 유지, 스냅샷 없음).
-- **STOPPED(사용자 중지)·성공 종료(SLOT_SELECTED→post-slot 성공, DRY_RUN_COMPLETED)에는 스냅샷을 붙이지 않는다.** 실패/포기만.
+- **정상 종료 2곳만 plain `handOff`(스냅샷 없음)**:
+  - postSlotEnabled=false → `return this.handOff("후속 선택 자동 진행이 꺼져 있어 슬롯 선택까지만 완료했습니다.");`
+  - 폼 도착 → `return this.handOff("예약 폼에 도착했습니다. …", { ...postSlotEventData(inspection), openDeltaMs, timingServerAtMs });` (post-slot 진단 유지, generic 스냅샷 미첨부)
+- **나머지 HANDED_OFF 전부 `diagnosticHandOff`** (waitingOnly·데드라인·toggle 실패·unknown·blocked·5초 타임아웃). post-slot 진단 있으면 병합: `return this.diagnosticHandOff(msg, postSlotEventData(inspection));`
+- **모든 TIMED_OUT은 `timedOut`** (`stopOrTimeout` timed_out 분기 포함).
+- **STOPPED·DRY_RUN_COMPLETED·SLOT_SELECTED에는 스냅샷 없음** — 기존 그대로.
 
-예외 경로 — `execute()` catch:
+예외 경로 — `execute()` catch. **캡처 1회**만 실행해 trace·transition에 동일 데이터 전달:
 ```ts
-this.deps.trace?.("RUN_FAILED", "error", message, {
-  serverAt: this.serverClockReady ? this.serverClock.now() : null,
-  state: "FAILED",
-  attributes: snapshotAttributes(this.deps.captureSnapshot?.() ?? null),
-  error,
-});
-this.transition("FAILED", message, { data: this.snapshotData() });
+} catch (error) {
+  if (!TERMINAL.has(this.machine.state)) {
+    const message = error instanceof Error ? error.message : "알 수 없는 실행 오류";
+    const failure = this.failureData();   // 캡처 1회
+    this.deps.trace?.("RUN_FAILED", "error", message, {
+      serverAt: this.serverClockReady ? this.serverClock.now() : null,
+      state: "FAILED",
+      attributes: failure as TraceAttributes,
+      error,
+    });
+    this.transition("FAILED", message, { data: failure });
+  }
+  return this.finish();
+}
 ```
-`snapshotAttributes`는 `stageSnapshotData`와 동일 필드를 `TraceAttributes`로(둘 다 평면 Record라 사실상 동일 — 한 함수로 공유).
+`failureData` 산출은 string|number만이라 `TraceAttributes`(string|number|boolean|null) 안전 대입. 캡처 함수 예외는 포트 주입부(content/index.ts) try/catch가 삼켜 `null`을 반환 → 원래 실패를 덮지 않는다.
 
 ## 사이드패널 표시
 
@@ -130,7 +159,11 @@ this.transition("FAILED", message, { data: this.snapshotData() });
 
 - `tests/snapshot-adapter.test.mjs`(신규): jsdom fixture로 `captureStageSnapshot` — (1) 활성 dialog에서 label/title/buttons/textSnippet 추출, (2) label·title 빈 dialog에서 textSnippet으로 식별 정보 확보(실사용 unknown 재현), (3) dialog 없을 때 main 폴백, (4) headings/buttons 8개 상한, (5) fingerprint 안정성(textSnippet 변해도 불변).
 - `stageSnapshotData`/`snapshotAttributes` flatten: 순수 단위 테스트.
-- `tests/orchestrator.test.mjs`: `captureSnapshot` 목을 주입한 **새 케이스** 추가 — 포기 전이(예: entry 데드라인 HANDED_OFF, 토글 SETUP_INVALID) 시 이벤트 data에 `snapshotFingerprint`가 실리는지. 기존 18개는 미주입이라 그대로 통과.
+- `tests/orchestrator.test.mjs`: `captureSnapshot` 목을 주입한 **새 케이스** 추가 —
+  - 포기 전이(waitingOnly HANDED_OFF) 시 이벤트 data에 `snapshotFingerprint`·`snapshotRunState`가 실리는지.
+  - **정상 폼 도착 인계에는 `snapshotFingerprint`가 없는지**(정상/실패 구분 검증).
+  - **`captureSnapshot`이 throw해도** 실패 처리가 정상 진행되는지(원래 실패를 안 덮음) — 목이 throw하는 harness 변형. (실운영은 index.ts try/catch가 삼키지만, RunSession이 옵셔널 호출을 안전히 다루는지 확인.)
+  - 기존 18개는 미주입이라 그대로 통과.
 - `tests/event-format.test.mjs`: generic 스냅샷 라인 렌더.
 
 ## 비목표
