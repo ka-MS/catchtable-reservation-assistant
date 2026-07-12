@@ -534,8 +534,10 @@ export class OpenRunOrchestrator {
         const formNoticeGraceMs = 1_500;
         let formSeenAtMs: number | null = null;
         let formNoticeDismissed = false;
+        let lastInspection: PostSlotInspection | null = null;
         while (!controller.signal.aborted && serverClock.now() < postSlotDeadline) {
           const inspection = this.dependencies.postSlot.inspect();
+          lastInspection = inspection;
           if (inspection.kind === "form") {
             if (formSeenAtMs === null) {
               formSeenAtMs = serverClock.now();
@@ -592,7 +594,9 @@ export class OpenRunOrchestrator {
           transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
           return finish();
         }
-        transition("HANDED_OFF", "후속 예약 화면을 5초 안에 확인하지 못했습니다.");
+        transition("HANDED_OFF", "후속 예약 화면을 5초 안에 확인하지 못했습니다.", lastInspection === null ? {} : {
+          data: postSlotEventData(lastInspection),
+        });
         return finish();
       }
 

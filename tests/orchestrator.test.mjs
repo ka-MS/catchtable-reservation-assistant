@@ -346,6 +346,44 @@ test("unknown post-slot screens hand off with safe structural diagnostics", asyn
   assert.equal(handoff?.data?.dialogButtons, "이전 | 계속");
 });
 
+test("the post-slot timeout handoff records the last inspection diagnostics", async () => {
+  // 화면이 dialog로 인식되지 않으면 waiting만 반복되다 시간초과 인계된다.
+  // 그 인계 이벤트에 마지막 관찰 근거(urlKind 포함)가 남아야 원인을 추적할 수 있다.
+  const waiting = {
+    kind: "waiting",
+    certainty: "unknown",
+    strategy: "no-active-dialog-v1",
+    evidence: ["no active dialog"],
+    fingerprint: "ps-00000000",
+    diagnostics: {
+      urlKind: "other",
+      label: "",
+      title: "",
+      buttons: [],
+      disabledButtonCount: 0,
+      radioCount: 0,
+      checkboxCount: 0,
+      quantityControlCount: 0,
+      zeroDepositControlCount: 0,
+    },
+  };
+  const h = harness({
+    postSlot: {
+      inspect: () => waiting,
+      advance: () => ({ status: "acted", message: "unused" }),
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ dryRun: false }));
+  const handoff = h.events.at(-1);
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.match(handoff?.message ?? "", /5초/);
+  assert.equal(handoff?.data?.postSlotStage, "waiting");
+  assert.equal(handoff?.data?.postSlotStrategy, "no-active-dialog-v1");
+  assert.equal(handoff?.data?.dialogUrlKind, "other");
+});
+
 test("a promo notice appearing after form arrival is dismissed before handing off", async () => {
   // The promo dialog renders non-deterministically after the form loads, so the
   // orchestrator dwells on the form briefly instead of handing off on first sight.
