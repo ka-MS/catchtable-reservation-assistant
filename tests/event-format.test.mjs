@@ -95,3 +95,14 @@ test("unknown post-slot diagnostics are visible in the event message", () => {
   assert.match(message, /버튼 이전 \| 계속/);
   assert.match(message, /radio 0 · checkbox 1 · quantity 0/);
 });
+
+test("renders a stage snapshot line", () => {
+  const line = formatEventDetail({
+    at: 0, serverAt: null, runId: "r", kind: "state", message: "인계",
+    data: { state: "HANDED_OFF", snapshotFingerprint: "ss-1", snapshotDialogTitle: "",
+      snapshotButtons: "확인 | 취소", snapshotTextSnippet: "추가 확인이 필요합니다 어쩌구 저쩌구" },
+  });
+  assert.match(line, /스냅샷/);
+  assert.match(line, /확인 \| 취소/);
+  assert.match(line, /추가 확인이 필요합니다/);
+});

@@ -5,6 +5,7 @@ import { EntryAdapter } from "./adapter/entry.js";
 import { PersonAdapter } from "./adapter/person.js";
 import { SlotAdapter } from "./adapter/slots.js";
 import { PostSlotAdapter } from "./adapter/post-slot.js";
+import { captureStageSnapshot } from "./adapter/snapshot.js";
 import { syncServerClock } from "./clock-sync.js";
 import { OpenRunOrchestrator } from "./orchestrator.js";
 import { BatchTraceProcessor } from "./telemetry/batch-processor.js";
@@ -48,6 +49,13 @@ if (!window.__ctReserveInjected) {
     },
     trace: (code, severity, message, options) => traceLogger.record(code, severity, message, options),
     flushTrace: () => traceLogger.forceFlush(),
+    captureSnapshot: () => {
+      try {
+        return captureStageSnapshot(document);
+      } catch {
+        return null;
+      }
+    },
     runId: () => crypto.randomUUID(),
   });
   let running = false;
