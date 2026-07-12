@@ -1,8 +1,9 @@
 # D. 어댑터 DOM 쿼리 중복 제거 설계
 
-**기준일:** 2026-07-12
-**선행:** `10-scope.md`(D 범위). A/B/C 완료 위에서 진행.
+**기준일:** 2026-07-12 (개정)
+**선행:** `10-scope.md`(D 범위). A·B/C·post-slot·nav-guard가 모두 main에 병합된 상태에서 진행.
 **범위:** D만. 동작 무변경(behavior-neutral) 순수 구조 리팩터.
+**브랜치:** `codex/refactor-adapter-dom` (main 기준).
 
 ## 목표
 
@@ -44,6 +45,7 @@ export function visibleAll<T extends Element>(root: ParentNode, selector: string
 }
 
 // disabled 판정 (제네릭 — post-slot 버전이 표준: 임의 Element 허용)
+// 기존 변형들과 결과 동일: OR이므로 검사 순서는 무관.
 export function isDisabled(element: Element): boolean {
   return element.getAttribute("aria-disabled") === "true"
     || ("disabled" in element && (element as HTMLButtonElement | HTMLInputElement).disabled);
@@ -79,14 +81,15 @@ export function fnvHash(value: string): string {
 - `findVisiblePresentationSheet(document)`: 보이는 presentation 중 제목/버튼 보유(범용).
 - `findPromoDismissButton(document)`: "다음에 볼게요" 버튼.
 
-`isZeroDepositControl`은 post-slot 전용 판정이므로 post-slot-inspection에 남긴다(파인더 아님).
+`isZeroDepositControl`은 post-slot 전용 판정이므로 post-slot-inspection에 남긴다(파인더 아님). 단 내부에서 쓰던 로컬 `normalized`가 제거되므로 `dom.normalizedText`를 import해 쓴다.
 
 ### 3. 소비자 갱신
 
 - **post-slot-inspection.ts**: 로컬 `visibleElements`/`safeText`/`fingerprint`/`normalized`/파인더 정의 삭제 → `dom.ts`·`dialog.ts`에서 import. `createFingerprint`는 `` `ps-${fnvHash(...)}` ``로.
 - **snapshot.ts**: 로컬 `visible`/`safeText`/`hash`/`findVisiblePresentationSheet` 삭제 → import. 해시는 `` `ss-${fnvHash(normalized)}` `` 형태 유지.
 - **entry.ts**: 로컬 `isDisabled` 삭제 → `dom.isDisabled`. dock 조회 `visibleAll`. `findPromoDismissButton`은 `dialog.ts`에서 import(post-slot-inspection 의존 제거).
-- **person.ts / calendar.ts**: 인라인 disabled·visible 조회를 `dom.isDisabled`·`visibleAll`로.
+- **person.ts**: 인라인 disabled(radio) → `dom.isDisabled`, `input[type="radio"]` 조회 → `visibleAll`.
+- **calendar.ts**: 월 이동 버튼의 `control.disabled || aria-disabled` → `dom.isDisabled`. **셀의 `available`(`aria-disabled !== "true"`)·`selected`(`aria-pressed`)는 그대로 둔다** — div의 가용성·선택 의미이지 "버튼 disabled"가 아니다. `!isDisabled(div)`와 산출은 같으나 의도가 흐려지므로 치환하지 않는다(과도한 일반화 금지). 셀·컨트롤 조회는 `visibleAll` 적용.
 - **post-slot.ts**: 로컬 `isDisabled` 삭제 → `dom.isDisabled`. visible 조회 `visibleAll`. 파인더는 `dialog.ts`에서 import.
 - **slots.ts**: `main button[data-busy]` 조회는 `busy/hidden/disabled` 커스텀 필터라 `visibleAll`과 규칙이 다르다 → **그대로 둔다**(억지 통합 금지, YAGNI).
 
@@ -101,14 +104,18 @@ dom.ts (리프)  ←  dialog.ts (파인더)
 
 ## 검증 전략
 
-- 순수 이동/추출이므로 **기존 어댑터 테스트가 회귀 가드**. 새 테스트는 dom.ts 신규 헬퍼 단위 테스트만 선택적으로 추가(`visibleAll`/`isDisabled`/`safeText`/`fnvHash`).
-- fingerprint 값 동일성: post-slot-adapter·snapshot-adapter 테스트가 기존 fingerprint를 단언하면 그 값이 안 바뀌는지로 검증(안 바뀌어야 정상).
-- 단계별 커밋: dom 헬퍼 추가 → dialog.ts 이관 → 소비자별 교체(파일 단위) → 각 단계 green.
+- 순수 이동/추출이므로 **기존 어댑터 테스트가 회귀 가드**(entry/calendar/person/slot/post-slot/snapshot-adapter 무수정 통과).
+- **해시 잠금 테스트 필수(빈틈 보완).** 현재 post-slot-adapter·snapshot-adapter는 fingerprint의 **접두사만**(`/^ps-/`, `startsWith("ss-")`) 단언하고 정확한 해시 값은 검증하지 않는다. 따라서 `fnvHash` 추출이 알고리즘을 미세하게 바꿔도 기존 테스트로는 안 걸린다. 신규 `tests/dom-helpers.test.mjs`에서:
+  - `fnvHash("test-input")`가 **고정 hex 값**과 일치(알고리즘 잠금).
+  - 대표 문자열에 대해 `ps-${fnvHash(v)}`와 리팩터 전 산출이 같은지 확인(문서에 리팩터 직전 값 1개 핀).
+  - `visibleAll`/`isDisabled`/`safeText` 단위 테스트(jsdom fixture).
+- 단계별 커밋: dom 헬퍼 추가(+잠금 테스트) → dialog.ts 이관 → 소비자별 교체(파일 단위) → 각 단계 green.
+- 각 단계 후 `npm run check`로 전체 그린 유지. dedup은 되돌리기 쉬우므로 한 파일씩 교체·검증한다.
 
-## 조정 의존성 (중요)
+## 조정 의존성 (해소됨)
 
-**D 구현은 B/C(P1/P2) 수정이 병합된 뒤 착수한다.** 현재 다른 세션이 `snapshot.ts`·`post-slot-inspection.ts`·`trace-view.ts`를 실시간 수정 중이고, D는 바로 그 파일들을 리팩터하므로 동시 진행 시 충돌한다. D 브랜치는 B/C 최종 상태에서 잘라야 한다. (이 문서는 설계만이며 코드 미착수.)
+postslot·A·B/C·nav-guard가 2026-07-12 모두 main에 병합됐다(181 테스트 green). D가 리팩터할 `snapshot.ts`·`post-slot-inspection.ts` 등이 이제 안정 상태이므로 **D는 main에서 바로 착수 가능**하다. 다른 세션과 같은 파일을 동시에 만지지 않도록만 조율한다.
 
 ## 브랜치
 
-D 브랜치는 B/C 완료 커밋 위에서 `codex/refactor-adapter-dedup`로 만든다. 병합 순서: postslot → A → B/C → D.
+`codex/refactor-adapter-dom`(main 기준). 완료 후 검증하고 main에 병합한다.
