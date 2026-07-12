@@ -977,6 +977,11 @@ fieldset:disabled {
   font-size: 13px;
 }
 
+.job-card-detail.job-card-countdown {
+  color: #f97316;
+  font-weight: 700;
+}
+
 .job-card-actions {
   display: flex;
   gap: 8px;
