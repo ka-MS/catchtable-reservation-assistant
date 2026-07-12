@@ -1,4 +1,4 @@
-import { cleanText, isElementHidden } from "./dom.js";
+import { fnvHash, normalizedText, safeText, visibleAll } from "./dom.js";
 import { findActiveDialog, findPromoDismissButton, findRequestSheet } from "./dialog.js";
 
 export { findActiveDialog, findPromoDismissButton, findRequestSheet } from "./dialog.js";
@@ -46,17 +46,11 @@ interface DialogSnapshot {
   hasConfirm: boolean;
 }
 
-export function normalized(value: string | null | undefined): string {
-  return cleanText(value).toLocaleLowerCase("ko-KR");
-}
+export { normalizedText as normalized } from "./dom.js";
 
 export function isZeroDepositControl(element: Element): boolean {
-  const label = normalized(element.getAttribute("aria-label"));
+  const label = normalizedText(element.getAttribute("aria-label"));
   return label.includes("예약금") && label.includes("0원") && label.includes("결제");
-}
-
-function visibleElements<T extends Element>(root: ParentNode, selector: string): T[] {
-  return Array.from(root.querySelectorAll<T>(selector)).filter((element) => !isElementHidden(element));
 }
 
 function urlKind(document: Document): PostSlotDiagnostics["urlKind"] {
@@ -65,24 +59,11 @@ function urlKind(document: Document): PostSlotDiagnostics["urlKind"] {
   return "other";
 }
 
-function safeText(value: string | null | undefined): string {
-  return cleanText(value).slice(0, 80);
-}
-
-function fingerprint(value: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return `ps-${(hash >>> 0).toString(16).padStart(8, "0")}`;
-}
-
 function createFingerprint(diagnostics: PostSlotDiagnostics, disabledButtons: boolean[]): string {
-  return fingerprint(JSON.stringify({
+  return `ps-${fnvHash(JSON.stringify({
     ...diagnostics,
     disabledButtons,
-  }));
+  }))}`;
 }
 
 function emptyDiagnostics(document: Document): PostSlotDiagnostics {
@@ -100,11 +81,11 @@ function emptyDiagnostics(document: Document): PostSlotDiagnostics {
 }
 
 function snapshot(document: Document, dialog: HTMLElement): DialogSnapshot {
-  const heading = visibleElements<HTMLElement>(dialog, '[role="heading"], h1, h2').at(0);
-  const buttons = visibleElements<HTMLButtonElement>(dialog, "button");
+  const heading = visibleAll<HTMLElement>(dialog, '[role="heading"], h1, h2').at(0);
+  const buttons = visibleAll<HTMLButtonElement>(dialog, "button");
   const buttonTexts = buttons.map((button) => safeText(button.textContent)).filter(Boolean);
   const disabledButtons = buttons.map((button) => button.disabled || button.getAttribute("aria-disabled") === "true");
-  const zeroDepositControls = visibleElements(
+  const zeroDepositControls = visibleAll(
     dialog,
     '[role="radio"][aria-label], input[type="radio"][aria-label]',
   ).filter(isZeroDepositControl);
@@ -114,12 +95,12 @@ function snapshot(document: Document, dialog: HTMLElement): DialogSnapshot {
     title: safeText(heading?.textContent),
     buttons: buttonTexts,
     disabledButtonCount: disabledButtons.filter(Boolean).length,
-    radioCount: visibleElements(dialog, '[role="radio"], input[type="radio"]').length,
-    checkboxCount: visibleElements(dialog, '[role="checkbox"], input[type="checkbox"]').length,
-    quantityControlCount: visibleElements(dialog, 'input[type="number"][aria-label$="수량"]').length,
+    radioCount: visibleAll(dialog, '[role="radio"], input[type="radio"]').length,
+    checkboxCount: visibleAll(dialog, '[role="checkbox"], input[type="checkbox"]').length,
+    quantityControlCount: visibleAll(dialog, 'input[type="number"][aria-label$="수량"]').length,
     zeroDepositControlCount: zeroDepositControls.length,
   };
-  const normalizedButtons = buttonTexts.map(normalized);
+  const normalizedButtons = buttonTexts.map(normalizedText);
   return {
     diagnostics,
     fingerprint: createFingerprint(diagnostics, disabledButtons),
@@ -144,12 +125,12 @@ function meta(
 }
 
 function optionLabels(dialog: Element, selector: string): string[] {
-  return visibleElements(dialog, selector).map((element) => safeText(element.getAttribute("aria-label")))
+  return visibleAll(dialog, selector).map((element) => safeText(element.getAttribute("aria-label")))
     .filter(Boolean);
 }
 
 function exactInspection(dialog: HTMLElement, value: DialogSnapshot): PostSlotInspection | null {
-  const label = normalized(value.diagnostics.label);
+  const label = normalizedText(value.diagnostics.label);
   const exact = meta(value, "exact", "aria-label-v1", ["exact aria-label"]);
   if (label === "테이블 타입 선택") {
     return { kind: "table_type", options: optionLabels(dialog, '[role="radio"][aria-label]'), ...exact };
@@ -164,7 +145,7 @@ function exactInspection(dialog: HTMLElement, value: DialogSnapshot): PostSlotIn
 }
 
 function supportedInspection(dialog: HTMLElement, value: DialogSnapshot): PostSlotInspection | null {
-  const title = normalized(value.diagnostics.title);
+  const title = normalizedText(value.diagnostics.title);
   const progress = value.hasNext || value.hasConfirm;
   if (title.includes("테이블") && title.includes("선택") && value.diagnostics.radioCount > 0 && progress) {
     return {

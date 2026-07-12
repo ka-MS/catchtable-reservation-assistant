@@ -8,7 +8,7 @@ import {
   normalized,
   type PostSlotInspection,
 } from "./post-slot-inspection.js";
-import { isElementHidden } from "./dom.js";
+import { isDisabled, isElementHidden } from "./dom.js";
 
 export type { PostSlotCertainty, PostSlotDiagnostics, PostSlotInspection } from "./post-slot-inspection.js";
 
@@ -24,11 +24,6 @@ const TABLE_LABEL: Record<Exclude<TablePreference, "any">, string> = {
   bar: "바",
   room: "룸",
 };
-
-function isDisabled(element: Element): boolean {
-  return element.getAttribute("aria-disabled") === "true"
-    || ("disabled" in element && (element as HTMLButtonElement | HTMLInputElement).disabled);
-}
 
 function isChecked(element: Element): boolean {
   if ("checked" in element) return (element as HTMLInputElement).checked;
