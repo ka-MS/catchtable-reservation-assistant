@@ -882,6 +882,10 @@ fieldset:disabled {
   gap: 10px;
 }
 
+.job-list[hidden] {
+  display: none;
+}
+
 .job-empty {
   color: #6b746f;
   text-align: center;
