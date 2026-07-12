@@ -35,6 +35,7 @@
 | 제품·UI·경계 | [specs/](specs/README.md) |
 | 아키텍처·ADR | [design/](design/architecture.md) |
 | 테스트 | [test-strategy.md](testing/test-strategy.md) |
+| Chrome DevTools MCP AI 운영 | [chrome-devtools-mcp-ai-guide.md](testing/chrome-devtools-mcp-ai-guide.md) |
 | 브랜치 전략 | [branch-strategy.md](development/branch-strategy.md) |
 | 실제 검증 | [mvp-checklist.md](verification/mvp-checklist.md) |
 | 적대적 리뷰 | [adversarial-review.md](reviews/adversarial-review.md) |
