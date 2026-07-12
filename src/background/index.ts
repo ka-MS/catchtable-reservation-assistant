@@ -11,7 +11,7 @@ import type {
 } from "../shared/types.js";
 import { validateReservationConfig } from "../shared/config.js";
 import { appendRunEvent, SerialTaskQueue } from "./storage.js";
-import { navigateTab, sameRestaurant } from "./navigation.js";
+import { navigateTab, sameRestaurant, leftReservationFlow } from "./navigation.js";
 import { SavedConfigRepository } from "./saved-config-repository.js";
 import { ScheduledJobRepository } from "./scheduled-job-repository.js";
 import { JobScheduler, type LaunchResult } from "./scheduler.js";
@@ -431,7 +431,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
       run?.tabId === tabId &&
       config &&
       !TERMINAL_STATES.has(run.state) &&
-      !sameRestaurant(changeInfo.url, config.targetUrl)
+      leftReservationFlow(changeInfo.url, config.targetUrl)
     ) {
       const update = chrome.storage.local.set({ activeRun: { ...run, state: "STOPPED", updatedAt: Date.now() } });
       const trace = traceWrites.enqueue(() => traceIngestor.recordBackgroundTerminal(

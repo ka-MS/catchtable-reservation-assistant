@@ -25,6 +25,20 @@ export function sameRestaurant(tabUrl: string | undefined, targetUrl: string): b
   }
 }
 
+// 실런 관측 2026-07-12: 후속 진행이 성공하면 탭이 /ct/shop/ 에서 /ct/reservation/form 으로
+// 이동한다. 이는 정상 목적지이므로 "식당 이탈" 가드에서 제외해야 한다.
+export function leftReservationFlow(tabUrl: string | undefined, targetUrl: string): boolean {
+  if (sameRestaurant(tabUrl, targetUrl)) return false;
+  try {
+    const tab = new URL(tabUrl ?? "");
+    const target = new URL(targetUrl);
+    if (tab.origin === target.origin && tab.pathname.startsWith("/ct/reservation/")) return false;
+  } catch {
+    return true;
+  }
+  return true;
+}
+
 export async function navigateTab(
   tabId: number,
   targetUrl: string,
