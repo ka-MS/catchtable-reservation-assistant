@@ -31,6 +31,10 @@ function harness({
   prepareTarget = () => ({ status: "ready", message: "목표 날짜가 준비됐습니다." }),
   postSlot = { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "unused" }) },
   onCalendarInspect = () => undefined,
+  captureSnapshot = () => ({
+    urlKind: "shop", headings: [], buttons: ["확인"], disabledButtons: [false],
+    disabledButtonCount: 0, dialogLabel: "", dialogTitle: "", textSnippet: "", fingerprint: "ss-test",
+  }),
 } = {}) {
   let now = 0;
   let monotonicNow = 0;
@@ -85,6 +89,7 @@ function harness({
     emit: (event) => events.push(event),
     trace: (code, severity, message, options) => traces.push({ code, severity, message, options }),
     flushTrace: async () => undefined,
+    captureSnapshot,
     runId: () => "run-1",
   });
   return {
@@ -623,4 +628,36 @@ test("missing adjacent date hands control to the user", async () => {
   });
   const result = await h.orchestrator.start(config());
   assert.equal(result.state, "HANDED_OFF");
+});
+
+test("attaches a diagnostic snapshot on a waiting-only hand-off", async () => {
+  const h = harness({
+    entry: { inspect: () => ({ reservationOpen: false, ctaAvailable: false, waitingOnly: true }), openReservation: () => false },
+  });
+  const result = await h.orchestrator.start(config({ entryMode: "auto" }));
+  assert.equal(result.state, "HANDED_OFF");
+  const handoff = h.events.find((e) => e.data?.state === "HANDED_OFF");
+  assert.equal(handoff?.data?.snapshotFingerprint, "ss-test");
+  assert.equal(handoff?.data?.snapshotRunState, "ENTERING_RESERVATION");
+});
+
+test("normal form-arrival hand-off carries no snapshot", async () => {
+  const h = harness({ slotAfterCycles: 1, postSlot: { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "unused" }) } });
+  const result = await h.orchestrator.start(config({ dryRun: false }));
+  assert.equal(result.state, "HANDED_OFF");
+  const handoff = h.events.find((e) => e.data?.state === "HANDED_OFF");
+  assert.equal(handoff?.data?.snapshotFingerprint, undefined);
+  assert.equal(handoff?.data?.postSlotStage, "form");
+});
+
+test("a throwing captureSnapshot does not mask the give-up", async () => {
+  const h = harness({
+    entry: { inspect: () => ({ reservationOpen: false, ctaAvailable: false, waitingOnly: true }), openReservation: () => false },
+    captureSnapshot: () => { throw new Error("boom"); },
+  });
+  const result = await h.orchestrator.start(config({ entryMode: "auto" }));
+  assert.equal(result.state, "HANDED_OFF");
+  const handoff = h.events.find((e) => e.data?.state === "HANDED_OFF");
+  assert.equal(handoff?.data?.snapshotFingerprint, undefined);
+  assert.equal(handoff?.data?.snapshotRunState, "ENTERING_RESERVATION");
 });

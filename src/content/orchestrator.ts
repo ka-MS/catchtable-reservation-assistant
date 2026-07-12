@@ -162,10 +162,40 @@ class RunSession {
     return this.finish();
   }
 
+  private failureData(extra?: RunEvent["data"]): RunEvent["data"] {
+    let snapshot: StageSnapshot | null = null;
+    try {
+      snapshot = this.deps.captureSnapshot?.() ?? null;
+    } catch {
+      snapshot = null;
+    }
+    return {
+      ...stageSnapshotData(snapshot),
+      snapshotRunState: this.machine.state,
+      ...extra,
+    };
+  }
+
+  private diagnosticHandOff(reason: string, extra?: RunEvent["data"]): RunResult {
+    const data = this.failureData(extra);
+    this.transition("HANDED_OFF", reason, { data });
+    return this.finish();
+  }
+
+  private handOff(reason: string, extra?: RunEvent["data"]): RunResult {
+    this.transition("HANDED_OFF", reason, extra ? { data: extra } : {});
+    return this.finish();
+  }
+
+  private timedOut(reason: string): RunResult {
+    const data = this.failureData();
+    this.transition("TIMED_OUT", reason, { data });
+    return this.finish();
+  }
+
   private stopOrTimeout(result: "ready" | "timed_out" | "stopped"): RunResult | null {
     if (result === "timed_out") {
-      this.transition("TIMED_OUT", "감시 종료 시각에 도달했습니다.");
-      return this.finish();
+      return this.timedOut("감시 종료 시각에 도달했습니다.");
     }
     if (result === "stopped") {
       return this.finishStopped();
@@ -188,12 +218,14 @@ class RunSession {
     } catch (error) {
       if (!TERMINAL.has(this.machine.state)) {
         const message = error instanceof Error ? error.message : "알 수 없는 실행 오류";
+        const failure = this.failureData();
         this.deps.trace?.("RUN_FAILED", "error", message, {
           serverAt: this.serverClockReady ? this.serverClock.now() : null,
           state: "FAILED",
+          attributes: failure as TraceAttributes,
           error,
         });
-        this.transition("FAILED", message, { error: message });
+        this.transition("FAILED", message, { error: message, data: failure });
       }
       return this.finish();
     } finally {
@@ -234,14 +266,12 @@ class RunSession {
     while (true) {
       if (controller.signal.aborted) return this.finishStopped();
       if (serverClock.now() >= config.stopAtMs) {
-        this.transition("TIMED_OUT", "예약 페이지 준비 중 감시 종료 시각에 도달했습니다.");
-        return this.finish();
+        return this.timedOut("예약 페이지 준비 중 감시 종료 시각에 도달했습니다.");
       }
       const entry = this.deps.entry.inspect();
       if (entry.reservationOpen) break;
       if (entry.waitingOnly) {
-        this.transition("HANDED_OFF", "이 식당은 현장 웨이팅만 가능해 예약창을 열 수 없습니다.");
-        return this.finish();
+        return this.diagnosticHandOff("이 식당은 현장 웨이팅만 가능해 예약창을 열 수 없습니다.");
       }
       if (!entryClicked && entry.ctaAvailable && this.deps.entry.openReservation()) {
         entryClicked = true;
@@ -252,10 +282,9 @@ class RunSession {
         this.emit("action", "매장 홍보 안내 창을 닫았습니다.");
       }
       if (serverClock.now() >= entryDeadline) {
-        this.transition("HANDED_OFF", entryClicked
+        return this.diagnosticHandOff(entryClicked
           ? "예약하기 클릭 후 달력 화면을 확인할 수 없습니다."
           : "식당 페이지에서 예약하기 버튼을 찾을 수 없습니다.");
-        return this.finish();
       }
       if (!(await this.deps.sleep(50, controller.signal))) return this.finishStopped();
     }
@@ -272,19 +301,16 @@ class RunSession {
     while (true) {
       if (controller.signal.aborted) return this.finishStopped();
       if (serverClock.now() >= config.stopAtMs) {
-        this.transition("TIMED_OUT", "예약 날짜 준비 중 감시 종료 시각에 도달했습니다.");
-        return this.finish();
+        return this.timedOut("예약 날짜 준비 중 감시 종료 시각에 도달했습니다.");
       }
       const preparation = this.deps.calendar.prepareTarget(config.reservationDate);
       if (preparation.status === "ready") break;
       if (preparation.status === "blocked") {
-        this.transition("HANDED_OFF", preparation.message);
-        return this.finish();
+        return this.diagnosticHandOff(preparation.message);
       }
       if (preparation.status === "acted") this.emit("action", preparation.message);
       if (serverClock.now() >= dateDeadline) {
-        this.transition("HANDED_OFF", "목표 월 또는 날짜 선택 상태를 제한 시간 안에 확인할 수 없습니다.");
-        return this.finish();
+        return this.diagnosticHandOff("목표 월 또는 날짜 선택 상태를 제한 시간 안에 확인할 수 없습니다.");
       }
       if (!(await this.deps.sleep(50, controller.signal))) return this.finishStopped();
     }
@@ -302,22 +328,19 @@ class RunSession {
     while (true) {
       if (controller.signal.aborted) return this.finishStopped();
       if (serverClock.now() >= config.stopAtMs) {
-        this.transition("TIMED_OUT", "예약 인원 준비 중 감시 종료 시각에 도달했습니다.");
-        return this.finish();
+        return this.timedOut("예약 인원 준비 중 감시 종료 시각에 도달했습니다.");
       }
       const person = this.deps.person.inspect(config.personCount);
       if (person.targetSelected) break;
       if (person.ready && !person.targetAvailable) {
-        this.transition("HANDED_OFF", `이 식당에서 ${config.personCount}명을 선택할 수 없습니다.`);
-        return this.finish();
+        return this.diagnosticHandOff(`이 식당에서 ${config.personCount}명을 선택할 수 없습니다.`);
       }
       if (!personClicked && person.targetAvailable && this.deps.person.select(config.personCount)) {
         personClicked = true;
         this.emit("action", `${config.personCount}명으로 설정했습니다.`);
       }
       if (serverClock.now() >= personDeadline) {
-        this.transition("HANDED_OFF", "예약 인원 선택 상태를 제한 시간 안에 확인할 수 없습니다.");
-        return this.finish();
+        return this.diagnosticHandOff("예약 인원 선택 상태를 제한 시간 안에 확인할 수 없습니다.");
       }
       if (!(await this.deps.sleep(50, controller.signal))) return this.finishStopped();
     }
@@ -328,8 +351,7 @@ class RunSession {
     this.transition("PREPARING_PAGE", "예약 모달과 목표 날짜를 확인합니다.");
     const setup = this.deps.calendar.inspect(this.config.reservationDate);
     if (!setup.targetAvailable || !setup.targetSelected || setup.adjacentDate === null) {
-      this.transition("HANDED_OFF", "목표 날짜 선택 또는 인접 가용 날짜를 확인할 수 없습니다. 페이지를 준비한 뒤 새로 시작하세요.");
-      return this.finish();
+      return this.diagnosticHandOff("목표 날짜 선택 또는 인접 가용 날짜를 확인할 수 없습니다. 페이지를 준비한 뒤 새로 시작하세요.");
     }
     this.adjacentDate = setup.adjacentDate;
     return null;
@@ -376,8 +398,7 @@ class RunSession {
     this.transition("REFRESHING_SLOTS", "날짜 토글로 예약 슬롯을 갱신합니다.");
     while (!this.controller.signal.aborted) {
       if (serverClock.now() >= config.stopAtMs) {
-        this.transition("TIMED_OUT", "감시 종료 시각에 도달했습니다.");
-        return this.finish();
+        return this.timedOut("감시 종료 시각에 도달했습니다.");
       }
       const cycle = await this.runToggleCycle();
       if (cycle.kind === "terminal") return cycle.result;
@@ -440,13 +461,11 @@ class RunSession {
     adjacentDateValue = adjacentDate;
     if (!currentSetup.targetAvailable || adjacentDate === null) {
       traceCycle("SETUP_INVALID");
-      this.transition("HANDED_OFF", "달력 상태가 바뀌어 안전하게 슬롯을 갱신할 수 없습니다.");
-      return { kind: "terminal", result: this.finish() };
+      return { kind: "terminal", result: this.diagnosticHandOff("달력 상태가 바뀌어 안전하게 슬롯을 갱신할 수 없습니다.") };
     }
     if (!this.deps.calendar.clickDate(adjacentDate)) {
       traceCycle("ADJACENT_CLICK_FAILED");
-      this.transition("HANDED_OFF", "인접 날짜를 선택할 수 없습니다.");
-      return { kind: "terminal", result: this.finish() };
+      return { kind: "terminal", result: this.diagnosticHandOff("인접 날짜를 선택할 수 없습니다.") };
     }
     adjacentClickedAt = serverClock.now();
     this.adjacentTiming = {
@@ -466,8 +485,7 @@ class RunSession {
     if (targetWaitExit) return { kind: "terminal", result: targetWaitExit };
     if (!this.deps.calendar.clickDate(config.reservationDate)) {
       traceCycle("TARGET_CLICK_FAILED");
-      this.transition("HANDED_OFF", "목표 날짜를 다시 선택할 수 없습니다.");
-      return { kind: "terminal", result: this.finish() };
+      return { kind: "terminal", result: this.diagnosticHandOff("목표 날짜를 다시 선택할 수 없습니다.") };
     }
     targetClickedAt = serverClock.now();
     this.targetTiming = {
@@ -485,8 +503,7 @@ class RunSession {
     }
     if (serverClock.now() >= config.stopAtMs) {
       traceCycle("TIMED_OUT_AFTER_TARGET");
-      this.transition("TIMED_OUT", "감시 종료 시각에 도달했습니다.");
-      return { kind: "terminal", result: this.finish() };
+      return { kind: "terminal", result: this.timedOut("감시 종료 시각에 도달했습니다.") };
     }
     const selectionDeadline = Math.min(plan.targetClickAtMs + 60, config.stopAtMs);
     while (
@@ -500,8 +517,7 @@ class RunSession {
     }
     if (!this.deps.calendar.inspect(config.reservationDate).targetSelected) {
       traceCycle("SELECTION_UNCONFIRMED");
-      this.transition("HANDED_OFF", "목표 날짜 선택 상태를 확인할 수 없습니다.");
-      return { kind: "terminal", result: this.finish() };
+      return { kind: "terminal", result: this.diagnosticHandOff("목표 날짜 선택 상태를 확인할 수 없습니다.") };
     }
     targetSelectedAt = serverClock.now();
 
@@ -548,8 +564,7 @@ class RunSession {
       return this.finish();
     }
     if (serverClock.now() >= config.stopAtMs) {
-      this.transition("TIMED_OUT", "클릭 직전 감시 종료 시각에 도달했습니다.");
-      return this.finish();
+      return this.timedOut("클릭 직전 감시 종료 시각에 도달했습니다.");
     }
     if (!this.deps.slots.clickSlot(candidate)) {
       this.deps.trace?.("SLOT_CLICKED", "warn", `${candidate.label} 슬롯 클릭에 실패했습니다.`, {
@@ -570,8 +585,7 @@ class RunSession {
       data: slotSelectedEventData(slotSelectedAt, config.openAtMs),
     });
     if (!config.postSlotEnabled) {
-      this.transition("HANDED_OFF", "후속 선택 자동 진행이 꺼져 있어 슬롯 선택까지만 완료했습니다.");
-      return this.finish();
+      return this.handOff("후속 선택 자동 진행이 꺼져 있어 슬롯 선택까지만 완료했습니다.");
     }
     this.transition("ADVANCING_RESERVATION", "예약 폼까지 선택적 중간 단계를 진행합니다.");
     return this.advancePostSlot();
@@ -599,20 +613,14 @@ class RunSession {
           if (!(await this.deps.sleep(20, controller.signal))) break;
           continue;
         }
-        this.transition("HANDED_OFF", "예약 폼에 도착했습니다. 약관 확인과 최종 예약은 직접 진행하세요.", {
-          data: {
-            ...postSlotEventData(inspection),
-            openDeltaMs: Math.round(formSeenAtMs - config.openAtMs),
-            timingServerAtMs: formSeenAtMs,
-          },
+        return this.handOff("예약 폼에 도착했습니다. 약관 확인과 최종 예약은 직접 진행하세요.", {
+          ...postSlotEventData(inspection),
+          openDeltaMs: Math.round(formSeenAtMs - config.openAtMs),
+          timingServerAtMs: formSeenAtMs,
         });
-        return this.finish();
       }
       if (inspection.kind === "unknown") {
-        this.transition("HANDED_OFF", `${inspection.label} 화면은 자동 진행하지 않습니다.`, {
-          data: postSlotEventData(inspection),
-        });
-        return this.finish();
+        return this.diagnosticHandOff(`${inspection.label} 화면은 자동 진행하지 않습니다.`, postSlotEventData(inspection));
       }
       if (inspection.kind === "waiting") {
         if (!(await this.deps.sleep(20, controller.signal))) break;
@@ -637,18 +645,17 @@ class RunSession {
       };
       this.emit("action", action.message, actionData);
       if (action.status === "blocked") {
-        this.transition("HANDED_OFF", action.message);
-        return this.finish();
+        return this.diagnosticHandOff(action.message, postSlotEventData(inspection));
       }
       if (!(await this.deps.sleep(30, controller.signal))) break;
     }
     if (controller.signal.aborted) {
       return this.finishStopped();
     }
-    this.transition("HANDED_OFF", "후속 예약 화면을 5초 안에 확인하지 못했습니다.", lastInspection === null ? {} : {
-      data: postSlotEventData(lastInspection),
-    });
-    return this.finish();
+    return this.diagnosticHandOff(
+      "후속 예약 화면을 5초 안에 확인하지 못했습니다.",
+      lastInspection === null ? undefined : postSlotEventData(lastInspection),
+    );
   }
 }
 
