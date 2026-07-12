@@ -1,24 +1,22 @@
 # HANDOFF
 
 **갱신:** 2026-07-12
-**브랜치:** `codex/feat-failure-snapshot`
+**브랜치:** `main`
 **작업 로그:** `docs/worklog/2026-07-12-06-failure-snapshot.md`
 
 ## 현재 상태
 
-오케스트레이터 리팩터(A) 위에 실패 스냅샷(B+C)을 구현했다. 실패·포기·예외 순간에 단일 범용 `captureStageSnapshot`으로 DOM 증거(url·headings·buttons·textSnippet·fingerprint·실패 단계)를 남긴다. 정상 인계 2곳(폼 도착·postSlotEnabled=false)은 스냅샷 없이, 나머지 포기/예외는 `diagnosticHandOff`/`timedOut`로 중앙집중해 첨부한다. PII(전화·이메일) 마스킹, snippet은 dialog/sheet에서만. 사이드패널 이벤트 로그에 스냅샷 라인 표시.
+다음 4개 작업을 main에 병합했다(181개 테스트 green):
 
-## 브랜치 스택 (병합 순서)
-
-1. `codex/fix-postslot-timeout-diagnostics` (승인제 시트·홍보 인터스티셜, 수동 검증 대기)
-2. `codex/refactor-orchestrator-session` (A 구조 리팩터, 동작 무변경)
-3. `codex/feat-failure-snapshot` (B+C, 현재)
+1. **post-slot 승인제/홍보 자동 진행** — `role="dialog"` 없는 승인제 시트(`request-sheet-v1`)와 홍보 인터스티셜을 인식해 자동 진행. 이시즈에 실런으로 검증 완료(승인제 시트 → 예약 신청 → 예약금 확인 → 예약 폼 도착).
+2. **네비게이션 가드 수정** — 성공 경로의 `/ct/reservation/form` 이동을 "식당 이탈"로 오판해 스퓨리어스 STOPPED를 내던 버그를 `leftReservationFlow()`로 수정(실런에서 드러남).
+3. **오케스트레이터 구조 리팩터(A)** — 626줄 `start()`를 per-run `RunSession` 메서드 객체로 분해. 동작 무변경.
+4. **실패 스냅샷(B+C)** — 실패·포기·예외 시 `captureStageSnapshot`으로 DOM 증거(텍스트 스니펫·fingerprint·실패 단계) 캡처. 정상 인계는 스냅샷 없음, PII 마스킹, 사이드패널·영속 trace 상세에 표시.
 
 ## 다음 작업
 
-1. `chrome://extensions` 재로드 후 실사용 확인: unknown 유발 화면에서 이벤트 로그에 `스냅샷:` 라인·textSnippet이 남는지, 정상 폼 도착엔 스냅샷 없는지.
-2. 위 순서대로 병합(각 하위 브랜치 수동 검증 후).
-3. 남은 후보: D(어댑터 DOM 쿼리 중복 제거), XHR 응답 감시, JSONL 내보내기.
+- **D. 어댑터 DOM 쿼리 중복 제거** — 설계 초안 `docs/specs/orchestrator-refactor/60-dedup-design.md` 있음. main에서 `codex/refactor-adapter-dom` 따서 진행. 5개 어댑터의 `querySelectorAll→isElementHidden→파싱` 중복을 `dom.ts`로 모으고 어댑터 교차 의존(entry→post-slot-inspection) 제거. 동작 무변경.
+- 기타 후보: XHR 응답 감시(감지 지연 제거), JSONL 내보내기.
 
 ## 검증
 
@@ -27,4 +25,4 @@ npm run check   # WSL: wsl.exe -d ubuntu -e bash -lc "cd ~/source/catchtable-res
 git status --short --branch
 ```
 
-단위·fixture 테스트 177개와 전체 자동 게이트가 통과했다. 기존 orchestrator 18개는 무수정 통과.
+단위·fixture 테스트 181개와 전체 자동 게이트가 통과했다. 병합 전 브랜치(postslot·A·B/C)는 삭제됐다.
