@@ -16,6 +16,12 @@ D 병합 검증 실런에서 초기 시계 보정(−80ms, 주장 정밀도 ±30
 - `o` 편차가 `l`이 큰 샘플에 집중되면 → 지연 비대칭(가설 ①).
 - `d`가 비단조로 튀면(뒤 샘플의 Date가 앞보다 과거) → 서로 다른 서버 응답 확정.
 
+## 후속: trace 상세 표시 수정
+
+첫 판독 실런에서 `clockSampleDetail`이 사이드패널 trace 상세의 **앞 6개 속성 제한**에 잘려 보이지 않았다(7번째 `clockPhase`부터 절단). `trace-view.ts`의 `eventDetail`에 `CLOCK_SYNCED` 특수 케이스를 추가해 `phase · 오프셋 · method ±정밀도 · 샘플 <상세>` 형식으로 전부 표시한다. 다른 이벤트의 6개 제한은 그대로 둔다(범용 해제는 별도 판단).
+
+참고: 두 번째 실런에서도 오프셋 점프가 재현됐다(초기 −44ms ±324 → 최종 +1068ms ±138). 두 실런 모두 "초기 ≈ −60, 최종 ≈ +1100" 패턴 — 체계적 원인(백엔드 시계 편차 또는 초기 고지연 편향) 신호.
+
 ## 검증
 
-`npm run check` 189개 테스트 green (신규 4: boundary/median sampleDetail, 폴백 null, orchestrator metric 전달·생략). dist·independence 게이트 통과.
+`npm run check` 191개 테스트 green (신규 6: boundary/median sampleDetail, 폴백 null, orchestrator metric 전달·생략, trace-view CLOCK_SYNCED 표시 2건). dist·independence 게이트 통과.

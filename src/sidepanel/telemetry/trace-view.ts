@@ -31,6 +31,16 @@ function eventDetail(event: TraceEvent): string {
     const scans = event.attributes.slotScanCount;
     return `#${cycle} · ${result} · 인접 ${adjacent ?? "-"} · 목표 ${target ?? "-"} · 탐색 ${scans ?? 0}회`;
   }
+  if (event.code === "CLOCK_SYNCED") {
+    const phase = event.attributes.clockPhase ?? "-";
+    const offset = event.attributes.clockOffsetMs;
+    const precision = event.attributes.clockPrecisionMs;
+    const offsetText = typeof offset === "number" ? `${Math.round(offset)}ms` : "-";
+    const precisionText = typeof precision === "number" ? `±${Math.round(precision)}ms` : "±-";
+    const base = `${phase} · 오프셋 ${offsetText} · ${event.attributes.clockMethod ?? "-"} ${precisionText}`;
+    const sampleDetail = event.attributes.clockSampleDetail;
+    return typeof sampleDetail === "string" && sampleDetail !== "" ? `${base} · 샘플 ${sampleDetail}` : base;
+  }
   if (typeof event.attributes.snapshotFingerprint === "string") {
     const stage = event.attributes.snapshotRunState ?? "-";
     const title = event.attributes.snapshotDialogTitle || event.attributes.snapshotDialogLabel || "제목 없음";

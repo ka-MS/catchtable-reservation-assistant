@@ -72,6 +72,46 @@ test("trace view appends live batches incrementally and caps the DOM at one hund
   assert.equal(document.querySelector("#trace-event-count").textContent, "100개");
 });
 
+test("clock sync detail shows phase, precision, and the per-sample breakdown past the attribute cap", () => {
+  const document = documentFixture();
+  const view = new TraceHistoryView(document, { select: () => undefined, remove: () => undefined });
+  view.renderRuns([run("run-c", 1)]);
+  view.renderEvents([{
+    schemaVersion: 1, runId: "run-c", seq: 1, code: "CLOCK_SYNCED", severity: "trace",
+    component: "content", localAt: 1, serverAt: 1, state: "SYNCING_CLOCK", message: "보정",
+    attributes: {
+      eventKind: "metric",
+      clockOffsetMs: 1067.949951171875, clockSamples: 2, clockSpreadMs: 276.1,
+      clockFallback: false, clockMethod: "boundary", clockPrecisionMs: 138.05,
+      clockPhase: "final", clockSampleDetail: "o-44 l648 d0 | o1068 l95 d1000",
+    },
+  }]);
+  const detail = document.querySelector("#trace-event-list .event-detail")?.textContent ?? "";
+  assert.match(detail, /final/);
+  assert.match(detail, /오프셋 1068ms/);
+  assert.match(detail, /boundary ±138ms/);
+  assert.match(detail, /샘플 o-44 l648 d0 \| o1068 l95 d1000/);
+});
+
+test("clock sync detail omits the sample section when no breakdown was recorded", () => {
+  const document = documentFixture();
+  const view = new TraceHistoryView(document, { select: () => undefined, remove: () => undefined });
+  view.renderRuns([run("run-c", 1)]);
+  view.renderEvents([{
+    schemaVersion: 1, runId: "run-c", seq: 1, code: "CLOCK_SYNCED", severity: "trace",
+    component: "content", localAt: 1, serverAt: 1, state: "SYNCING_CLOCK", message: "보정",
+    attributes: {
+      eventKind: "metric",
+      clockOffsetMs: -43.625, clockSamples: 2, clockSpreadMs: 647.65,
+      clockFallback: false, clockMethod: "boundary", clockPrecisionMs: 323.83,
+      clockPhase: "initial",
+    },
+  }]);
+  const detail = document.querySelector("#trace-event-list .event-detail")?.textContent ?? "";
+  assert.match(detail, /initial · 오프셋 -44ms · boundary ±324ms/);
+  assert.doesNotMatch(detail, /샘플/);
+});
+
 test("persisted trace detail surfaces snapshot identity fields (snippet, fingerprint, run-state)", () => {
   const document = documentFixture();
   const view = new TraceHistoryView(document, { select: () => undefined, remove: () => undefined });
