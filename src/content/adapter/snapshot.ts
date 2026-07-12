@@ -1,4 +1,4 @@
-import { cleanText, isElementHidden } from "./dom.js";
+import { cleanText, fnvHash, isDisabled, safeText, visibleAll } from "./dom.js";
 import { findActiveDialog, findVisiblePresentationSheet } from "./dialog.js";
 
 export interface StageSnapshot {
@@ -22,10 +22,6 @@ function urlKind(document: Document): StageSnapshot["urlKind"] {
   return "other";
 }
 
-function safeText(value: string | null | undefined): string {
-  return cleanText(value).slice(0, 80);
-}
-
 function maskPii(value: string): string {
   return value
     // 전화번호: 하이픈·점·공백·구분자 없음 모두 마스킹.
@@ -33,41 +29,26 @@ function maskPii(value: string): string {
     .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "###@###");
 }
 
-function visible<T extends Element>(root: ParentNode, selector: string): T[] {
-  return Array.from(root.querySelectorAll<T>(selector)).filter((el) => !isElementHidden(el));
-}
-
-function hash(value: string): string {
-  // 동적 숫자를 지워 구조 동일 화면이 같은 fingerprint를 받게 한다.
-  const normalized = value.replace(/\d+/g, "#");
-  let h = 0x811c9dc5;
-  for (let i = 0; i < normalized.length; i += 1) {
-    h ^= normalized.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return `ss-${(h >>> 0).toString(16).padStart(8, "0")}`;
-}
-
 export function captureStageSnapshot(document: Document): StageSnapshot {
   const dialogEl = findActiveDialog(document) ?? findVisiblePresentationSheet(document);
   const container: ParentNode = dialogEl ?? document.querySelector("main") ?? document.body;
-  const headings = visible<HTMLElement>(container, 'h1, h2, [role="heading"]')
+  const headings = visibleAll<HTMLElement>(container, 'h1, h2, [role="heading"]')
     .map((el) => safeText(el.textContent)).filter(Boolean).slice(0, MAX_ITEMS);
-  const buttonEls = visible<HTMLButtonElement>(container, "button").slice(0, MAX_ITEMS);
+  const buttonEls = visibleAll<HTMLButtonElement>(container, "button").slice(0, MAX_ITEMS);
   const buttons = buttonEls.map((b) => safeText(b.textContent)).filter(Boolean);
-  const disabledButtons = buttonEls.map((b) => b.disabled || b.getAttribute("aria-disabled") === "true");
+  const disabledButtons = buttonEls.map(isDisabled);
   const disabledButtonCount = disabledButtons.filter(Boolean).length;
   const kind = urlKind(document);
   const dialogLabel = dialogEl ? safeText(dialogEl.getAttribute("aria-label")) : "";
   const dialogTitle = dialogEl
-    ? safeText(visible<HTMLElement>(dialogEl, 'h1, h2, [role="heading"]').at(0)?.textContent)
+    ? safeText(visibleAll<HTMLElement>(dialogEl, 'h1, h2, [role="heading"]').at(0)?.textContent)
     : "";
   const textSnippet = (dialogEl && kind !== "reservation_form")
     ? maskPii(cleanText(dialogEl.textContent)).slice(0, SNIPPET_LEN)
     : "";
-  const fingerprint = hash(JSON.stringify({
+  const fingerprint = `ss-${fnvHash(JSON.stringify({
     kind, headings, buttons, disabledButtons, dialogLabel, dialogTitle,
-  }));
+  }).replace(/\d+/g, "#"))}`;
   return {
     urlKind: kind,
     headings,

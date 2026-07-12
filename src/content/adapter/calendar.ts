@@ -1,4 +1,4 @@
-import { isElementHidden } from "./dom.js";
+import { isDisabled, visibleAll } from "./dom.js";
 
 export interface CalendarInspection {
   targetAvailable: boolean;
@@ -97,7 +97,7 @@ export class CalendarAdapter {
     }
     const direction = displayedMonth < targetMonth ? "Next page" : "Previous page";
     const control = this.monthControl(direction);
-    if (!control || control.disabled || control.getAttribute("aria-disabled") === "true") {
+    if (!control || isDisabled(control)) {
       return { status: "blocked", message: "목표 월로 이동할 수 없습니다." };
     }
     control.click();
@@ -106,8 +106,7 @@ export class CalendarAdapter {
   }
 
   private readDisplayedMonth(): string | null {
-    for (const button of Array.from(this.document.querySelectorAll<HTMLButtonElement>("button"))) {
-      if (isElementHidden(button)) continue;
+    for (const button of visibleAll<HTMLButtonElement>(this.document, "button")) {
       const text = (button.textContent ?? "").replace(/\s+/g, "");
       const match = text.match(/^(\d{4})년(\d{1,2})월$/);
       if (match) return `${match[1]}-${match[2].padStart(2, "0")}`;
@@ -116,14 +115,12 @@ export class CalendarAdapter {
   }
 
   private monthControl(label: "Previous page" | "Next page"): HTMLButtonElement | null {
-    return Array.from(this.document.querySelectorAll<HTMLButtonElement>(`button[aria-label="${label}"]`))
-      .find((button) => !isElementHidden(button)) ?? null;
+    return visibleAll<HTMLButtonElement>(this.document, `button[aria-label="${label}"]`).at(0) ?? null;
   }
 
   private readCells(): DateCell[] {
     // 실측 2026-07-10: docs/analysis/site-behavior.md §3 날짜 셀.
-    return Array.from(this.document.querySelectorAll<HTMLElement>('div[role="button"][aria-label]')).flatMap((element) => {
-      if (isElementHidden(element)) return [];
+    return visibleAll<HTMLElement>(this.document, 'div[role="button"][aria-label]').flatMap((element) => {
       const parsed = parseAriaDate(element.getAttribute("aria-label") ?? "");
       if (!parsed) return [];
       return [{

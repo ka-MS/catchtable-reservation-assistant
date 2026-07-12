@@ -1,8 +1,6 @@
 import { fnvHash, normalizedText, safeText, visibleAll } from "./dom.js";
 import { findActiveDialog, findPromoDismissButton, findRequestSheet } from "./dialog.js";
 
-export { findActiveDialog, findPromoDismissButton, findRequestSheet } from "./dialog.js";
-
 export type PostSlotCertainty = "exact" | "supported" | "unknown";
 
 export interface PostSlotDiagnostics {
@@ -45,8 +43,6 @@ interface DialogSnapshot {
   hasNext: boolean;
   hasConfirm: boolean;
 }
-
-export { normalizedText as normalized } from "./dom.js";
 
 export function isZeroDepositControl(element: Element): boolean {
   const label = normalizedText(element.getAttribute("aria-label"));

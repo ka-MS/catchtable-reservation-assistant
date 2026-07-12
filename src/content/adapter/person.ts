@@ -1,4 +1,4 @@
-import { isElementHidden } from "./dom.js";
+import { isDisabled, visibleAll } from "./dom.js";
 
 export interface PersonInspection {
   ready: boolean;
@@ -14,22 +14,22 @@ export class PersonAdapter {
     const target = choices.get(String(personCount));
     return {
       ready: choices.size > 0,
-      targetAvailable: target !== undefined && !target.disabled && target.getAttribute("aria-disabled") !== "true",
+      targetAvailable: target !== undefined && !isDisabled(target),
       targetSelected: target?.checked === true,
     };
   }
 
   select(personCount: number): boolean {
     const target = this.choices().get(String(personCount));
-    if (!target || target.disabled || target.getAttribute("aria-disabled") === "true" || !target.isConnected) return false;
+    if (!target || isDisabled(target) || !target.isConnected) return false;
     if (!target.checked) target.click();
     return true;
   }
 
   private choices(): Map<string, HTMLInputElement> {
     const choices = new Map<string, HTMLInputElement>();
-    for (const input of Array.from(this.document.querySelectorAll<HTMLInputElement>('input[type="radio"][name="personCount"]'))) {
-      if (isElementHidden(input) || choices.has(input.value)) continue;
+    for (const input of visibleAll<HTMLInputElement>(this.document, 'input[type="radio"][name="personCount"]')) {
+      if (choices.has(input.value)) continue;
       choices.set(input.value, input);
     }
     return choices;

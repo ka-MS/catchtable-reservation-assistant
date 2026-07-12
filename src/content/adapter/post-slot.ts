@@ -1,14 +1,11 @@
 import type { ReservationConfig, TablePreference } from "../../shared/types.js";
 import {
-  findActiveDialog,
-  findPromoDismissButton,
-  findRequestSheet,
   inspectPostSlot,
   isZeroDepositControl,
-  normalized,
   type PostSlotInspection,
 } from "./post-slot-inspection.js";
-import { isDisabled, isElementHidden } from "./dom.js";
+import { findActiveDialog, findPromoDismissButton, findRequestSheet } from "./dialog.js";
+import { isDisabled, normalizedText, visibleAll } from "./dom.js";
 
 export type { PostSlotCertainty, PostSlotDiagnostics, PostSlotInspection } from "./post-slot-inspection.js";
 
@@ -77,7 +74,7 @@ export class PostSlotAdapter {
     const expected = preference === "any" ? null : TABLE_LABEL[preference];
     const target = expected === null
       ? choices.find(isChecked) ?? choices[0]
-      : choices.find((choice) => normalized(choice.getAttribute("aria-label")).includes(normalized(expected)));
+      : choices.find((choice) => normalizedText(choice.getAttribute("aria-label")).includes(normalizedText(expected)));
     if (!target) return { status: "blocked", message: "설정한 테이블 타입을 선택할 수 없습니다." };
     if (!isChecked(target)) {
       (target as HTMLElement).click();
@@ -87,8 +84,7 @@ export class PostSlotAdapter {
   }
 
   private advanceMenu(dialog: HTMLElement, keyword: string, personCount: number): PostSlotActionResult {
-    const hasVisibleChoices = Array.from(dialog.querySelectorAll('[role="checkbox"][aria-label]'))
-      .some((choice) => !isElementHidden(choice));
+    const hasVisibleChoices = visibleAll(dialog, '[role="checkbox"][aria-label]').length > 0;
     if (hasVisibleChoices) return this.advanceMenuChoices(dialog, keyword);
     return this.advanceMenuCounts(dialog, keyword, personCount);
   }
@@ -96,9 +92,9 @@ export class PostSlotAdapter {
   private advanceMenuChoices(dialog: HTMLElement, keyword: string): PostSlotActionResult {
     const choices = this.enabledChoices(dialog, '[role="checkbox"][aria-label]');
     if (choices.length === 0) return { status: "waiting", message: "메뉴 화면 전환을 기다립니다." };
-    const query = normalized(keyword);
+    const query = normalizedText(keyword);
     const target = query
-      ? choices.find((choice) => normalized(choice.getAttribute("aria-label")).includes(query))
+      ? choices.find((choice) => normalizedText(choice.getAttribute("aria-label")).includes(query))
       : choices.find(isChecked) ?? choices[0];
     if (!target) return { status: "blocked", message: "설정한 메뉴를 선택할 수 없습니다." };
 
@@ -116,11 +112,10 @@ export class PostSlotAdapter {
 
   // 수량형 메뉴는 진행 버튼이 항상 활성이지만 총수량이 예약 인원수와 같아야만 클릭이 접수된다.
   private advanceMenuCounts(dialog: HTMLElement, keyword: string, personCount: number): PostSlotActionResult {
-    const inputs = Array.from(dialog.querySelectorAll<HTMLInputElement>('input[type="number"][aria-label]'))
-      .filter((input) => !isElementHidden(input) && (input.getAttribute("aria-label") ?? "").endsWith("수량"));
+    const inputs = visibleAll<HTMLInputElement>(dialog, 'input[type="number"][aria-label]')
+      .filter((input) => (input.getAttribute("aria-label") ?? "").endsWith("수량"));
     if (inputs.length === 0) return { status: "waiting", message: "메뉴 화면 전환을 기다립니다." };
-    const buttons = Array.from(dialog.querySelectorAll<HTMLButtonElement>("button[aria-label]"))
-      .filter((button) => !isElementHidden(button));
+    const buttons = visibleAll<HTMLButtonElement>(dialog, "button[aria-label]");
     const entries = inputs.map((input) => {
       const name = (input.getAttribute("aria-label") ?? "").replace(/\s*수량$/, "");
       return {
@@ -130,8 +125,8 @@ export class PostSlotAdapter {
         minus: buttons.find((button) => button.getAttribute("aria-label") === `${name} 수량 감소`),
       };
     });
-    const query = normalized(keyword);
-    const target = query ? entries.find((entry) => normalized(entry.name).includes(query)) : entries[0];
+    const query = normalizedText(keyword);
+    const target = query ? entries.find((entry) => normalizedText(entry.name).includes(query)) : entries[0];
     if (!target) return { status: "blocked", message: "설정한 메뉴를 선택할 수 없습니다." };
 
     const other = entries.find((entry) => entry !== target && entry.value > 0);
@@ -164,9 +159,9 @@ export class PostSlotAdapter {
   }
 
   private advanceDeposit(dialog: HTMLElement): PostSlotActionResult {
-    const depositFree = Array.from(dialog.querySelectorAll<HTMLInputElement>(
+    const depositFree = visibleAll<HTMLInputElement>(dialog,
       '[role="radio"][aria-label], input[type="radio"][aria-label]',
-    )).find((input) => !isElementHidden(input) && isZeroDepositControl(input));
+    ).find(isZeroDepositControl);
     if (!depositFree) {
       return { status: "blocked", message: "예약금 0원 결제를 선택할 수 없어 사용자에게 인계합니다." };
     }
@@ -195,9 +190,8 @@ export class PostSlotAdapter {
 
   // 예약 폼 위 홍보 안내는 화면 증거만 있으므로 확인했어요 버튼 텍스트로만 판정한다.
   private formNoticeButton(): HTMLButtonElement | null {
-    return Array.from(this.document.querySelectorAll<HTMLButtonElement>("button"))
-      .find((button) => normalized(button.textContent) === "확인했어요"
-        && !isElementHidden(button)
+    return visibleAll<HTMLButtonElement>(this.document, "button")
+      .find((button) => normalizedText(button.textContent) === "확인했어요"
         && !isDisabled(button)) ?? null;
   }
 
@@ -209,16 +203,15 @@ export class PostSlotAdapter {
   }
 
   private enabledChoices(dialog: Element, selector: string): Element[] {
-    return Array.from(dialog.querySelectorAll(selector))
-      .filter((element) => !isElementHidden(element) && !isDisabled(element));
+    return visibleAll(dialog, selector).filter((element) => !isDisabled(element));
   }
 
   private clickProgress(dialog: Element, labels: string[], message: string): PostSlotActionResult {
-    const expected = labels.map(normalized);
-    const progress = Array.from(dialog.querySelectorAll<HTMLButtonElement>("button"))
-      .find((button) => !isElementHidden(button) && expected.includes(normalized(button.textContent)));
+    const expected = labels.map(normalizedText);
+    const progress = visibleAll<HTMLButtonElement>(dialog, "button")
+      .find((button) => expected.includes(normalizedText(button.textContent)));
     if (!progress) return { status: "blocked", message: `${labels.join("/")} 버튼을 찾을 수 없습니다.` };
-    if (isDisabled(progress)) return { status: "waiting", message: `${normalized(progress.textContent)} 버튼 활성화를 기다립니다.` };
+    if (isDisabled(progress)) return { status: "waiting", message: `${normalizedText(progress.textContent)} 버튼 활성화를 기다립니다.` };
     progress.click();
     return { status: "acted", message };
   }

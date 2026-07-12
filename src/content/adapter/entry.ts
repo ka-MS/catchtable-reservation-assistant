@@ -1,14 +1,10 @@
-import { isElementHidden, normalizedText } from "./dom.js";
-import { findPromoDismissButton } from "./post-slot-inspection.js";
+import { isDisabled, isElementHidden, normalizedText, visibleAll } from "./dom.js";
+import { findPromoDismissButton } from "./dialog.js";
 
 export interface EntryInspection {
   reservationOpen: boolean;
   ctaAvailable: boolean;
   waitingOnly: boolean;
-}
-
-function isDisabled(element: HTMLButtonElement): boolean {
-  return element.disabled || element.getAttribute("aria-disabled") === "true";
 }
 
 export class EntryAdapter {
@@ -45,7 +41,6 @@ export class EntryAdapter {
   private dockButtons(): HTMLButtonElement[] {
     const dock = this.document.querySelector("aside#dock");
     if (!dock || isElementHidden(dock)) return [];
-    return Array.from(dock.querySelectorAll<HTMLButtonElement>("button"))
-      .filter((button) => !isElementHidden(button));
+    return visibleAll<HTMLButtonElement>(dock, "button");
   }
 }
