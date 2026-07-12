@@ -174,15 +174,8 @@ class RunSession {
       this.offsetMs = estimate.offsetMs;
       serverClock.anchor(this.deps.clock.now() + this.offsetMs);
       this.serverClockReady = true;
-      emit("metric", estimate.fallback ? "서버 시계 측정 실패로 로컬 시계를 사용합니다." : "서버 시계 보정을 완료했습니다.", {
-        clockOffsetMs: estimate.offsetMs,
-        clockSamples: estimate.sampleCount,
-        clockSpreadMs: estimate.spreadMs ?? -1,
-        clockFallback: estimate.fallback,
-        clockMethod: estimate.method,
-        clockPrecisionMs: estimate.precisionMs ?? -1,
-        clockPhase: "initial",
-      });
+      emit("metric", estimate.fallback ? "서버 시계 측정 실패로 로컬 시계를 사용합니다." : "서버 시계 보정을 완료했습니다.",
+        clockMetricData(estimate, "initial", estimate.offsetMs));
 
       if (config.entryMode === "auto") {
         transition("ENTERING_RESERVATION", "예약창 진입 상태를 확인합니다.");
@@ -311,15 +304,8 @@ class RunSession {
           this.offsetMs = finalEstimate.offsetMs;
           serverClock.anchor(this.deps.clock.now() + this.offsetMs);
         }
-        emit("metric", finalEstimate.fallback ? "오픈 직전 시계 재측정에 실패해 기존 기준을 유지합니다." : "오픈 직전 서버 시계를 다시 보정했습니다.", {
-          clockOffsetMs: this.offsetMs ?? 0,
-          clockSamples: finalEstimate.sampleCount,
-          clockSpreadMs: finalEstimate.spreadMs ?? -1,
-          clockFallback: finalEstimate.fallback,
-          clockMethod: finalEstimate.method,
-          clockPrecisionMs: finalEstimate.precisionMs ?? -1,
-          clockPhase: "final",
-        });
+        emit("metric", finalEstimate.fallback ? "오픈 직전 시계 재측정에 실패해 기존 기준을 유지합니다." : "오픈 직전 서버 시계를 다시 보정했습니다.",
+          clockMetricData(finalEstimate, "final", this.offsetMs ?? 0));
       }
       const waitResult = await waitUntil(config.openAtMs - config.preOpenLeadMs, {
         clock: serverClock,
@@ -353,22 +339,20 @@ class RunSession {
           {
             serverAt: serverClock.now(),
             state: "REFRESHING_SLOTS",
-            attributes: {
+            attributes: toggleCycleAttributes({
               cycle,
               phase: plan.phase,
               adjacentDate: adjacentDateValue,
               adjacentPlannedAt: plan.adjacentClickAtMs,
               adjacentClickedAt,
-              adjacentClickOk: adjacentClickedAt !== null,
               targetPlannedAt: plan.targetClickAtMs,
               targetClickedAt,
-              targetClickOk: targetClickedAt !== null,
               targetSelectedAt,
               slotScanCount,
               availableSlotCount,
               matchedSlotCount,
               result,
-            },
+            }),
           },
         );
         const adjacentWait = await waitUntil(plan.adjacentClickAtMs, {
@@ -423,14 +407,7 @@ class RunSession {
           phase: plan.phase,
         };
         if (plan.targetClickAtMs === config.openAtMs) {
-          emit("metric", "예약 오픈 정각에 목표 날짜를 클릭했습니다.", {
-            timingStage: "target_date_click",
-            timingServerAtMs: targetClickedAt,
-            openDeltaMs: Math.round(targetClickedAt - config.openAtMs),
-            scheduledServerAtMs: plan.targetClickAtMs,
-            scheduleDriftMs: Math.round(targetClickedAt - plan.targetClickAtMs),
-            togglePhase: plan.phase,
-          });
+          emit("metric", "예약 오픈 정각에 목표 날짜를 클릭했습니다.", targetClickMetricData(targetClickedAt, plan, config.openAtMs));
         }
 
         if (!(await this.deps.sleep(20, controller.signal))) {
@@ -491,25 +468,7 @@ class RunSession {
 
         const slotDetectedAt = serverClock.now();
         transition("SLOT_DETECTED", `${candidate.label} 슬롯을 감지했습니다.`, {
-          data: {
-            timingStage: "slot_detected",
-            timingServerAtMs: slotDetectedAt,
-            openDeltaMs: Math.round(slotDetectedAt - config.openAtMs),
-            ...(this.adjacentTiming ? {
-              adjacentTimingServerAtMs: this.adjacentTiming.actualAt,
-              adjacentOpenDeltaMs: Math.round(this.adjacentTiming.actualAt - config.openAtMs),
-              adjacentScheduledServerAtMs: this.adjacentTiming.scheduledAt,
-              adjacentScheduleDriftMs: Math.round(this.adjacentTiming.actualAt - this.adjacentTiming.scheduledAt),
-              adjacentTogglePhase: this.adjacentTiming.phase,
-            } : {}),
-            ...(this.targetTiming ? {
-              targetTimingServerAtMs: this.targetTiming.actualAt,
-              targetOpenDeltaMs: Math.round(this.targetTiming.actualAt - config.openAtMs),
-              targetScheduledServerAtMs: this.targetTiming.scheduledAt,
-              targetScheduleDriftMs: Math.round(this.targetTiming.actualAt - this.targetTiming.scheduledAt),
-              targetTogglePhase: this.targetTiming.phase,
-            } : {}),
-          },
+          data: slotDetectedEventData(slotDetectedAt, this.adjacentTiming, this.targetTiming, config.openAtMs),
         });
         emit("detect", "예약 조건과 일치하는 슬롯을 찾았습니다.", { slotMinutes: candidate.minutes, slotLabel: candidate.label });
         if (config.dryRun) {
@@ -536,11 +495,7 @@ class RunSession {
           attributes: { slotMinutes: candidate.minutes, slotLabel: candidate.label, clickOk: true },
         });
         transition("SLOT_SELECTED", `${candidate.label} 시간 선택을 완료했습니다.`, {
-          data: {
-            timingStage: "slot_selected",
-            timingServerAtMs: slotSelectedAt,
-            openDeltaMs: Math.round(slotSelectedAt - config.openAtMs),
-          },
+          data: slotSelectedEventData(slotSelectedAt, config.openAtMs),
         });
         if (!config.postSlotEnabled) {
           transition("HANDED_OFF", "후속 선택 자동 진행이 꺼져 있어 슬롯 선택까지만 완료했습니다.");
@@ -635,6 +590,105 @@ class RunSession {
       await this.deps.flushTrace?.().catch(() => undefined);
     }
   }
+}
+
+type TimingMark = { actualAt: number; scheduledAt: number; phase: string };
+type TogglePlan = ReturnType<typeof nextTogglePlan>;
+
+function clockMetricData(
+  estimate: ClockEstimate,
+  phase: "initial" | "final",
+  offsetMs: number,
+): NonNullable<RunEvent["data"]> {
+  return {
+    clockOffsetMs: offsetMs,
+    clockSamples: estimate.sampleCount,
+    clockSpreadMs: estimate.spreadMs ?? -1,
+    clockFallback: estimate.fallback,
+    clockMethod: estimate.method,
+    clockPrecisionMs: estimate.precisionMs ?? -1,
+    clockPhase: phase,
+  };
+}
+
+interface ToggleCycleTrace {
+  cycle: number;
+  phase: string;
+  adjacentDate: string | null;
+  adjacentPlannedAt: number;
+  adjacentClickedAt: number | null;
+  targetPlannedAt: number;
+  targetClickedAt: number | null;
+  targetSelectedAt: number | null;
+  slotScanCount: number;
+  availableSlotCount: number;
+  matchedSlotCount: number;
+  result: string;
+}
+
+function toggleCycleAttributes(t: ToggleCycleTrace): TraceAttributes {
+  return {
+    cycle: t.cycle,
+    phase: t.phase,
+    adjacentDate: t.adjacentDate,
+    adjacentPlannedAt: t.adjacentPlannedAt,
+    adjacentClickedAt: t.adjacentClickedAt,
+    adjacentClickOk: t.adjacentClickedAt !== null,
+    targetPlannedAt: t.targetPlannedAt,
+    targetClickedAt: t.targetClickedAt,
+    targetClickOk: t.targetClickedAt !== null,
+    targetSelectedAt: t.targetSelectedAt,
+    slotScanCount: t.slotScanCount,
+    availableSlotCount: t.availableSlotCount,
+    matchedSlotCount: t.matchedSlotCount,
+    result: t.result,
+  };
+}
+
+function targetClickMetricData(targetClickedAt: number, plan: TogglePlan, openAtMs: number): NonNullable<RunEvent["data"]> {
+  return {
+    timingStage: "target_date_click",
+    timingServerAtMs: targetClickedAt,
+    openDeltaMs: Math.round(targetClickedAt - openAtMs),
+    scheduledServerAtMs: plan.targetClickAtMs,
+    scheduleDriftMs: Math.round(targetClickedAt - plan.targetClickAtMs),
+    togglePhase: plan.phase,
+  };
+}
+
+function slotDetectedEventData(
+  slotDetectedAt: number,
+  adjacent: TimingMark | null,
+  target: TimingMark | null,
+  openAtMs: number,
+): NonNullable<RunEvent["data"]> {
+  return {
+    timingStage: "slot_detected",
+    timingServerAtMs: slotDetectedAt,
+    openDeltaMs: Math.round(slotDetectedAt - openAtMs),
+    ...(adjacent ? {
+      adjacentTimingServerAtMs: adjacent.actualAt,
+      adjacentOpenDeltaMs: Math.round(adjacent.actualAt - openAtMs),
+      adjacentScheduledServerAtMs: adjacent.scheduledAt,
+      adjacentScheduleDriftMs: Math.round(adjacent.actualAt - adjacent.scheduledAt),
+      adjacentTogglePhase: adjacent.phase,
+    } : {}),
+    ...(target ? {
+      targetTimingServerAtMs: target.actualAt,
+      targetOpenDeltaMs: Math.round(target.actualAt - openAtMs),
+      targetScheduledServerAtMs: target.scheduledAt,
+      targetScheduleDriftMs: Math.round(target.actualAt - target.scheduledAt),
+      targetTogglePhase: target.phase,
+    } : {}),
+  };
+}
+
+function slotSelectedEventData(slotSelectedAt: number, openAtMs: number): NonNullable<RunEvent["data"]> {
+  return {
+    timingStage: "slot_selected",
+    timingServerAtMs: slotSelectedAt,
+    openDeltaMs: Math.round(slotSelectedAt - openAtMs),
+  };
 }
 
 export class OpenRunOrchestrator {
