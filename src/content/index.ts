@@ -5,6 +5,7 @@ import { EntryAdapter } from "./adapter/entry.js";
 import { PersonAdapter } from "./adapter/person.js";
 import { SlotAdapter } from "./adapter/slots.js";
 import { PostSlotAdapter } from "./adapter/post-slot.js";
+import { createSlotRefreshWatch } from "./adapter/slot-refresh-watch.js";
 import { captureStageSnapshot } from "./adapter/snapshot.js";
 import { syncServerClock } from "./clock-sync.js";
 import { OpenRunOrchestrator } from "./orchestrator.js";
@@ -40,6 +41,7 @@ if (!window.__ctReserveInjected) {
     person: new PersonAdapter(document),
     slots: new SlotAdapter(document),
     postSlot: new PostSlotAdapter(document),
+    slotWatch: createSlotRefreshWatch(),
     sleep: abortableSleep,
     emit: (event) => {
       traceLogger.recordRunEvent(event);
