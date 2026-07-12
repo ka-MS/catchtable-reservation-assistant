@@ -12,6 +12,7 @@ import type { CalendarInspection, CalendarPreparationResult } from "./adapter/ca
 import type { EntryInspection } from "./adapter/entry.js";
 import type { PersonInspection } from "./adapter/person.js";
 import type { PostSlotActionResult, PostSlotInspection } from "./adapter/post-slot.js";
+import type { StageSnapshot } from "./adapter/snapshot.js";
 
 interface CalendarPort {
   inspect(targetDate: string): CalendarInspection;
@@ -58,6 +59,7 @@ interface Dependencies {
     error?: unknown;
   }): void;
   flushTrace?(): Promise<void>;
+  captureSnapshot?(): StageSnapshot | null;
   runId(): string;
 }
 
@@ -93,6 +95,20 @@ function postSlotEventData(inspection: PostSlotInspection): NonNullable<RunEvent
     dialogCheckboxCount: diagnostics.checkboxCount,
     dialogQuantityControlCount: diagnostics.quantityControlCount,
     dialogZeroDepositControlCount: diagnostics.zeroDepositControlCount,
+  };
+}
+
+export function stageSnapshotData(s: StageSnapshot | null): NonNullable<RunEvent["data"]> {
+  if (!s) return {};
+  return {
+    snapshotUrlKind: s.urlKind,
+    snapshotHeadings: s.headings.join(" | "),
+    snapshotButtons: s.buttons.join(" | "),
+    snapshotDisabledButtonCount: s.disabledButtonCount,
+    snapshotDialogLabel: s.dialogLabel,
+    snapshotDialogTitle: s.dialogTitle,
+    snapshotTextSnippet: s.textSnippet,
+    snapshotFingerprint: s.fingerprint,
   };
 }
 
