@@ -1,24 +1,23 @@
 # HANDOFF
 
 **갱신:** 2026-07-12
-**브랜치:** `main`
-**작업 로그:** `docs/worklog/2026-07-12-11-clock-sample-count-verified.md`
+**브랜치:** `codex/feat-xhr-slot-watch`
+**작업 로그:** `docs/worklog/2026-07-12-13-xhr-watch.md`
 
 ## 현재 상태
 
-D(어댑터 DOM 중복 제거)까지 main에 병합했고(185개 테스트 green), 병합 후 실런 1회로 전 파이프라인을 검증했다(진입 → 날짜 → 슬롯 감지 +293ms → 승인제 시트 → 예약금 → 폼 도착 +999ms).
+XHR 슬롯 응답 감시(콰이어스 + 도착 버스트)를 구현했다(203개 테스트 green). 스펙 `docs/specs/xhr-slot-watch/`(10-analysis-design, 20-implementation).
 
-1. **post-slot 승인제/홍보 자동 진행** — `role="dialog"` 없는 승인제 시트(`request-sheet-v1`)와 홍보 인터스티셜을 인식해 자동 진행. 이시즈에 실런으로 검증 완료(승인제 시트 → 예약 신청 → 예약금 확인 → 예약 폼 도착).
-2. **네비게이션 가드 수정** — 성공 경로의 `/ct/reservation/form` 이동을 "식당 이탈"로 오판해 스퓨리어스 STOPPED를 내던 버그를 `leftReservationFlow()`로 수정(실런에서 드러남).
-3. **오케스트레이터 구조 리팩터(A)** — 626줄 `start()`를 per-run `RunSession` 메서드 객체로 분해. 동작 무변경.
-4. **실패 스냅샷(B+C)** — 실패·포기·예외 시 `captureStageSnapshot`으로 DOM 증거(텍스트 스니펫·fingerprint·실패 단계) 캡처. 정상 인계는 스냅샷 없음, PII 마스킹, 사이드패널·영속 trace 상세에 표시.
-5. **어댑터 DOM 중복 제거(D)** — `dom.ts`에 보이는 요소·disabled·safeText·FNV 헬퍼를 모으고, `dialog.ts`로 화면 파인더를 분리했다. entry·snapshot의 post-slot 교차 의존을 제거하면서 기존 판정 동작과 fingerprint를 유지했다.
+1. **정찰(worklog 12)** — R1·R2·R3·R5 실측(site-behavior §8.1). 실오픈런 판독으로 병목 확정: 클릭→XHR 발사 SPA 지연 217~379ms + 토글 연타의 비행 중 렌더 파괴 → 실오픈 감지 +1303ms.
+2. **`slot-refresh-watch.ts` 어댑터** — PerformanceObserver로 `/dining/time-slots` 도착 신호.
+3. **오케스트레이터 3-모드 감지** — 신호 없으면 현행 그리드(폴백, 기존 테스트 무수정 통과가 가드) / live+도착 전 콰이어스(클릭+700ms) / 도착 후 버스트(도착+250ms). 계측: SLOT_DETECTED `xhrArrivalServerAtMs`·`arrivalToDetectMs`, DATE_TOGGLE_CYCLE `watch`·`arrivalAt`.
+4. 시계 노이즈는 표본 9로 해소 확인(worklog 11, 초기/최종 78ms 수렴).
 
 ## 다음 작업
 
-- **시계 노이즈 해소 확인됨** — 표본 9개 실런에서 초기(−38ms)·최종(+40ms) 보정이 78ms 차이로 수렴(worklog 11). openDelta가 이제 실런 간 비교 가능한 숫자다.
-- **XHR 슬롯 응답 감시 — 정찰 완료, 구현 게이트 열림.** R1·R2·R3·R5 실측 완료(site-behavior §8.1, worklog 12). 실오픈런(run-e2c48fb6) 판독으로 병목 확정: 클릭→발사 SPA 지연 ~250ms + 토글 연타의 비행 중 렌더 파괴 → 실오픈 감지 +1303ms. 설계 개정: **콰이어스(도착 신호까지 토글 보류) + 도착 스캔 버스트 + 폴백**(스펙 §3.1). 다음 액션: 스펙 §4 2단계(`slot-refresh-watch.ts` 어댑터 TDD)부터 구현, 실런 1회로 R4(격리 월드 가시성) 확정.
-- **XHR 응답 감시(감지 지연 제거)** — 토글 사이클 구조상 감지 창이 사이클당 수십 ms뿐이라 감지가 오픈 후 2~3사이클(+200~300ms)로 양자화된다. 슬롯 XHR 응답을 직접 감시하면 이 양자화가 사라진다.
+- **E2E(R4 확정) 재개** — 확장은 dist 재로드까지 완료. Chrome 원격 디버깅 재연결 후: 이시즈에 실런 1회 → IndexedDB의 DATE_TOGGLE_CYCLE `watch:"live"` 확인(=R4 확정, site-behavior §8.1 갱신) + `xhrArrivalServerAtMs` 기록 확인. idle만 보이면 방식 C(webRequest) 재평가.
+- E2E 통과 후 main 병합. 실오픈런에서 감지 ≤ +500ms 검증(현행 +1303ms).
+- 2단계 후보(별도 스펙): 목표 클릭 openAt−250ms 선발사 — 게이트 시점 계측 후 판단.
 - 기타 후보: JSONL 내보내기.
 
 ## 검증
@@ -28,4 +27,4 @@ npm run check   # WSL: wsl.exe -d ubuntu -e bash -lc "cd ~/source/catchtable-res
 git status --short --branch
 ```
 
-단위·fixture 테스트 185개와 전체 자동 게이트가 통과했다. content bundle은 86.6KB에서 84.8KB로 감소했다.
+단위·fixture 테스트 203개와 전체 자동 게이트가 통과했다.
