@@ -5,6 +5,7 @@ import { MonotonicEpochClock } from "../shared/monotonic-clock.js";
 import { selectPreferredSlot, type SlotCandidate } from "../shared/slot-selection.js";
 import { RunStateMachine } from "../shared/state-machine.js";
 import { nextTogglePlan } from "../shared/toggle-schedule.js";
+import type { SlotRefreshWatchPort } from "./adapter/slot-refresh-watch.js";
 import type { ReservationConfig, RunEvent, RunState } from "../shared/types.js";
 import type { TraceCode } from "../shared/telemetry/codes.js";
 import type { TraceAttributes, TraceSeverity } from "../shared/telemetry/types.js";
@@ -60,6 +61,7 @@ interface Dependencies {
   }): void;
   flushTrace?(): Promise<void>;
   captureSnapshot?(): StageSnapshot | null;
+  slotWatch?: SlotRefreshWatchPort;
   runId(): string;
 }
 
@@ -67,6 +69,11 @@ export interface RunResult {
   runId: string;
   state: RunState;
 }
+
+// 실측(site-behavior §8.1): 클릭→XHR 발사 217~379ms + 왕복 ~60ms → 도착은
+// 클릭 후 ~450ms 안. 700ms는 유실 판정 타임아웃, 250ms는 응답→렌더(56~182ms) 커버.
+const QUIESCE_TIMEOUT_MS = 700;
+const ARRIVAL_BURST_MS = 250;
 
 const TERMINAL = new Set<RunState>([
   "DRY_RUN_COMPLETED",
@@ -128,6 +135,8 @@ class RunSession {
   private targetTiming: { actualAt: number; scheduledAt: number; phase: string } | null = null;
   private toggleCycle = 0;
   private adjacentDate: string | null = null;
+  private watchLive = false;
+  private lastArrivalAt: number | null = null;
 
   constructor(
     private readonly deps: Dependencies,
@@ -205,6 +214,10 @@ class RunSession {
 
   async execute(): Promise<RunResult> {
     try {
+      this.deps.slotWatch?.start(() => {
+        this.watchLive = true;
+        if (this.serverClockReady) this.lastArrivalAt = this.serverClock.now();
+      });
       this.transition("CONFIGURED", "예약 설정을 불러왔습니다.");
       return this.validate()
         ?? await this.syncInitialClock()
@@ -229,6 +242,7 @@ class RunSession {
       }
       return this.finish();
     } finally {
+      this.deps.slotWatch?.stop();
       await this.deps.flushTrace?.().catch(() => undefined);
     }
   }
@@ -442,6 +456,8 @@ class RunSession {
           availableSlotCount,
           matchedSlotCount,
           result,
+          watch: this.watchLive ? "live" : "idle",
+          arrivalAt: this.lastArrivalAt,
         }),
       },
     );
@@ -522,10 +538,22 @@ class RunSession {
     targetSelectedAt = serverClock.now();
 
     const nextPlan = nextTogglePlan(serverClock.now(), config.openAtMs, config.toggleIntervalMs);
-    const detectUntil = Math.min(
+    const gridDetectUntil = Math.min(
       nextPlan.adjacentClickAtMs,
       config.stopAtMs,
     );
+    // watch가 살아 있으면: 도착 전엔 클릭+700ms까지 콰이어스(후속 토글이 비행 중
+    // 응답의 렌더를 밟는 것을 방지 — worklog 12 실오픈 +1303ms의 원인), 도착
+    // 후엔 도착+250ms까지 렌더 스캔 버스트. 신호가 없던 실행은 현행 그리드 그대로.
+    const quiesceUntil = Math.min(targetClickedAt + QUIESCE_TIMEOUT_MS, config.stopAtMs);
+    const detectDeadline = () => {
+      if (!this.watchLive) return gridDetectUntil;
+      const arrival = this.lastArrivalAt;
+      if (arrival !== null && arrival >= targetClickedAt) {
+        return Math.min(arrival + ARRIVAL_BURST_MS, config.stopAtMs);
+      }
+      return quiesceUntil;
+    };
     let candidate: SlotCandidate | null = null;
     const inspectSlots = () => {
       const slots = this.deps.slots.readAvailableSlots();
@@ -536,10 +564,10 @@ class RunSession {
       )).length;
       return selectPreferredSlot(slots, config.timeRange, config.priorityTimes);
     };
-    while (!controller.signal.aborted && serverClock.now() < detectUntil) {
+    while (!controller.signal.aborted && serverClock.now() < detectDeadline()) {
       candidate = inspectSlots();
       if (candidate) break;
-      const delay = Math.min(25, detectUntil - serverClock.now());
+      const delay = Math.min(25, detectDeadline() - serverClock.now());
       if (delay <= 0 || !(await this.deps.sleep(delay, controller.signal))) break;
     }
     candidate ??= inspectSlots();
@@ -556,7 +584,7 @@ class RunSession {
     const serverClock = this.serverClock;
     const slotDetectedAt = serverClock.now();
     this.transition("SLOT_DETECTED", `${candidate.label} 슬롯을 감지했습니다.`, {
-      data: slotDetectedEventData(slotDetectedAt, this.adjacentTiming, this.targetTiming, config.openAtMs),
+      data: slotDetectedEventData(slotDetectedAt, this.adjacentTiming, this.targetTiming, config.openAtMs, this.lastArrivalAt),
     });
     this.emit("detect", "예약 조건과 일치하는 슬롯을 찾았습니다.", { slotMinutes: candidate.minutes, slotLabel: candidate.label });
     if (config.dryRun) {
@@ -695,6 +723,8 @@ interface ToggleCycleTrace {
   availableSlotCount: number;
   matchedSlotCount: number;
   result: string;
+  watch: string;
+  arrivalAt: number | null;
 }
 
 function toggleCycleAttributes(t: ToggleCycleTrace): TraceAttributes {
@@ -713,6 +743,8 @@ function toggleCycleAttributes(t: ToggleCycleTrace): TraceAttributes {
     availableSlotCount: t.availableSlotCount,
     matchedSlotCount: t.matchedSlotCount,
     result: t.result,
+    watch: t.watch,
+    arrivalAt: t.arrivalAt,
   };
 }
 
@@ -732,11 +764,16 @@ function slotDetectedEventData(
   adjacent: TimingMark | null,
   target: TimingMark | null,
   openAtMs: number,
+  arrivalAt: number | null,
 ): NonNullable<RunEvent["data"]> {
   return {
     timingStage: "slot_detected",
     timingServerAtMs: slotDetectedAt,
     openDeltaMs: Math.round(slotDetectedAt - openAtMs),
+    ...(arrivalAt !== null ? {
+      xhrArrivalServerAtMs: arrivalAt,
+      arrivalToDetectMs: Math.round(slotDetectedAt - arrivalAt),
+    } : {}),
     ...(adjacent ? {
       adjacentTimingServerAtMs: adjacent.actualAt,
       adjacentOpenDeltaMs: Math.round(adjacent.actualAt - openAtMs),

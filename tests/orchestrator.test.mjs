@@ -32,6 +32,7 @@ function harness({
   postSlot = { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "unused" }) },
   onCalendarInspect = () => undefined,
   syncEstimate = {},
+  readSlots = null,
   captureSnapshot = () => ({
     urlKind: "shop", headings: [], buttons: ["확인"], disabledButtons: [false],
     disabledButtonCount: 0, dialogLabel: "", dialogTitle: "", textSnippet: "", fingerprint: "ss-test",
@@ -58,8 +59,24 @@ function harness({
       return true;
     },
   };
+  let arrivalCallback = null;
+  const slotWatchCalls = { started: 0, stopped: 0 };
+  const slotWatch = {
+    start: (cb) => { slotWatchCalls.started += 1; arrivalCallback = cb; },
+    stop: () => { slotWatchCalls.stopped += 1; },
+  };
+  const slotCtx = {
+    get now() { return now; },
+    get cycles() { return cycles; },
+    scans: 0,
+    fireArrival: () => arrivalCallback?.(),
+  };
   const slots = {
-    readAvailableSlots: () => cycles >= slotAfterCycles ? [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }] : [],
+    readAvailableSlots: () => {
+      slotCtx.scans += 1;
+      if (readSlots) return readSlots(slotCtx);
+      return cycles >= slotAfterCycles ? [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }] : [];
+    },
     clickSlot: () => {
       slotClicks += 1;
       return clickResult;
@@ -84,6 +101,7 @@ function harness({
     person,
     slots,
     postSlot,
+    slotWatch,
     sleep: async (ms, signal) => {
       if (signal.aborted) return false;
       now += ms;
@@ -102,6 +120,8 @@ function harness({
     dateClickTimes,
     events,
     traces,
+    slotWatchCalls,
+    fireArrival: () => arrivalCallback?.(),
     get slotClicks() { return slotClicks; },
     get now() { return now; },
     jumpWall(ms) { now += ms; },
@@ -132,6 +152,49 @@ test("clock metrics omit the sample detail when the estimate has none", async ()
   const metric = h.events.find((event) => typeof event.data?.clockPhase === "string");
   assert.ok(metric);
   assert.equal("clockSampleDetail" in metric.data, false);
+});
+
+test("slot watch is started once per run and stopped when the run finishes", async () => {
+  const h = harness({ slotAfterCycles: 1 });
+  await h.orchestrator.start(config());
+  assert.equal(h.slotWatchCalls.started, 1);
+  assert.equal(h.slotWatchCalls.stopped, 1);
+});
+
+test("an arrival during detection extends the scan burst and records xhr metrics", async () => {
+  let arrivalAt = null;
+  const h = harness({
+    readSlots: (ctx) => {
+      if (ctx.scans === 1) { ctx.fireArrival(); arrivalAt = ctx.now; return []; }
+      if (arrivalAt !== null && ctx.now >= arrivalAt + 50) {
+        return [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }];
+      }
+      return [];
+    },
+  });
+  const result = await h.orchestrator.start(config());
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  const detected = h.events.find((event) => event.data?.state === "SLOT_DETECTED");
+  assert.equal(detected?.data?.xhrArrivalServerAtMs, arrivalAt);
+  assert.ok(detected?.data?.arrivalToDetectMs >= 50, `arrivalToDetectMs=${detected?.data?.arrivalToDetectMs}`);
+});
+
+test("a live watch quiesces the next toggle until the timeout when no arrival comes", async () => {
+  // 사이클1 스캔 중 도착 신호 1회(watch live 전환) 후 침묵 → 사이클2는
+  // 그리드가 아니라 목표클릭+700ms까지 기다렸다가 다음 토글로 넘어가야 한다.
+  const h = harness({
+    readSlots: (ctx) => {
+      if (ctx.scans === 1) ctx.fireArrival();
+      return ctx.cycles >= 3 ? [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }] : [];
+    },
+  });
+  const result = await h.orchestrator.start(config());
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  const targets = h.dateClickTimes.filter((c) => c.date === "2026-07-30");
+  const adjacents = h.dateClickTimes.filter((c) => c.date === "2026-07-29");
+  assert.ok(adjacents.length >= 3 && targets.length >= 2, `clicks: adj=${adjacents.length} tgt=${targets.length}`);
+  const gap = adjacents[2].at - targets[1].at;
+  assert.ok(gap >= 700, `quiesce gap=${gap}`);
 });
 
 test("dry-run detects a prioritized slot without clicking", async () => {
