@@ -39,6 +39,14 @@ export function formatEventDetail(event: RunEvent): string {
   const primary = timingLine(stageLabel, timingServerAt, data?.openDeltaMs, data?.scheduleDriftMs);
   if (primary) lines.push(primary.trimStart());
   if (typeof data?.clockOffsetMs === "number") lines.push(`오프셋 ${Number(data.clockOffsetMs).toFixed(0)}ms`);
+  if (typeof data?.snapshotFingerprint === "string") {
+    const title = data.snapshotDialogTitle || data.snapshotDialogLabel || "제목 없음";
+    const buttons = data.snapshotButtons || "없음";
+    const snippet = typeof data.snapshotTextSnippet === "string" && data.snapshotTextSnippet
+      ? ` · "${String(data.snapshotTextSnippet).slice(0, 40)}"`
+      : "";
+    lines.push(`스냅샷: ${title} · 버튼 ${buttons}${snippet}`);
+  }
   return lines.join("\n");
 }
 
