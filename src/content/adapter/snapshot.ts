@@ -1,5 +1,5 @@
 import { cleanText, isElementHidden } from "./dom.js";
-import { findActiveDialog } from "./post-slot-inspection.js";
+import { findActiveDialog, findVisiblePresentationSheet } from "./dialog.js";
 
 export interface StageSnapshot {
   urlKind: "shop" | "reservation_form" | "other";
@@ -35,15 +35,6 @@ function maskPii(value: string): string {
 
 function visible<T extends Element>(root: ParentNode, selector: string): T[] {
   return Array.from(root.querySelectorAll<T>(selector)).filter((el) => !isElementHidden(el));
-}
-
-// 알려진 승인제 시트뿐 아니라 임의의 보이는 presentation 바텀시트(제목 또는 버튼 보유)를 잡는다.
-function findVisiblePresentationSheet(document: Document): HTMLElement | null {
-  return Array.from(document.querySelectorAll<HTMLElement>('div[role="presentation"]'))
-    .filter((sheet) => !isElementHidden(sheet))
-    .filter((sheet) => visible<HTMLElement>(sheet, 'h1, h2, [role="heading"]').length > 0
-      || visible<HTMLButtonElement>(sheet, "button").length > 0)
-    .at(-1) ?? null;
 }
 
 function hash(value: string): string {

@@ -1,4 +1,7 @@
 import { cleanText, isElementHidden } from "./dom.js";
+import { findActiveDialog, findPromoDismissButton, findRequestSheet } from "./dialog.js";
+
+export { findActiveDialog, findPromoDismissButton, findRequestSheet } from "./dialog.js";
 
 export type PostSlotCertainty = "exact" | "supported" | "unknown";
 
@@ -50,13 +53,6 @@ export function normalized(value: string | null | undefined): string {
 export function isZeroDepositControl(element: Element): boolean {
   const label = normalized(element.getAttribute("aria-label"));
   return label.includes("예약금") && label.includes("0원") && label.includes("결제");
-}
-
-export function findActiveDialog(document: Document): HTMLElement | null {
-  const candidates = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'))
-    .filter((dialog) => !isElementHidden(dialog));
-  const rendered = candidates.filter((dialog) => dialog.getClientRects().length > 0);
-  return (rendered.length > 0 ? rendered : candidates).at(-1) ?? null;
 }
 
 function visibleElements<T extends Element>(root: ParentNode, selector: string): T[] {
@@ -215,26 +211,6 @@ function formInspection(document: Document, notice: boolean): PostSlotInspection
   return notice
     ? { kind: "form_notice", ...meta(value, "exact", "form-notice-button-v1", ["reservation form URL", "dismiss button"]) }
     : { kind: "form", ...meta(value, "exact", "reservation-form-url-v1", ["reservation form URL"]) };
-}
-
-// 실측 2026-07-12 이시즈에 (site-behavior §7.2): 승인제 안내는 role="dialog" 없이
-// role="presentation" 바텀시트로 뜬다. 제목 h2가 유일한 안정 앵커다.
-export function findRequestSheet(document: Document): HTMLElement | null {
-  return Array.from(document.querySelectorAll<HTMLElement>('div[role="presentation"]'))
-    .filter((sheet) => !isElementHidden(sheet))
-    .find((sheet) => Array.from(sheet.querySelectorAll<HTMLElement>('h1, h2, [role="heading"]'))
-      .some((heading) => !isElementHidden(heading)
-        && normalized(heading.textContent).includes("레스토랑 확인이 필요한 예약"))) ?? null;
-}
-
-// 실측 2026-07-12 이시즈에 (site-behavior §7.2): 홍보 인터스티셜은 role 계열 속성이 전혀 없어
-// 닫기 버튼 텍스트만 안정 앵커다.
-export function findPromoDismissButton(document: Document): HTMLButtonElement | null {
-  return Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
-    .find((button) => normalized(button.textContent) === "다음에 볼게요"
-      && !isElementHidden(button)
-      && !button.disabled
-      && button.getAttribute("aria-disabled") !== "true") ?? null;
 }
 
 function promoInspection(document: Document): PostSlotInspection {
