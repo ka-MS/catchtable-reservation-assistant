@@ -82,21 +82,31 @@ export function selectClockEstimate(
     .filter((sample): sample is typeof sample & Required<Pick<ClockMeasurement, "measuredAt" | "serverDateMs">> =>
       sample.measuredAt !== undefined && sample.serverDateMs !== undefined)
     .sort((left, right) => left.measuredAt - right.measuredAt);
+  // 응답 서버 풀 간 시계가 1초 이상 어긋난다(site-behavior §8 실측). 교차 풀
+  // 샘플 쌍은 가짜 초 경계를 만들므로: (1) 인접 샘플 간격이 1초 미만인 이상
+  // 진짜 틱은 정확히 +1000이어야 하고, (2) 경계 오프셋은 전체 샘플의 Date
+  // 헤더를 과반 이상 재예측해야 채택한다. 동표는 정밀한 경계가 이긴다.
   const boundaries = chronological.slice(1).flatMap((current, index) => {
     const previous = chronological[index];
-    if (current.serverDateMs <= previous.serverDateMs) return [];
+    if (current.serverDateMs - previous.serverDateMs !== 1_000) return [];
     const previousMidpoint = previous.measuredAt - previous.measurementLatency / 2;
     const currentMidpoint = current.measuredAt - current.measurementLatency / 2;
     const localBoundary = (previousMidpoint + currentMidpoint) / 2;
     const precisionMs = (currentMidpoint - previousMidpoint) / 2
       + Math.max(previous.measurementLatency, current.measurementLatency) / 2;
-    return [{ offsetMs: current.serverDateMs - localBoundary, precisionMs }];
-  }).sort((left, right) => left.precisionMs - right.precisionMs);
+    const offsetMs = current.serverDateMs - localBoundary;
+    const supporters = chronological.filter((sample) => {
+      const midpoint = sample.measuredAt - sample.measurementLatency / 2;
+      return Math.floor((midpoint + offsetMs) / 1_000) * 1_000 === sample.serverDateMs;
+    }).length;
+    return [{ offsetMs, precisionMs, supporters }];
+  }).sort((left, right) => right.supporters - left.supporters || left.precisionMs - right.precisionMs);
   const boundary = boundaries[0];
-  if (boundary) {
+  const majority = Math.floor(chronological.length / 2) + 1;
+  if (boundary && boundary.supporters >= majority) {
     return {
       offsetMs: boundary.offsetMs,
-      sampleCount: 2,
+      sampleCount: boundary.supporters,
       spreadMs: boundary.precisionMs * 2,
       fallback: false,
       method: "boundary",

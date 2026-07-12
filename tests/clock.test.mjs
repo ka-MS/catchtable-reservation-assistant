@@ -60,6 +60,51 @@ test("clock estimate locks to an observed HTTP Date second boundary", () => {
   assert.equal(result.precisionMs, 60);
 });
 
+test("consensus rejects a cross-pool boundary and falls back to the median", () => {
+  // 2026-07-12 실런 초기 보정 재현: 샘플 1~4는 같은 서버 초(d0), 샘플 5만
+  // 다른 풀에 맞아 Date가 2초 점프. 가짜 경계(s4→s5)는 전체 샘플을 설명하지
+  // 못하므로 기각되고 median으로 내려가야 한다.
+  const samples = [
+    createMeasurement({ requestStartedAt: 40, responseReceivedAt: 100, serverDateMs: 10_000 }),
+    createMeasurement({ requestStartedAt: 240, responseReceivedAt: 300, serverDateMs: 10_000 }),
+    createMeasurement({ requestStartedAt: 440, responseReceivedAt: 500, serverDateMs: 10_000 }),
+    createMeasurement({ requestStartedAt: 640, responseReceivedAt: 700, serverDateMs: 10_000 }),
+    createMeasurement({ requestStartedAt: 780, responseReceivedAt: 900, serverDateMs: 12_000 }),
+  ];
+  const result = selectClockEstimate(samples);
+  assert.equal(result.method, "median");
+  assert.equal(result.offsetMs, 10_230);
+});
+
+test("consensus keeps a genuine boundary that every sample supports", () => {
+  const samples = [
+    createMeasurement({ requestStartedAt: 40, responseReceivedAt: 100, serverDateMs: 10_000 }),
+    createMeasurement({ requestStartedAt: 240, responseReceivedAt: 300, serverDateMs: 11_000 }),
+    createMeasurement({ requestStartedAt: 440, responseReceivedAt: 500, serverDateMs: 11_000 }),
+    createMeasurement({ requestStartedAt: 640, responseReceivedAt: 700, serverDateMs: 11_000 }),
+    createMeasurement({ requestStartedAt: 840, responseReceivedAt: 900, serverDateMs: 11_000 }),
+  ];
+  const result = selectClockEstimate(samples);
+  assert.equal(result.method, "boundary");
+  assert.equal(result.offsetMs, 10_830);
+});
+
+test("a disguised one-tick cross-pool boundary loses the tie to the tighter genuine boundary", () => {
+  // 풀 전환이 마침 +1초로 보이면 d1000으로 위장한 가짜 경계가 생긴다.
+  // floor 투표는 1초 미만 편차를 완전히 분리하지 못해 동표(4:4)가 날 수 있고,
+  // 그때는 midpoint 간격이 좁은(정밀한) 경계가 이겨야 한다.
+  const samples = [
+    createMeasurement({ requestStartedAt: 40, responseReceivedAt: 100, serverDateMs: 10_000 }),
+    createMeasurement({ requestStartedAt: 190, responseReceivedAt: 250, serverDateMs: 11_000 }),
+    createMeasurement({ requestStartedAt: 440, responseReceivedAt: 500, serverDateMs: 11_000 }),
+    createMeasurement({ requestStartedAt: 640, responseReceivedAt: 700, serverDateMs: 11_000 }),
+    createMeasurement({ requestStartedAt: 840, responseReceivedAt: 900, serverDateMs: 12_000 }),
+  ];
+  const result = selectClockEstimate(samples);
+  assert.equal(result.method, "boundary");
+  assert.equal(result.offsetMs, 10_855);
+});
+
 test("clock estimate falls back explicitly when no samples exist", () => {
   assert.deepEqual(selectClockEstimate([]), {
     offsetMs: 0,
