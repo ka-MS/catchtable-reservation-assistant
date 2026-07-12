@@ -56,6 +56,7 @@ POST https://ct-api.catchtable.co.kr/api/reservation/v1/dining/time-slots
 
 - 기본 선택자: `div[role="button"][aria-label]`
 - `aria-label`은 `요일, M월 D, YYYY` 형식이며 연·월·일을 모두 비교한다.
+- 오늘 날짜 셀은 `오늘, 일요일, 7월 12, 2026`처럼 `오늘,` 접두가 붙는 변형이 존재한다. 셀렉터 `div[role="button"][aria-label]`로는 잡히지만 `^요일,`로 엄격 파싱하면 오늘 셀을 놓친다. 연·월·일 숫자 비교로 판정해야 안전하다. `[실측: 이시즈에 2026-07-12]`
 - 현재 선택 날짜는 `aria-pressed="true"`다.
 - 선택 불가 날짜는 `aria-disabled="true"`다. 선택 가능한 셀에는 이 속성이 없을 수 있다.
 - 이전·다음 달 셀도 함께 렌더링되므로 날짜 숫자만 비교하면 안 된다.
