@@ -114,7 +114,26 @@ test("clock estimate falls back explicitly when no samples exist", () => {
     method: "local",
     precisionMs: null,
     sampleDetail: null,
+    collectedSamples: 0,
   });
+});
+
+test("clock estimate reports how many HEAD requests actually returned a sample, separate from how many were used", () => {
+  const boundarySamples = [
+    createMeasurement({ requestStartedAt: 0, responseReceivedAt: 20, serverDateMs: 1_000 }),
+    createMeasurement({ requestStartedAt: 100, responseReceivedAt: 120, serverDateMs: 2_000 }),
+  ];
+  assert.equal(selectClockEstimate(boundarySamples).collectedSamples, 2);
+
+  const medianSamples = [
+    { clockOffset: 100, measurementLatency: 20 },
+    { clockOffset: 104, measurementLatency: 25 },
+    { clockOffset: 102, measurementLatency: 30 },
+    { clockOffset: 900, measurementLatency: 500 },
+    { clockOffset: -700, measurementLatency: 600 },
+  ];
+  // configured for 9 samples but only 5 HEAD requests succeeded.
+  assert.equal(selectClockEstimate(medianSamples).collectedSamples, 5);
 });
 
 test("boundary estimate carries per-sample offset, latency, and Date-tick deltas", () => {

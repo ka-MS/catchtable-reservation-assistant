@@ -76,6 +76,7 @@ function harness({
       method: "boundary",
       precisionMs: 20,
       sampleDetail: null,
+      collectedSamples: 3,
       ...syncEstimate,
     }),
     calendar,
@@ -106,6 +107,14 @@ function harness({
     jumpWall(ms) { now += ms; },
   };
 }
+
+test("clock metrics report the raw collected sample count alongside the consensus count", async () => {
+  const h = harness({ syncEstimate: { sampleCount: 5, collectedSamples: 9 } });
+  await h.orchestrator.start(config());
+  const metric = h.events.find((event) => typeof event.data?.clockPhase === "string");
+  assert.equal(metric.data.clockSamples, 5);
+  assert.equal(metric.data.clockCollectedSamples, 9);
+});
 
 test("clock metrics forward the per-sample detail when the estimate provides one", async () => {
   const h = harness({ syncEstimate: { sampleDetail: "o1490 l20 d0 | o2390 l20 d1000" } });

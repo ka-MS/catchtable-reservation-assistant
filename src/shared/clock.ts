@@ -15,6 +15,8 @@ export interface ClockEstimate {
   method: "boundary" | "median" | "local";
   precisionMs: number | null;
   sampleDetail: string | null;
+  /** HEAD 요청이 실제로 성공해 값을 반환한 횟수(설정된 clockSampleCount와 별개). */
+  collectedSamples: number;
 }
 
 const FINAL_SYNC_LEAD_MS = 5_000;
@@ -74,9 +76,10 @@ export function selectClockEstimate(
   samples: Array<Pick<ClockMeasurement, "clockOffset" | "measurementLatency"> & Partial<Pick<ClockMeasurement, "measuredAt" | "serverDateMs">>>,
 ): ClockEstimate {
   if (samples.length === 0) {
-    return { offsetMs: 0, sampleCount: 0, spreadMs: null, fallback: true, method: "local", precisionMs: null, sampleDetail: null };
+    return { offsetMs: 0, sampleCount: 0, spreadMs: null, fallback: true, method: "local", precisionMs: null, sampleDetail: null, collectedSamples: 0 };
   }
   const sampleDetail = formatSampleDetail(samples);
+  const collectedSamples = samples.length;
 
   const chronological = samples
     .filter((sample): sample is typeof sample & Required<Pick<ClockMeasurement, "measuredAt" | "serverDateMs">> =>
@@ -112,6 +115,7 @@ export function selectClockEstimate(
       method: "boundary",
       precisionMs: boundary.precisionMs,
       sampleDetail,
+      collectedSamples,
     };
   }
 
@@ -127,5 +131,6 @@ export function selectClockEstimate(
     method: "median",
     precisionMs: 500 + Math.min(...selected.map((sample) => sample.measurementLatency)) / 2,
     sampleDetail,
+    collectedSamples,
   };
 }

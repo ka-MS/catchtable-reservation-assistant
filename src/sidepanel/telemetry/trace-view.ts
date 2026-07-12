@@ -37,7 +37,12 @@ function eventDetail(event: TraceEvent): string {
     const precision = event.attributes.clockPrecisionMs;
     const offsetText = typeof offset === "number" ? `${Math.round(offset)}ms` : "-";
     const precisionText = typeof precision === "number" ? `±${Math.round(precision)}ms` : "±-";
-    const base = `${phase} · 오프셋 ${offsetText} · ${event.attributes.clockMethod ?? "-"} ${precisionText}`;
+    let base = `${phase} · 오프셋 ${offsetText} · ${event.attributes.clockMethod ?? "-"} ${precisionText}`;
+    const used = event.attributes.clockSamples;
+    const collected = event.attributes.clockCollectedSamples;
+    if (typeof used === "number" && typeof collected === "number" && collected > used) {
+      base += ` · 표본 ${collected}개 중 ${used}개 사용`;
+    }
     const sampleDetail = event.attributes.clockSampleDetail;
     return typeof sampleDetail === "string" && sampleDetail !== "" ? `${base} · 샘플 ${sampleDetail}` : base;
   }

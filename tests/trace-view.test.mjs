@@ -93,6 +93,24 @@ test("clock sync detail shows phase, precision, and the per-sample breakdown pas
   assert.match(detail, /샘플 o-44 l648 d0 \| o1068 l95 d1000/);
 });
 
+test("clock sync detail flags when fewer samples arrived than were used, hinting at fetch failures", () => {
+  const document = documentFixture();
+  const view = new TraceHistoryView(document, { select: () => undefined, remove: () => undefined });
+  view.renderRuns([run("run-c", 1)]);
+  view.renderEvents([{
+    schemaVersion: 1, runId: "run-c", seq: 1, code: "CLOCK_SYNCED", severity: "trace",
+    component: "content", localAt: 1, serverAt: 1, state: "SYNCING_CLOCK", message: "보정",
+    attributes: {
+      eventKind: "metric",
+      clockOffsetMs: 1037, clockSamples: 3, clockCollectedSamples: 5, clockSpreadMs: 1489,
+      clockFallback: false, clockMethod: "median", clockPrecisionMs: 536,
+      clockPhase: "initial",
+    },
+  }]);
+  const detail = document.querySelector("#trace-event-list .event-detail")?.textContent ?? "";
+  assert.match(detail, /표본 5개 중 3개 사용/);
+});
+
 test("clock sync detail omits the sample section when no breakdown was recorded", () => {
   const document = documentFixture();
   const view = new TraceHistoryView(document, { select: () => undefined, remove: () => undefined });

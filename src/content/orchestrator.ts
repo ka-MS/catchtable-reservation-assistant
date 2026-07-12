@@ -670,6 +670,7 @@ function clockMetricData(
   return {
     clockOffsetMs: offsetMs,
     clockSamples: estimate.sampleCount,
+    clockCollectedSamples: estimate.collectedSamples,
     clockSpreadMs: estimate.spreadMs ?? -1,
     clockFallback: estimate.fallback,
     clockMethod: estimate.method,
