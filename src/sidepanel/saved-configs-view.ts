@@ -22,6 +22,11 @@ function dateLabel(value: string): string {
   return `${Number(month)}월 ${Number(day)}일`;
 }
 
+function dateTimeLabel(ms: number): string {
+  const date = new Date(ms);
+  return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
 function restaurantLabel(targetUrl: string): string {
   try {
     const slug = decodeURIComponent(new URL(targetUrl).pathname.split("/").filter(Boolean).at(-1) ?? "");
@@ -109,7 +114,10 @@ export class SavedConfigsView {
       past.textContent = "지난 오픈";
       detail.append(" · ", past);
     }
-    load.append(title, detail);
+    const savedAt = this.document.createElement("span");
+    savedAt.className = "saved-config-date";
+    savedAt.textContent = `${this.activeList === "history" ? "최근 사용" : "저장일"} ${dateTimeLabel(item.savedAt)}`;
+    load.append(title, detail, savedAt);
     load.addEventListener("click", () => this.callbacks.load(item.config));
 
     const remove = this.document.createElement("button");

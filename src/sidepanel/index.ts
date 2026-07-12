@@ -384,7 +384,10 @@ function renderJobCard(job: ScheduledJob): HTMLLIElement {
     summary.textContent = model.summary;
     const openAt = document.createElement("span");
     openAt.textContent = model.openAtText;
-    meta.append(summary, openAt);
+    const createdAt = document.createElement("span");
+    createdAt.className = "job-card-created";
+    createdAt.textContent = model.createdAtText;
+    meta.append(summary, openAt, createdAt);
     const detail = document.createElement("span");
     detail.className = "job-card-detail";
     if (model.statusTone === "scheduled") detail.classList.add("job-card-countdown");

@@ -4,6 +4,7 @@ export interface JobCardModel {
   title: string;
   summary: string;
   openAtText: string;
+  createdAtText: string;
   statusLabel: string;
   statusTone: "scheduled" | "running" | "success" | "error" | "missed";
   detail: string;
@@ -32,8 +33,8 @@ function dateLabel(value: string): string {
   return `${Number(month)}월 ${Number(day)}일`;
 }
 
-function openAtLabel(openAtMs: number): string {
-  const date = new Date(openAtMs);
+function dateTimeLabel(ms: number): string {
+  const date = new Date(ms);
   return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
@@ -52,7 +53,8 @@ export function jobCardModel(job: ScheduledJob, nowMs: number): JobCardModel {
   const base = {
     title: shopSlug(config.targetUrl),
     summary: `${dateLabel(config.reservationDate)} · ${config.personCount}명 · ${minutesToLabel(config.timeRange.startMinutes)}–${minutesToLabel(config.timeRange.endMinutes)}`,
-    openAtText: `오픈 ${openAtLabel(config.openAtMs)}`,
+    openAtText: `오픈 ${dateTimeLabel(config.openAtMs)}`,
+    createdAtText: `등록 ${dateTimeLabel(job.createdAt)}`,
   };
   if (job.status === "running") {
     return { ...base, statusLabel: "실행 중", statusTone: "running", detail: "예약을 진행하고 있습니다.", canEdit: false, canDelete: false, showLog: true };

@@ -973,6 +973,11 @@ fieldset:disabled {
   gap: 2px;
 }
 
+.job-card-meta .job-card-created {
+  font-size: 11px;
+  color: #93a199;
+}
+
 .job-card-detail {
   font-size: 13px;
 }

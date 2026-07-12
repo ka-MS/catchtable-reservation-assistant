@@ -55,4 +55,16 @@ test("saved config view switches tabs and dispatches load, save and delete actio
   ]);
   assert.match(dom.window.document.querySelector("#saved-config-list").textContent, /8월 1일/);
   assert.match(dom.window.document.querySelector("#saved-config-list").textContent, /지난 오픈/);
+  // 즐겨찾기 탭이 활성이므로 "저장일" 라벨이 보인다.
+  assert.match(dom.window.document.querySelector("#saved-config-list").textContent, /저장일/);
+});
+
+test("history items label the saved timestamp as recent use", async () => {
+  const html = await readFile("dist/sidepanel/sidepanel.html", "utf8");
+  const dom = new JSDOM(html);
+  const view = new SavedConfigsView(dom.window.document, {
+    load: () => undefined, saveFavorite: () => undefined, remove: () => undefined, clear: () => undefined,
+  }, () => 2_000);
+  view.render([saved("history-1", "2026-07-30")], []);
+  assert.match(dom.window.document.querySelector("#saved-config-list").textContent, /최근 사용/);
 });

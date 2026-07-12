@@ -42,6 +42,7 @@ test("scheduled job shows shop slug, summary, and remaining time", () => {
   assert.equal(model.canEdit, true);
   assert.equal(model.canDelete, true);
   assert.equal(model.showLog, false);
+  assert.match(model.createdAtText, /^등록 \d{1,2}\/\d{1,2} \d{2}:\d{2}$/);
 });
 
 test("imminent job shows minutes", () => {
