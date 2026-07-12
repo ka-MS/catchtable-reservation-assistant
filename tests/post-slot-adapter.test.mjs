@@ -345,6 +345,69 @@ test("deposit-free flow tolerates a descriptive zero-deposit aria-label", () => 
   assert.equal(nextClicks, 1);
 });
 
+test("the request-based reservation sheet advances via the apply button", () => {
+  // Live DOM measured 2026-07-12 at ishizue (site-behavior §7.2): the request sheet is a
+  // MUI Drawer inside role="presentation" with no role="dialog" anywhere in the document.
+  const document = documentFor(`
+    <div role="presentation" style="position: fixed;">
+      <div tabindex="-1">
+        <h2>레스토랑 확인이 필요한 예약입니다.</h2>
+        <p>레스토랑에서 확인 후 예약이 확정되며, 확정까지 다소 시간이 소요됩니다.</p>
+        <input type="checkbox" />
+        <button>취소</button>
+        <button>예약 신청</button>
+      </div>
+    </div>
+  `, "https://app.catchtable.co.kr/ct/shop/ishizue");
+  let applyClicks = 0;
+  let cancelClicks = 0;
+  const buttons = [...document.querySelectorAll("button")];
+  buttons.find((b) => b.textContent === "예약 신청").addEventListener("click", () => { applyClicks += 1; });
+  buttons.find((b) => b.textContent === "취소").addEventListener("click", () => { cancelClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+
+  const inspection = adapter.inspect();
+  assert.equal(inspection.kind, "request_notice");
+  assert.equal(inspection.certainty, "supported");
+  assert.equal(inspection.strategy, "request-sheet-v1");
+  assert.equal(inspection.diagnostics.title, "레스토랑 확인이 필요한 예약입니다.");
+
+  const action = adapter.advance(inspection, { tablePreference: "any", menuKeyword: "", personCount: 2 });
+  assert.equal(action.status, "acted");
+  assert.equal(applyClicks, 1);
+  assert.equal(cancelClicks, 0);
+  assert.equal(document.querySelector('input[type="checkbox"]').checked, false);
+});
+
+test("the shop promo interstitial is dismissed via the later button", () => {
+  // Live DOM measured 2026-07-12 at ishizue (site-behavior §7.2): the promo interstitial is
+  // a fixed section without any role attribute; only its button texts are stable anchors.
+  const document = documentFor(`
+    <div style="position: fixed;">
+      <section>
+        <h2>이시즈에와 비슷한 곳 둘러보기</h2>
+        <button>7일간 보지 않기</button>
+        <button>다음에 볼게요</button>
+      </section>
+    </div>
+  `, "https://app.catchtable.co.kr/ct/shop/ishizue");
+  let laterClicks = 0;
+  let hideClicks = 0;
+  const buttons = [...document.querySelectorAll("button")];
+  buttons.find((b) => b.textContent === "다음에 볼게요").addEventListener("click", () => { laterClicks += 1; });
+  buttons.find((b) => b.textContent === "7일간 보지 않기").addEventListener("click", () => { hideClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+
+  const inspection = adapter.inspect();
+  assert.equal(inspection.kind, "promo_interstitial");
+  assert.equal(inspection.strategy, "promo-interstitial-v1");
+
+  const action = adapter.advance(inspection, { tablePreference: "any", menuKeyword: "", personCount: 2 });
+  assert.equal(action.status, "acted");
+  assert.equal(laterClicks, 1);
+  assert.equal(hideClicks, 0);
+});
+
 test("reservation form and unknown dialogs are distinguished", () => {
   const form = new PostSlotAdapter(documentFor("<main></main>", "https://app.catchtable.co.kr/ct/reservation/form?isDepositFree=1"));
   assert.equal(form.inspect().kind, "form");

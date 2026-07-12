@@ -22,6 +22,7 @@ interface CalendarPort {
 interface EntryPort {
   inspect(): EntryInspection;
   openReservation(): boolean;
+  dismissPromo?(): boolean;
 }
 
 interface PersonPort {
@@ -192,6 +193,10 @@ export class OpenRunOrchestrator {
           if (!entryClicked && entry.ctaAvailable && this.dependencies.entry.openReservation()) {
             entryClicked = true;
             emit("action", "예약하기 버튼을 클릭했습니다.");
+          } else if (this.dependencies.entry.dismissPromo?.()) {
+            // 홍보 인터스티셜이 예약하기 클릭을 삼키므로 닫은 뒤 다시 클릭한다.
+            entryClicked = false;
+            emit("action", "매장 홍보 안내 창을 닫았습니다.");
           }
           if (serverClock.now() >= entryDeadline) {
             transition("HANDED_OFF", entryClicked
@@ -534,8 +539,10 @@ export class OpenRunOrchestrator {
         const formNoticeGraceMs = 1_500;
         let formSeenAtMs: number | null = null;
         let formNoticeDismissed = false;
+        let lastInspection: PostSlotInspection | null = null;
         while (!controller.signal.aborted && serverClock.now() < postSlotDeadline) {
           const inspection = this.dependencies.postSlot.inspect();
+          lastInspection = inspection;
           if (inspection.kind === "form") {
             if (formSeenAtMs === null) {
               formSeenAtMs = serverClock.now();
@@ -592,7 +599,9 @@ export class OpenRunOrchestrator {
           transition("STOPPED", "사용자가 실행을 중지했습니다.", { userStopped: true });
           return finish();
         }
-        transition("HANDED_OFF", "후속 예약 화면을 5초 안에 확인하지 못했습니다.");
+        transition("HANDED_OFF", "후속 예약 화면을 5초 안에 확인하지 못했습니다.", lastInspection === null ? {} : {
+          data: postSlotEventData(lastInspection),
+        });
         return finish();
       }
 

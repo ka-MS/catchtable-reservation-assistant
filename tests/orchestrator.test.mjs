@@ -200,6 +200,37 @@ test("auto entry opens the reservation, prepares date and person, then uses the 
   ]);
 });
 
+test("auto entry dismisses the promo interstitial and re-clicks the CTA", async () => {
+  // Measured 2026-07-12 at ishizue: the promo interstitial swallows the first CTA click,
+  // so the calendar only opens after dismissing the promo and clicking the CTA again.
+  let reservationOpen = false;
+  let promoVisible = false;
+  const actions = [];
+  const h = harness({
+    entry: {
+      inspect: () => ({ reservationOpen, ctaAvailable: true, waitingOnly: false }),
+      openReservation: () => {
+        actions.push("entry");
+        if (actions.filter((a) => a === "entry").length === 1) promoVisible = true;
+        else reservationOpen = true;
+        return true;
+      },
+      dismissPromo: () => {
+        if (!promoVisible) return false;
+        promoVisible = false;
+        actions.push("promo");
+        return true;
+      },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ entryMode: "auto" }));
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.deepEqual(actions, ["entry", "promo", "entry"]);
+  assert.equal(h.events.some((event) => event.kind === "action" && /홍보 안내/.test(event.message)), true);
+});
+
 test("auto entry hands off safely when the restaurant is waiting-only", async () => {
   const h = harness({
     entry: {
@@ -344,6 +375,44 @@ test("unknown post-slot screens hand off with safe structural diagnostics", asyn
   assert.equal(handoff?.data?.postSlotFingerprint, "ps-a1b2c3d4");
   assert.equal(handoff?.data?.dialogTitle, "고객 요청 확인");
   assert.equal(handoff?.data?.dialogButtons, "이전 | 계속");
+});
+
+test("the post-slot timeout handoff records the last inspection diagnostics", async () => {
+  // 화면이 dialog로 인식되지 않으면 waiting만 반복되다 시간초과 인계된다.
+  // 그 인계 이벤트에 마지막 관찰 근거(urlKind 포함)가 남아야 원인을 추적할 수 있다.
+  const waiting = {
+    kind: "waiting",
+    certainty: "unknown",
+    strategy: "no-active-dialog-v1",
+    evidence: ["no active dialog"],
+    fingerprint: "ps-00000000",
+    diagnostics: {
+      urlKind: "other",
+      label: "",
+      title: "",
+      buttons: [],
+      disabledButtonCount: 0,
+      radioCount: 0,
+      checkboxCount: 0,
+      quantityControlCount: 0,
+      zeroDepositControlCount: 0,
+    },
+  };
+  const h = harness({
+    postSlot: {
+      inspect: () => waiting,
+      advance: () => ({ status: "acted", message: "unused" }),
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ dryRun: false }));
+  const handoff = h.events.at(-1);
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.match(handoff?.message ?? "", /5초/);
+  assert.equal(handoff?.data?.postSlotStage, "waiting");
+  assert.equal(handoff?.data?.postSlotStrategy, "no-active-dialog-v1");
+  assert.equal(handoff?.data?.dialogUrlKind, "other");
 });
 
 test("a promo notice appearing after form arrival is dismissed before handing off", async () => {

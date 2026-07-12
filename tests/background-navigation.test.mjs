@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { navigateTab, sameRestaurant } from "../dist/background/navigation.js";
+import { navigateTab, sameRestaurant, leftReservationFlow } from "../dist/background/navigation.js";
 
 test("sameRestaurant ignores query strings but requires the exact shop path", () => {
   assert.equal(sameRestaurant(
@@ -15,6 +15,21 @@ test("sameRestaurant ignores query strings but requires the exact shop path", ()
     "https://app.catchtable.co.kr/ct/shop/kea/",
     "https://app.catchtable.co.kr/ct/shop/kea",
   ), true);
+});
+
+test("leftReservationFlow allows the shop page and the reservation form, blocks elsewhere", () => {
+  const target = "https://app.catchtable.co.kr/ct/shop/kea";
+  // 같은 매장 페이지: 이탈 아님
+  assert.equal(leftReservationFlow("https://app.catchtable.co.kr/ct/shop/kea?date=260730", target), false);
+  // 예약 폼: 후속 흐름의 정상 목적지 — 이탈 아님 (성공 경로가 STOPPED로 오판되던 버그)
+  assert.equal(leftReservationFlow("https://app.catchtable.co.kr/ct/reservation/form", target), false);
+  assert.equal(leftReservationFlow("https://app.catchtable.co.kr/ct/reservation/confirm", target), false);
+  // 다른 매장: 이탈
+  assert.equal(leftReservationFlow("https://app.catchtable.co.kr/ct/shop/other", target), true);
+  // 외부 오리진: 이탈
+  assert.equal(leftReservationFlow("https://example.com/", target), true);
+  // 잘못된 URL: 이탈로 간주(보수적)
+  assert.equal(leftReservationFlow("not a url", target), true);
 });
 
 test("navigateTab waits for the target tab to finish loading", async () => {
