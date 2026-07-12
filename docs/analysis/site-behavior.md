@@ -201,7 +201,9 @@ t=193ms  테이블 dialog DOM 제거, 다음 dialog 활성
 
 **응답 형태 (R5).** 가용 여부와 무관하게 항상 200 + `data.timeSlotMap`(시각→`{availableYn, date, time, ...}`) 구조. 도착 신호는 항상 발생하므로 가용 판정은 DOM(또는 바디) 스캔이 담당해야 한다. `[실측]`
 
-**미확정.** content script 격리 월드의 PerformanceObserver 가시성(R4 — 주입 main 월드에서는 확인, 격리 월드는 구현 단계에서 확정), 매장 교차 확인, ct-api 호스트와 app 호스트의 시계 편차 여부(시계 동기화는 app 호스트 HEAD 기준인데 게이트는 ct-api 뒤 오리진).
+**격리 월드 가시성 (R4).** content script(격리 월드)의 PerformanceObserver가 `time-slots` 리소스 항목을 정상 관측한다 — 2026-07-12 23:05 안전 점검 실런에서 `watch:"live"`·`xhrArrivalServerAtMs` 기록 확인(worklog 13). `[실측]`
+
+**미확정.** 매장 교차 확인, ct-api 호스트와 app 호스트의 시계 편차 여부(시계 동기화는 app 호스트 HEAD 기준인데 게이트는 ct-api 뒤 오리진 — 실오픈 xhr 계측으로 판별 예정).
 
 ## 9. 미실측 영역
 
