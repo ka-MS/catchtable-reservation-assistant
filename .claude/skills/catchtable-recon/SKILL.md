@@ -9,22 +9,11 @@ description: Use when 캐치테이블(app.catchtable.co.kr) 사이트 동작을 
 
 1. **사실과 절차의 분리.** 사이트의 DOM·전환·URL 사실은 이 스킬이 아니라 `docs/analysis/site-behavior.md`가 단일 출처다. 실측 전에 반드시 그 문서를 먼저 읽고, 새 사실은 그 문서에만 기록한다. 이 스킬에는 방법만 누적한다.
 2. **실측되지 않은 것은 구현하지 않는다.** 추측 셀렉터·추측 전환 금지.
-3. **관측 먼저, 행동은 최소.** 읽기(스크린샷·접근성 트리·주입 관측)로 답이 나오면 클릭하지 않는다.
-
-## 안전 수칙 (항상 적용)
-
-- **금지:** 예약 최종 확정(예약 폼의 `예약하기` 제출), 약관 동의, 결제 수단 입력·결제 실행, 예약 취소·변경, **웨이팅/줄서기 등록, `예약 오픈 알림 받기`, `예약 오픈 알림 취소하기`, `빈자리 알림 신청`**(계정 알림 등록·해제). 이 버튼들은 실측 중 클릭 대상에서 제외한다. 매장 상세 dock의 `예약하기`(달력 모달 열기)는 클릭해도 안전하다.
-- 유료 예약금·수량형 메뉴는 금액이 커질 수 있다 — 수량·금액이 표시되는 화면에서는 진행 전 금액을 기록만 하고 중단한다.
-- 실측은 dry-run 또는 "클릭 직전 중단" 방식. 중간 단계(테이블/메뉴/추가상품/예약금 안내)까지는 진입 가능하되, 예약 폼 제출 경계는 넘지 않는다.
-- 사용자 계정 상태(로그인, 예약 내역, 알림 신청)를 바꾸는 동작은 사전 확인 없이 실행하지 않는다.
+3. **관측과 행동을 구분한다.** 각 단계에서 무엇을 관측했고 무엇을 클릭했는지 기록한다.
 
 ## 역할 분담
 
-| 사용자 | AI |
-|---|---|
-| 확장 리로드(`chrome://extensions`), 로그인 유지, 권한 승인 | 빌드, 페이지 이동·조작, 관측·계측, 로그 판독, 문서 기록 |
-
-핸드오프 규약: AI가 빌드 완료 후 "확장을 리로드해주세요"라고 요청하고, 사용자 확인 응답을 받은 뒤에만 테스트를 재개한다.
+AI가 `$use-chrome-devtools`로 확장 업데이트·새로고침, Side Panel 조작, 캐치테이블 페이지 이동, 로그 판독, IndexedDB 검증을 직접 수행한다. 로그인이나 Chrome 자체 확인 대화상자처럼 MCP가 접근하지 못하는 UI만 사용자에게 요청한다.
 
 ## 워크플로 A: 사이트 실측
 
@@ -43,16 +32,13 @@ description: Use when 캐치테이블(app.catchtable.co.kr) 사이트 동작을 
 5. 셀렉터 근거는 ARIA 속성(`role`, `aria-label`, `aria-pressed` 등)과 `data-*`만. 해시 CSS class 금지.
 6. 기록: 새 사실은 `site-behavior.md`에 매장명·실측일과 함께 `[실측]` 태그로 추가. 화면으로만 본 것은 `[화면 증거]`. 세션 요약은 `docs/worklog/`에.
 
-## 확장 직접 테스트: AI 불가 (2026-07-11 실측)
+## 확장 직접 테스트
 
-**AI(claude-in-chrome)는 확장의 사이드패널을 조작·판독할 수 없다.** navigate 도구는 `chrome-extension://` 스킴을 열지 못하고(https:// 강제 부착), 사용자가 대신 열어줘도 "Cannot access a chrome-extension:// URL of different extension"으로 스크린샷·JS 실행이 모두 차단된다. 브라우저 자동화 확장은 다른 확장의 페이지에 접근할 수 없다.
-
-따라서 확장 UI 검증은 **사용자 주도**다. AI는 빌드(`npm run check`)와 대상 매장 탭(일반 웹페이지) 관측만 담당하고, 사이드패널 실행·이벤트 로그 판독은 사용자가 수행해 스크린샷/구두로 전달한다. 자동 회귀는 fixture 기반 단위/통합 테스트로 커버한다.
+확장 UI와 서비스 워커 저장소 검증에는 `$use-chrome-devtools`를 사용한다. Side Panel target이 page list에 없으면 확장 관리 페이지 target을 `chrome-extension://<id>/sidepanel/sidepanel.html`로 이동한다. UI 로그와 `catchtable-reserve-telemetry` IndexedDB의 `runs`·`events`를 함께 검증한다.
 
 ## 포인터
 
 - 사이트 사실: `docs/analysis/site-behavior.md` (단일 출처)
-- 안전 경계 결정: `docs/design/decisions/ADR-005-slot-handoff.md`
 - 주입 정책: `docs/design/decisions/ADR-004-on-demand-content.md`
 - DOM 재현 fixture: `tests/fixtures/`
 - 파이프라인 상태 정의: `docs/design/state-machine.md`
