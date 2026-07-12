@@ -17,6 +17,26 @@ test("captures an unknown dialog with empty label via text snippet, masking phon
   assert.ok(s.fingerprint.startsWith("ss-"));
 });
 
+test("captures an unknown presentation sheet (not just the known request sheet)", async () => {
+  const dom = await loadFixture("snapshot-presentation-sheet.html");
+  const s = captureStageSnapshot(dom.window.document);
+  assert.equal(s.dialogTitle, "알 수 없는 안내 시트");
+  assert.match(s.textSnippet, /별도 승인 절차/);
+  assert.doesNotMatch(s.textSnippet, /9876/);   // 점 구분 전화번호도 마스킹
+  assert.deepEqual(s.buttons, ["신청"]);
+});
+
+test("masks phone numbers regardless of separator", async () => {
+  const dom = await loadFixture("snapshot-unknown-dialog.html");
+  const doc = dom.window.document;
+  const p = doc.querySelector('[role="dialog"] p');
+  for (const phone of ["01012345678", "010 1234 5678", "010.1234.5678"]) {
+    p.textContent = `연락처 ${phone} 입니다.`;
+    const s = captureStageSnapshot(doc);
+    assert.doesNotMatch(s.textSnippet, /\d{4}/, `masked: ${phone}`);
+  }
+});
+
 test("main fallback collects structure only, no snippet", async () => {
   const dom = await loadFixture("snapshot-no-dialog.html");
   const s = captureStageSnapshot(dom.window.document);

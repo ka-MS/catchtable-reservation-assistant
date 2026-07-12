@@ -1,5 +1,5 @@
 import { cleanText, isElementHidden } from "./dom.js";
-import { findActiveDialog, findRequestSheet } from "./post-slot-inspection.js";
+import { findActiveDialog } from "./post-slot-inspection.js";
 
 export interface StageSnapshot {
   urlKind: "shop" | "reservation_form" | "other";
@@ -28,12 +28,22 @@ function safeText(value: string | null | undefined): string {
 
 function maskPii(value: string): string {
   return value
-    .replace(/\d{2,3}-\d{3,4}-\d{4}/g, "###-####-####")
+    // 전화번호: 하이픈·점·공백·구분자 없음 모두 마스킹.
+    .replace(/\d{2,3}[-.\s]?\d{3,4}[-.\s]?\d{4}/g, "###")
     .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "###@###");
 }
 
 function visible<T extends Element>(root: ParentNode, selector: string): T[] {
   return Array.from(root.querySelectorAll<T>(selector)).filter((el) => !isElementHidden(el));
+}
+
+// 알려진 승인제 시트뿐 아니라 임의의 보이는 presentation 바텀시트(제목 또는 버튼 보유)를 잡는다.
+function findVisiblePresentationSheet(document: Document): HTMLElement | null {
+  return Array.from(document.querySelectorAll<HTMLElement>('div[role="presentation"]'))
+    .filter((sheet) => !isElementHidden(sheet))
+    .filter((sheet) => visible<HTMLElement>(sheet, 'h1, h2, [role="heading"]').length > 0
+      || visible<HTMLButtonElement>(sheet, "button").length > 0)
+    .at(-1) ?? null;
 }
 
 function hash(value: string): string {
@@ -48,7 +58,7 @@ function hash(value: string): string {
 }
 
 export function captureStageSnapshot(document: Document): StageSnapshot {
-  const dialogEl = findActiveDialog(document) ?? findRequestSheet(document);
+  const dialogEl = findActiveDialog(document) ?? findVisiblePresentationSheet(document);
   const container: ParentNode = dialogEl ?? document.querySelector("main") ?? document.body;
   const headings = visible<HTMLElement>(container, 'h1, h2, [role="heading"]')
     .map((el) => safeText(el.textContent)).filter(Boolean).slice(0, MAX_ITEMS);

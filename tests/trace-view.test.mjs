@@ -71,3 +71,24 @@ test("trace view appends live batches incrementally and caps the DOM at one hund
   assert.match(document.querySelector("#trace-event-list > li")?.textContent ?? "", /event 101/);
   assert.equal(document.querySelector("#trace-event-count").textContent, "100개");
 });
+
+test("persisted trace detail surfaces snapshot identity fields (snippet, fingerprint, run-state)", () => {
+  const document = documentFixture();
+  const view = new TraceHistoryView(document, { select: () => undefined, remove: () => undefined });
+  view.renderRuns([run("run-x", 1)]);
+  view.renderEvents([{
+    schemaVersion: 1, runId: "run-x", seq: 1, code: "RUN_TERMINATED", severity: "warn",
+    component: "content", localAt: 1, serverAt: 1, state: "HANDED_OFF", message: "인계",
+    attributes: {
+      eventKind: "state", state: "HANDED_OFF",
+      snapshotUrlKind: "shop", snapshotHeadings: "", snapshotButtons: "확인 | 취소",
+      snapshotDisabledButtonCount: 1, snapshotDialogLabel: "", snapshotDialogTitle: "",
+      snapshotTextSnippet: "추가 확인이 필요합니다", snapshotFingerprint: "ss-abc123",
+      snapshotRunState: "ADVANCING_RESERVATION",
+    },
+  }]);
+  const detail = document.querySelector("#trace-event-list .event-detail")?.textContent ?? "";
+  assert.match(detail, /추가 확인이 필요합니다/);
+  assert.match(detail, /ss-abc123/);
+  assert.match(detail, /ADVANCING_RESERVATION/);
+});

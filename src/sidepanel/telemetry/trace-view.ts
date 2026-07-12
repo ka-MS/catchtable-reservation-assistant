@@ -31,6 +31,15 @@ function eventDetail(event: TraceEvent): string {
     const scans = event.attributes.slotScanCount;
     return `#${cycle} · ${result} · 인접 ${adjacent ?? "-"} · 목표 ${target ?? "-"} · 탐색 ${scans ?? 0}회`;
   }
+  if (typeof event.attributes.snapshotFingerprint === "string") {
+    const stage = event.attributes.snapshotRunState ?? "-";
+    const title = event.attributes.snapshotDialogTitle || event.attributes.snapshotDialogLabel || "제목 없음";
+    const buttons = event.attributes.snapshotButtons || "없음";
+    const snippet = typeof event.attributes.snapshotTextSnippet === "string" && event.attributes.snapshotTextSnippet
+      ? ` · "${String(event.attributes.snapshotTextSnippet).slice(0, 60)}"`
+      : "";
+    return `${stage} · 스냅샷 ${title} · 버튼 ${buttons}${snippet} · ${event.attributes.snapshotFingerprint}`;
+  }
   return Object.entries(event.attributes)
     .filter(([key]) => !["eventKind", "state"].includes(key))
     .slice(0, 6)
