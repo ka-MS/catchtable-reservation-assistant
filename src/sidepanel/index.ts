@@ -8,6 +8,7 @@ import { countdownModel } from "./countdown.js";
 import { formatEventDetail, formatEventTime } from "./event-format.js";
 import { configFromFormValues, configSnapshotFromFormValues, type FormValues } from "./form-model.js";
 import { jobCardModel } from "./job-card.js";
+import { jobListModel, miniLogModel } from "./job-list-model.js";
 import { SavedConfigsView } from "./saved-configs-view.js";
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -40,8 +41,14 @@ const viewForm = byId<HTMLElement>("view-form");
 const viewRun = byId<HTMLElement>("view-run");
 const newJobButton = byId<HTMLButtonElement>("new-job");
 const jobList = byId<HTMLOListElement>("job-list");
-const backHomeButton = byId<HTMLButtonElement>("back-home");
+const doneToggle = byId<HTMLButtonElement>("done-toggle");
+const doneList = byId<HTMLOListElement>("done-list");
+const formTitle = byId<HTMLElement>("form-title");
+const miniLogList = byId<HTMLOListElement>("mini-log-list");
+const miniLogMore = byId<HTMLButtonElement>("mini-log-more");
+const actionBar = byId<HTMLElement>("action-bar");
 const saveJobButton = byId<HTMLButtonElement>("save-job");
+const navButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".view-nav button"));
 
 const fields = {
   targetUrl: byId<HTMLInputElement>("target-url"),
@@ -143,13 +150,16 @@ function isRunning(): boolean {
 
 function setView(view: PanelView): void {
   currentView = view;
+  document.body.dataset.view = view;
   viewHome.hidden = view !== "home";
   viewForm.hidden = view !== "form";
   viewRun.hidden = view !== "run";
-  backHomeButton.hidden = view === "home";
-  saveJobButton.hidden = view !== "form";
-  startButton.hidden = view !== "form" || isRunning();
-  stopButton.hidden = view !== "run";
+  actionBar.hidden = view !== "form";
+  startButton.hidden = isRunning();
+  navButtons.forEach((button) => {
+    button.setAttribute("aria-current", String(button.dataset.view === view));
+  });
+  formTitle.textContent = editingJobId === null ? "새 예약 작업" : "작업 편집";
   formError.textContent = "";
   renderCountdown();
 }
@@ -352,16 +362,7 @@ function renderCountdown(): void {
   countdownDetail.textContent = model.detail;
 }
 
-function renderJobs(): void {
-  jobList.replaceChildren();
-  if (scheduledJobsState.length === 0) {
-    const empty = document.createElement("li");
-    empty.className = "job-empty";
-    empty.textContent = "등록된 예약 작업이 없습니다.";
-    jobList.append(empty);
-    return;
-  }
-  scheduledJobsState.forEach((job) => {
+function renderJobCard(job: ScheduledJob): HTMLLIElement {
     const model = jobCardModel(job, Date.now());
     const item = document.createElement("li");
     item.className = "job-card";
@@ -417,7 +418,48 @@ function renderJobs(): void {
       actions.append(deleteButton);
     }
     item.append(header, meta, detail, actions);
-    jobList.append(item);
+    return item;
+}
+
+function renderJobs(): void {
+  const model = jobListModel(scheduledJobsState);
+  jobList.replaceChildren();
+  if (model.active.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "job-empty";
+    empty.textContent = "등록된 예약 작업이 없습니다.";
+    jobList.append(empty);
+  } else {
+    model.active.forEach((job) => jobList.append(renderJobCard(job)));
+  }
+  doneToggle.hidden = model.done.length === 0;
+  doneToggle.textContent = `${model.doneLabel} ${doneList.hidden ? "보기 ▾" : "접기 ▴"}`;
+  doneList.replaceChildren();
+  if (model.done.length === 0) {
+    doneList.hidden = true;
+  } else {
+    model.done.forEach((job) => doneList.append(renderJobCard(job)));
+  }
+}
+
+function renderMiniLog(): void {
+  const model = miniLogModel(latestEvents);
+  miniLogList.replaceChildren();
+  if (model.emptyText !== null) {
+    const empty = document.createElement("li");
+    empty.textContent = model.emptyText;
+    miniLogList.append(empty);
+    return;
+  }
+  model.entries.forEach((event) => {
+    const item = document.createElement("li");
+    const time = document.createElement("span");
+    time.className = "mini-log-time";
+    time.textContent = formatEventTime(event.at);
+    const message = document.createElement("span");
+    message.textContent = event.message;
+    item.append(time, message);
+    miniLogList.append(item);
   });
 }
 
@@ -431,8 +473,9 @@ function renderRuntime(activeRun: ActiveRun | null | undefined, events: RunEvent
   statusDetail.textContent = STATE_LABEL[state];
   const running = activeRun !== null && activeRun !== undefined && !TERMINAL.has(state);
   fieldset.disabled = running;
-  startButton.hidden = running || currentView !== "form";
+  startButton.hidden = running;
   stopButton.disabled = !running;
+  renderMiniLog();
   if (running && !wasRunning) setView("run");
   wasRunning = running;
 
@@ -532,9 +575,20 @@ newJobButton.addEventListener("click", () => {
   setView("form");
 });
 
-backHomeButton.addEventListener("click", () => {
-  editingJobId = null;
-  setView("home");
+navButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const view = button.dataset.view;
+    if (view === "home" || view === "form" || view === "run") setView(view);
+  });
+});
+
+doneToggle.addEventListener("click", () => {
+  doneList.hidden = !doneList.hidden;
+  renderJobs();
+});
+
+miniLogMore.addEventListener("click", () => {
+  setView("run");
 });
 
 saveJobButton.addEventListener("click", async () => {

@@ -20,15 +20,29 @@
         <strong id="countdown-text"></strong>
         <span id="countdown-detail"></span>
       </div>
+      <nav class="view-nav" aria-label="주요 화면">
+        <button type="button" data-view="home" aria-current="true">작업</button>
+        <button type="button" data-view="form" aria-current="false">예약 설정</button>
+        <button type="button" data-view="run" aria-current="false">실행 로그</button>
+      </nav>
+      <p id="form-error" class="error" role="alert"></p>
     </header>
 
     <main>
       <section id="view-home" class="view">
-        <button id="new-job" class="primary wide-button" type="button">새 예약 작업</button>
+        <div class="view-title-row">
+          <h2>예약 작업</h2>
+          <button id="new-job" class="primary compact" type="button">+ 새 예약</button>
+        </div>
         <ol id="job-list" class="job-list" aria-label="예약 작업 목록"></ol>
+        <button id="done-toggle" class="archive-toggle" type="button" hidden></button>
+        <ol id="done-list" class="job-list" aria-label="완료된 작업 목록" hidden></ol>
       </section>
 
       <section id="view-form" class="view" hidden>
+      <div class="view-title-row">
+        <h2 id="form-title">새 예약 작업</h2>
+      </div>
       <form id="reservation-form">
         <fieldset id="config-fields">
           <section class="panel-card">
@@ -173,6 +187,13 @@
           </details>
         </fieldset>
       </form>
+      <section class="panel-card mini-log" aria-labelledby="mini-log-title">
+        <div class="mini-log-head">
+          <h2 id="mini-log-title">실행 로그</h2>
+          <button id="mini-log-more" class="text-link" type="button">전체 보기</button>
+        </div>
+        <ol id="mini-log-list" class="mini-log-list"></ol>
+      </section>
       </section>
 
       <section id="view-run" class="view" hidden>
@@ -185,6 +206,7 @@
           <div class="runtime-tools">
             <span id="clock-offset">시계 -</span>
             <button id="event-filter" class="filter-button" type="button" aria-pressed="false">중요만</button>
+            <button id="stop" class="stop-button" type="button" disabled>실행 중지</button>
           </div>
         </div>
         <ol id="event-list" class="event-list"></ol>
@@ -192,12 +214,9 @@
       </section>
     </main>
 
-    <footer class="action-bar">
-      <p id="form-error" class="error" role="alert"></p>
-      <button id="back-home" class="secondary" type="button" hidden>목록으로</button>
-      <button id="save-job" class="primary" type="button" hidden>예약 저장</button>
-      <button id="start" class="primary" type="submit" form="reservation-form" hidden>지금 시작</button>
-      <button id="stop" class="secondary" type="button" hidden disabled>실행 중지</button>
+    <footer id="action-bar" class="action-bar" hidden>
+      <button id="save-job" class="secondary" type="button">예약 저장</button>
+      <button id="start" class="primary" type="submit" form="reservation-form">지금 시작</button>
     </footer>
 
     <script type="module" src="index.js"></script>
