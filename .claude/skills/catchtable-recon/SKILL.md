@@ -26,15 +26,21 @@ AI가 `$use-chrome-devtools`로 확장 업데이트·새로고침, Side Panel �
    - **전환 종류 판별**: `window.__recon` 같은 전역 계측 객체 + `history.pushState/replaceState` 후킹 + MutationObserver를 주입한 뒤 클릭한다. 전역 객체가 살아 있으면 SPA 전환, 사라지면 풀 리로드다.
    - 네트워크 관측 — API는 관측만. 직접 호출·재현 금지(요청 본문 암호화됨).
 
-   실전에서 확인된 도구 제약:
-   - **javascript_tool 반환값에 URL 전체·쿼리스트링을 포함하면 도구가 결과를 차단한다** (`[BLOCKED: Cookie/query string data]`). 항상 `location.pathname` 또는 `new URL(u, location.origin).pathname`만 반환한다.
-   - **좌표 클릭은 드리프트한다.** SPA 리렌더로 좌표 측정과 클릭 사이에 요소가 이동해 오클릭이 난다. 클릭 직전 스크린샷으로 위치를 재확인하거나, find/ref 기반 클릭을 쓴다. 오클릭 후에는 URL·화면으로 현재 상태를 반드시 재확인한다.
+   도구별 제약 (도구에 따라 적용 여부가 다르므로 어느 도구를 쓰는지 먼저 확인한다):
+   - **chrome-devtools MCP(`$use-chrome-devtools`)가 기본 도구다.** `evaluate_script`는 URL 전체·쿼리스트링 반환을 차단하지 않고(2026-07-12 실측: `location.href`를 통째로 반환 성공), `list_pages`도 전체 쿼리 URL을 그대로 노출한다. 클릭은 좌표가 아니라 스냅샷 `uid`/`ref` 기반이라 좌표 드리프트가 없다.
+   - **(구 claude-in-chrome 도구를 쓸 때만 해당)** `javascript_tool` 반환값에 URL 전체·쿼리스트링을 포함하면 `[BLOCKED: Cookie/query string data]`로 결과가 차단되므로 `location.pathname`(또는 `new URL(u, location.origin).pathname`)만 반환한다. 좌표 클릭은 SPA 리렌더로 드리프트하므로 클릭 직전 스크린샷 재확인 또는 find/ref 클릭을 쓰고, 오클릭 후 URL·화면으로 상태를 반드시 재확인한다.
 5. 셀렉터 근거는 ARIA 속성(`role`, `aria-label`, `aria-pressed` 등)과 `data-*`만. 해시 CSS class 금지.
 6. 기록: 새 사실은 `site-behavior.md`에 매장명·실측일과 함께 `[실측]` 태그로 추가. 화면으로만 본 것은 `[화면 증거]`. 세션 요약은 `docs/worklog/`에.
 
 ## 확장 직접 테스트
 
-확장 UI와 서비스 워커 저장소 검증에는 `$use-chrome-devtools`를 사용한다. Side Panel target이 page list에 없으면 확장 관리 페이지 target을 `chrome-extension://<id>/sidepanel/sidepanel.html`로 이동한다. UI 로그와 `catchtable-reserve-telemetry` IndexedDB의 `runs`·`events`를 함께 검증한다.
+확장 UI와 서비스 워커 저장소 검증에는 `$use-chrome-devtools`를 사용한다. Side Panel target이 page list에 없으면 확장 관리 페이지 target을 `chrome-extension://<id>/sidepanel/sidepanel.html`로 이동한다(`new_page`로 사이드패널 URL을 새 탭으로 여는 것은 조용히 실패할 수 있으니, 기존 target을 이 URL로 `navigate_page` 시킨다).
+
+저장소는 **두 곳을 구분해** 검증한다 (2026-07-12 실측):
+- **예약 저장·스케줄 잡·설정**은 `chrome.storage.local`에 있다. 핵심 키: `scheduledJobs`(저장된 예약 잡 배열, 각 항목에 `config`·`status`·`id`), 그 외 `reservationConfig`·`configHistory`·`configFavorites`·`activeRun`·`draftForm` 등. `chrome.storage.local.get(null)`로 덤프해 확인한다.
+- **실행 텔레메트리(runs·events)**는 `catchtable-reserve-telemetry` IndexedDB에 있다.
+
+즉 "예약 저장" 같은 스케줄 동작은 IndexedDB가 아니라 `chrome.storage.local.scheduledJobs`에서 영속을 확인해야 한다.
 
 ## 포인터
 

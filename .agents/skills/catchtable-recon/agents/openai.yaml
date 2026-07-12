@@ -1,0 +1,4 @@
+interface:
+  display_name: "Catchtable Recon"
+  short_description: "Inspect and E2E-test Catchtable reservation flows"
+  default_prompt: "Use $catchtable-recon to inspect and verify the Catchtable extension workflow."
