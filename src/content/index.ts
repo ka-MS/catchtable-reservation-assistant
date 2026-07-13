@@ -8,6 +8,7 @@ import { PostSlotAdapter } from "./adapter/post-slot.js";
 import { createSlotRefreshWatch } from "./adapter/slot-refresh-watch.js";
 import { captureStageSnapshot } from "./adapter/snapshot.js";
 import { createReferenceClockSampler } from "./reference-clock-sampler.js";
+import { dispatchRunEvent } from "./dispatch.js";
 import { OpenRunOrchestrator } from "./orchestrator.js";
 import { BatchTraceProcessor } from "./telemetry/batch-processor.js";
 import { PortTraceTransport } from "./telemetry/port-transport.js";
@@ -41,8 +42,9 @@ if (!window.__ctReserveInjected) {
     emit: (event) => {
       traceLogger.recordRunEvent(event);
       const message: RunEventMessage = { type: "RUN_EVENT", event };
-      // Service Worker 재시작 중 로그 전송이 실패해도 시간 임계 실행은 계속한다.
-      void chrome.runtime.sendMessage(message).catch(() => undefined);
+      // Service Worker 재시작·확장 컨텍스트 무효화 중 전송이 실패해도(동기 throw
+      // 포함) 시간 임계 실행은 계속한다.
+      dispatchRunEvent((m) => chrome.runtime.sendMessage(m), message);
     },
     trace: (code, severity, message, options) => traceLogger.record(code, severity, message, options),
     flushTrace: () => traceLogger.forceFlush(),
