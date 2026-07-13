@@ -19,7 +19,6 @@ export interface FormValues {
   dryRun: boolean;
   preOpenLeadMs: string;
   toggleIntervalMs: string;
-  clockSampleCount: string;
 }
 
 function parseConfig(values: FormValues): ReservationConfig {
@@ -44,7 +43,6 @@ function parseConfig(values: FormValues): ReservationConfig {
     dryRun: values.dryRun,
     preOpenLeadMs: Number(values.preOpenLeadMs),
     toggleIntervalMs: Number(values.toggleIntervalMs),
-    clockSampleCount: Number(values.clockSampleCount),
   };
   return config;
 }

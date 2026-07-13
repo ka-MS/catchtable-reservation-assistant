@@ -33,6 +33,7 @@ test("sidepanel values produce an epoch-based configuration", () => {
   assert.equal(config.tablePreference, "bar");
   assert.equal(config.menuKeyword, "디너 오마카세");
   assert.equal(config.entryMode, "auto");
+  assert.equal("clockSampleCount" in config, false);
 });
 
 test("sidepanel model reports validation errors", () => {

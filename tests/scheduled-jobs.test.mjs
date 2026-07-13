@@ -29,7 +29,6 @@ function config(overrides = {}) {
     dryRun: false,
     preOpenLeadMs: 3_000,
     toggleIntervalMs: 150,
-    clockSampleCount: 9,
     ...overrides,
   };
 }
@@ -129,6 +128,13 @@ test("sanitizeScheduledJobs drops malformed entries", () => {
   const good = job();
   const sanitized = sanitizeScheduledJobs([good, null, { id: 3 }, { ...good, id: "bad", status: "unknown" }]);
   assert.deepEqual(sanitized.map((item) => item.id), ["job-1"]);
+});
+
+test("sanitizeScheduledJobs accepts legacy and current clock setting shapes", () => {
+  const legacy = job({ id: "legacy", config: config({ clockSampleCount: 9 }) });
+  const currentConfig = config({ openAtMs: BASE_OPEN + 1_000_000, stopAtMs: BASE_OPEN + 1_600_000 });
+  const current = job({ id: "current", config: currentConfig });
+  assert.deepEqual(sanitizeScheduledJobs([legacy, current]).map((item) => item.id), ["legacy", "current"]);
 });
 
 test("reconcileJobs reschedules future jobs and marks passed ones missed", () => {

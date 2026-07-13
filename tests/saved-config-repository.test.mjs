@@ -17,7 +17,6 @@ const config = {
   dryRun: true,
   preOpenLeadMs: 3_000,
   toggleIntervalMs: 150,
-  clockSampleCount: 9,
 };
 
 test("repository stores, removes and clears the selected list", async () => {

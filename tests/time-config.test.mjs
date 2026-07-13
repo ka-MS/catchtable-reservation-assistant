@@ -44,12 +44,14 @@ function validConfig() {
     dryRun: true,
     preOpenLeadMs: 3_000,
     toggleIntervalMs: 400,
-    clockSampleCount: 5,
   };
 }
 
 test("valid open-run configuration is accepted", () => {
-  assert.deepEqual(validateReservationConfig(validConfig(), 1_000_000), []);
+  const legacy = { ...validConfig(), clockSampleCount: 5 };
+  const current = validConfig();
+  assert.deepEqual(validateReservationConfig(legacy, 1_000_000), []);
+  assert.deepEqual(validateReservationConfig(current, 1_000_000), []);
   assert.deepEqual(validateReservationConfig({ ...validConfig(), preOpenLeadMs: 50 }, 1_000_000), []);
   assert.ok(validateReservationConfig({ ...validConfig(), preOpenLeadMs: 125 }, 1_000_000)
     .some((error) => error.includes("50ms")));

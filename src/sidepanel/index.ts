@@ -67,7 +67,6 @@ const fields = {
   dryRun: byId<HTMLInputElement>("dry-run"),
   preOpenLeadMs: byId<HTMLInputElement>("pre-open-lead"),
   toggleIntervalMs: byId<HTMLInputElement>("toggle-interval"),
-  clockSampleCount: byId<HTMLInputElement>("clock-samples"),
 };
 
 const TERMINAL = new Set<RunState>([
@@ -207,7 +206,6 @@ function readValues(): FormValues {
     dryRun: fields.dryRun.checked,
     preOpenLeadMs: fields.preOpenLeadMs.value,
     toggleIntervalMs: fields.toggleIntervalMs.value,
-    clockSampleCount: fields.clockSampleCount.value,
   };
 }
 
@@ -226,7 +224,6 @@ function applyValues(values: FormValues): void {
   fields.dryRun.checked = values.dryRun;
   fields.preOpenLeadMs.value = values.preOpenLeadMs;
   fields.toggleIntervalMs.value = values.toggleIntervalMs;
-  fields.clockSampleCount.value = values.clockSampleCount;
   priorityTimes = [...values.priorityTimes];
   syncPostSlotFields();
   renderPriorities();
@@ -256,7 +253,6 @@ function valuesFromConfig(config: ReservationConfig): FormValues {
     dryRun: config.dryRun,
     preOpenLeadMs: String(config.preOpenLeadMs),
     toggleIntervalMs: String(config.toggleIntervalMs),
-    clockSampleCount: String(config.clockSampleCount),
   };
 }
 

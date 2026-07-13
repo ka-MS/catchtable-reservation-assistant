@@ -18,7 +18,6 @@ const config = {
   dryRun: false,
   preOpenLeadMs: 3000,
   toggleIntervalMs: 150,
-  clockSampleCount: 9,
 };
 
 test("trace logger strips URL query and bounds error and attribute data", () => {

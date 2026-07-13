@@ -69,8 +69,5 @@ export function validateReservationConfig(config: ReservationConfig, nowMs: numb
   if (!Number.isInteger(config.toggleIntervalMs) || config.toggleIntervalMs < 100 || config.toggleIntervalMs > 5_000) {
     errors.push("날짜 토글 간격은 100~5000ms여야 합니다.");
   }
-  if (!Number.isInteger(config.clockSampleCount) || config.clockSampleCount < 3 || config.clockSampleCount > 9) {
-    errors.push("서버 시계 측정 횟수는 3~9회여야 합니다.");
-  }
   return errors;
 }

@@ -24,7 +24,6 @@ function saved(id, date) {
       dryRun: true,
       preOpenLeadMs: 3_000,
       toggleIntervalMs: 150,
-      clockSampleCount: 9,
     },
   };
 }
