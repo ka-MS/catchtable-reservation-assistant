@@ -1,6 +1,6 @@
 # Tier 2-1 — Shadow 관찰·안전 기반 분석
 
-**상태:** 분석 완료, live 정찰 및 설계 승인 대기.
+**상태:** 분석·정찰·shadow 검증 완료. 2-2 판정은 REDUCE.
 **부모:** `../10-analysis.md`
 
 ## 1. 목표
@@ -42,18 +42,21 @@
 - 요청 헤더에는 `yymmdd`와 `personcount`가 있고 body는 `encryptedParamString`이다.
 - 응답은 200 + `data.timeSlotMap`이고 각 항목에 `availableYn`, `date`, `time` 등이 있다.
 - `PerformanceObserver`는 ISOLATED world에서 리소스 완료를 볼 수 있다.
-- 현재 responseEnd→DOM 렌더 지연은 56~182ms, DOM 폴링 간격은 최대 25ms다.
+- 실제 transport는 세 매장 모두 `XMLHttpRequest`였고 XHR `responseType`은 기본 text였다.
+- `setRequestHeader`에서 `yymmdd`·`personcount`를 읽을 수 있고 응답의 `inputDate`·`personCount`와 교차 검증할 수 있다.
+- 빈 `timeSlotMap`은 `{}`, 가용 map은 HHmm key와 boolean `availableYn`을 사용했다.
+- warm 토글에서 body 분류→DOM 슬롯 출현은 19.1~30.0ms(n=3)였다. 실제 오픈 전이는 아직 미실측이다.
+- 같은 document의 MAIN/ISOLATED world는 `performance.timeOrigin`이 같았다.
+- 테이블 타입 사용 매장의 `onlineTableTypeList`는 문자열 코드 배열이었고 슬롯 `tableType`은 빈 문자열일 수도 있었다.
 
-### 정찰로 확정할 항목
+### 남은 미확정 항목
 
-- 페이지가 실제로 사용하는 transport가 fetch인지 XHR인지, 둘 다인지
-- `timeSlotMap`의 객체/배열/빈 값 변형과 시간 키 형식
-- 요청 헤더를 wrapper에서 안정적으로 읽을 수 있는지
-- 같은 document의 MAIN/ISOLATED realm에서 `performance.now()` 기준이 동일한지
-- response body clone 판독이 원본 소비·사이트 렌더 타이밍에 영향을 주지 않는지
-- 월 전환·인원 변경·테이블/메뉴 선택 요청도 같은 endpoint를 공유하는지
+- 실제 오픈 순간 empty→populated 전이와 응답 역전 빈도
+- 다른 매장의 비정상 `timeSlotMap` 변형과 `availableYn` 타입 변형
+- probe를 장시간 활성화했을 때 사이트 동작·XHR 지연 회귀 여부
+- 월 전환·테이블/메뉴 선택 요청도 같은 endpoint를 공유하는지
 
-미확정 항목을 추측해 범용 wrapper를 먼저 만들지 않는다. DevTools 읽기 전용 정찰로 실제 transport 하나를 먼저 고정하고 필요한 표면만 패치한다.
+실측에 따라 production probe는 XHR만 패치한다. fetch 지원은 실제 transport 변화가 관측되기 전에는 추가하지 않는다.
 
 ## 4. 관찰 타임라인
 
@@ -93,7 +96,9 @@ interface AvailabilityShadowEvent {
   personCount: number | null;
   classification: "EMPTY" | "POPULATED" | "UNPARSABLE" | "IRRELEVANT";
   availableMinutes: number[];
-  responseHeadersMonoMs: number;
+  responseStatus: number;
+  requestSentMonoMs: number;
+  responseCompletedMonoMs: number;
   bodyReadCompletedMonoMs: number;
   payloadClassifiedMonoMs: number;
 }
@@ -107,10 +112,10 @@ interface AvailabilityShadowEvent {
 
 ## 6. 주입·수명 원칙
 
-현행 on-demand 정책을 유지한다. Background가 런 시작 시 `chrome.scripting.executeScript({ world: "MAIN" })`로 probe를 설치하고, START 명령에 동일한 `channelId`를 전달하는 구성이 현재 구조와 가장 맞는다.
+현행 on-demand 정책을 유지한다. Background가 런 시작 시 `chrome.scripting.executeScript({ world: "MAIN", files: [...] })`로 probe를 설치하고, START 명령에 동일한 `channelId`를 전달한다.
 
 - wrapper는 원본 요청을 `Reflect.apply`로 즉시 호출하고 원본 response를 지연 없이 반환한다.
-- body 판독은 `response.clone()`에서 비동기로 수행하며 원본 stream을 소비하지 않는다.
+- XHR `loadend` 이후 `responseText`를 읽고 분류한다. fetch clone 경로는 구현하지 않는다.
 - 관찰/파싱/bridge 오류는 모두 삼키고 기존 사이트 동작을 계속한다.
 - 같은 페이지의 중복 설치를 막고 런 종료 시 해제한다. 안전하게 원복할 수 없는 경우 페이지 수명 단일 probe + 활성 channel 교체 방식을 설계 단계에서 비교한다.
 - probe 미설치·bridge 단절·classifier 실패는 기존 DOM 경로에 아무 영향이 없어야 한다.
@@ -155,6 +160,11 @@ CLAIMED → 이후 제안 무시
 - **REDUCE:** body는 선행하지만 pre-DOM actuator가 없어 MutationObserver 기반 DOM claim 가속만 가치가 있다.
 - **NO-GO:** 분류 불안정, 선행 이득 미미, 또는 wrapper가 사이트 동작에 영향을 준다. shadow probe를 제거하고 현행 경로를 유지한다.
 
-## 10. 다음 산출물
+## 10. 결론
 
-정찰 결과를 반영한 `20-design.md`와 단계별 `30-implementation.md`를 별도 승인 후 작성한다. 이 분석만으로 production 코드를 변경하지 않는다.
+- XHR 응답은 warm 실측에서 DOM보다 19.1~79.4ms 먼저 분류됐고 같은 슬롯을 선택했다.
+- 현재 actuator는 렌더된 DOM 버튼이므로 body 신호만으로 이 구간 전체를 제거할 수 없다.
+- 기존 제어 경로를 바꾸지 않는 shadow 계측은 유지할 가치가 있지만, 2-2는 응답 기반 클릭으로 바로 진행하지 않는다.
+- 실제 오픈 empty→populated 자료를 추가 수집하고 MutationObserver 기반 DOM claim 가속만 별도로 검토한다.
+
+상세 근거는 `40-verification.md`, 적대적 검토는 `50-adversarial-review.md`에 기록한다.

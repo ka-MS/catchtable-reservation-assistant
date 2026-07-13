@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "clean": "node scripts/clean.mjs",
-    "build": "npm run clean && tsc -p tsconfig.json && esbuild src/content/index.ts --bundle --format=iife --target=chrome120 --outfile=dist/content/index.js && node scripts/copy-static.mjs",
+    "build": "npm run clean && tsc -p tsconfig.json && esbuild src/content/index.ts --bundle --format=iife --target=chrome120 --outfile=dist/content/index.js && esbuild src/main-world/availability-probe.ts --bundle --format=iife --target=chrome120 --outfile=dist/main-world/availability-probe.js && node scripts/copy-static.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test tests/*.test.mjs",
     "check:dist": "node scripts/check-dist.mjs",

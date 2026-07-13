@@ -7,6 +7,7 @@ import { SlotAdapter } from "./adapter/slots.js";
 import { PostSlotAdapter } from "./adapter/post-slot.js";
 import { createSlotRefreshWatch } from "./adapter/slot-refresh-watch.js";
 import { captureStageSnapshot } from "./adapter/snapshot.js";
+import { createAvailabilityShadowBridge } from "./availability-shadow-bridge.js";
 import { createReferenceClockSampler } from "./reference-clock-sampler.js";
 import { dispatchRunEvent } from "./dispatch.js";
 import { OpenRunOrchestrator } from "./orchestrator.js";
@@ -28,6 +29,7 @@ if (!window.__ctReserveInjected) {
     new BatchTraceProcessor(new PortTraceTransport(), () => crypto.randomUUID()),
     () => Date.now(),
   );
+  const availabilityShadow = createAvailabilityShadowBridge(window);
   const orchestrator = new OpenRunOrchestrator({
     clock,
     monotonicClock,
@@ -38,6 +40,7 @@ if (!window.__ctReserveInjected) {
     slots: new SlotAdapter(document),
     postSlot: new PostSlotAdapter(document),
     slotWatch: createSlotRefreshWatch(),
+    availabilityShadow,
     sleep: abortableSleep,
     emit: (event) => {
       traceLogger.recordRunEvent(event);
@@ -71,8 +74,10 @@ if (!window.__ctReserveInjected) {
         return;
       }
       running = true;
+      availabilityShadow.configure(message.shadowChannelId ?? null);
       traceLogger.start(message.runId, message.config, message.scheduledJobId);
       void orchestrator.start(message.config, message.runId).finally(() => {
+        availabilityShadow.configure(null);
         running = false;
       });
       sendResponse({ ok: true });

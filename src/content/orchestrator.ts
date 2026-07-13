@@ -3,6 +3,7 @@ import { estimateReferenceClock, type ReferenceClockEstimate } from "../shared/c
 import { waitUntil, type Clock, type Sleep } from "../shared/scheduler.js";
 import { MonotonicEpochClock } from "../shared/monotonic-clock.js";
 import { selectPreferredSlot, type SlotCandidate } from "../shared/slot-selection.js";
+import { normalizeReservationDate, type ReceivedAvailabilityShadowEvent } from "../shared/availability-shadow.js";
 import { RunStateMachine } from "../shared/state-machine.js";
 import { nextTogglePlan } from "../shared/toggle-schedule.js";
 import type { SlotRefreshWatchPort } from "./adapter/slot-refresh-watch.js";
@@ -15,6 +16,7 @@ import type { EntryInspection } from "./adapter/entry.js";
 import type { PersonInspection } from "./adapter/person.js";
 import type { PostSlotActionResult, PostSlotInspection } from "./adapter/post-slot.js";
 import type { StageSnapshot } from "./adapter/snapshot.js";
+import { ShadowClaimCoordinator } from "./availability-shadow-observer.js";
 
 interface CalendarPort {
   inspect(targetDate: string): CalendarInspection;
@@ -43,6 +45,11 @@ interface PostSlotPort {
   advance(inspection: PostSlotInspection, config: ReservationConfig): PostSlotActionResult;
 }
 
+interface AvailabilityShadowPort {
+  start(expiresAtEpochMs: number, listener: (event: ReceivedAvailabilityShadowEvent) => void): void;
+  stop(): void;
+}
+
 interface Dependencies {
   clock: Clock;
   monotonicClock: Clock;
@@ -64,6 +71,7 @@ interface Dependencies {
   flushTrace?(): Promise<void>;
   captureSnapshot?(): StageSnapshot | null;
   slotWatch?: SlotRefreshWatchPort;
+  availabilityShadow?: AvailabilityShadowPort;
   runId(): string;
 }
 
@@ -146,6 +154,8 @@ class RunSession {
   private referenceClockPort: ReferenceClockPort | null = null;
   private latestAppliedEstimate: ReferenceClockEstimate | null = null;
   private readonly runStartMonoMs: number;
+  private readonly shadowClaims = new ShadowClaimCoordinator();
+  private latestTargetShadow: { event: ReceivedAvailabilityShadowEvent; selectedMinutes: number | null } | null = null;
 
   constructor(
     private readonly deps: Dependencies,
@@ -241,6 +251,13 @@ class RunSession {
 
   async execute(): Promise<RunResult> {
     try {
+      try {
+        this.deps.availabilityShadow?.start(this.config.stopAtMs + 30_000, (event) => {
+          this.observeAvailabilityBody(event);
+        });
+      } catch {
+        // Shadow 관측은 제어 경로와 격리한다.
+      }
       this.deps.slotWatch?.start(() => {
         this.watchLive = true;
         if (this.serverClockReady) this.lastArrivalAt = this.serverClock.now();
@@ -269,9 +286,98 @@ class RunSession {
       }
       return this.finish();
     } finally {
+      try {
+        this.deps.availabilityShadow?.stop();
+      } catch {
+        // Shadow 원복 실패도 terminal 결과를 바꾸지 않는다.
+      }
       this.deps.slotWatch?.stop();
       this.stopReferenceClock(); // waitForOpen 도달 전 조기 종료 시 안전망(참조를 비워 정상 경로에서 중복 호출 없음)
       await this.deps.flushTrace?.().catch(() => undefined);
+    }
+  }
+
+  private observeAvailabilityBody(event: ReceivedAvailabilityShadowEvent): void {
+    try {
+      const targetDate = normalizeReservationDate(this.config.reservationDate);
+      const requestDate = normalizeReservationDate(event.requestDate);
+      const matchesTarget = targetDate !== null
+        && requestDate === targetDate
+        && event.personCount === this.config.personCount;
+      const candidates = event.availableMinutes.map((minutes) => ({
+        key: `shadow:${minutes}`,
+        minutes,
+        label: String(minutes),
+      }));
+      const selected = selectPreferredSlot(candidates, this.config.timeRange, this.config.priorityTimes);
+      const previous = this.latestTargetShadow;
+      const stale = matchesTarget && previous !== null && event.sequence <= previous.event.sequence;
+      if (matchesTarget && !stale) {
+        this.latestTargetShadow = { event, selectedMinutes: selected?.minutes ?? null };
+      }
+      if (matchesTarget && !stale && selected) {
+        this.shadowClaims.propose({
+          source: "body",
+          minutes: selected.minutes,
+          observedMonoMs: event.payloadClassifiedMonoMs,
+          sequence: event.sequence,
+        });
+      }
+      const claim = this.shadowClaims.claim;
+      this.deps.trace?.("AVAILABILITY_SHADOW", event.classification === "UNPARSABLE" ? "warn" : "trace",
+        `슬롯 응답 shadow를 ${event.classification}로 분류했습니다.`, {
+          serverAt: this.serverClockReady ? this.serverClock.now() : null,
+          state: this.machine.state,
+          attributes: {
+            phase: "body",
+            sequence: event.sequence,
+            requestDate: event.requestDate,
+            personCount: event.personCount,
+            classification: event.classification,
+            responseStatus: event.responseStatus,
+            availableCount: event.availableMinutes.length,
+            availableMinutes: event.availableMinutes.join(","),
+            selectedMinutes: selected?.minutes ?? null,
+            matchesTarget,
+            stale,
+            requestSentMonoMs: event.requestSentMonoMs,
+            responseCompletedMonoMs: event.responseCompletedMonoMs,
+            bodyReadCompletedMonoMs: event.bodyReadCompletedMonoMs,
+            payloadClassifiedMonoMs: event.payloadClassifiedMonoMs,
+            bridgeReceivedMonoMs: event.bridgeReceivedMonoMs,
+            bridgeDelayMs: event.bridgeReceivedMonoMs - event.payloadClassifiedMonoMs,
+            claimSource: claim?.source ?? "none",
+            claimAgreement: claim && selected ? claim.minutes === selected.minutes : null,
+          },
+        });
+    } catch {
+      // 비신뢰 bridge payload의 후처리는 예약 흐름으로 예외를 전파하지 않는다.
+    }
+  }
+
+  private observeAvailabilityDom(candidate: SlotCandidate): void {
+    try {
+      const observedMonoMs = this.deps.monotonicClock.now();
+      this.shadowClaims.propose({ source: "dom", minutes: candidate.minutes, observedMonoMs, sequence: null });
+      const body = this.latestTargetShadow;
+      const claim = this.shadowClaims.claim;
+      this.deps.trace?.("AVAILABILITY_SHADOW", "trace", "body와 DOM 슬롯 후보를 비교했습니다.", {
+        serverAt: this.serverClockReady ? this.serverClock.now() : null,
+        state: this.machine.state,
+        attributes: {
+          phase: "dom_compare",
+          domMinutes: candidate.minutes,
+          domObservedMonoMs: observedMonoMs,
+          bodySequence: body?.event.sequence ?? null,
+          bodyClassification: body?.event.classification ?? "none",
+          bodySelectedMinutes: body?.selectedMinutes ?? null,
+          agreement: body?.selectedMinutes === candidate.minutes,
+          bodyLeadOverDomMs: body ? observedMonoMs - body.event.payloadClassifiedMonoMs : null,
+          claimSource: claim?.source ?? "none",
+        },
+      });
+    } catch {
+      // Shadow 비교는 기존 DOM 후보 반환을 막지 않는다.
     }
   }
 
@@ -624,6 +730,7 @@ class RunSession {
       traceCycle("NO_SLOT");
       return { kind: "retry" };
     }
+    this.observeAvailabilityDom(candidate);
     traceCycle("SLOT_FOUND");
     return { kind: "slot", candidate };
   }

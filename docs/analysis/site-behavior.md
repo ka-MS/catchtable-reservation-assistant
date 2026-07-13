@@ -191,7 +191,7 @@ t=193ms  테이블 dialog DOM 제거, 다음 dialog 활성
 - HTTP Date는 1초 해상도이므로 여러 표본에서 초 값이 바뀌는 경계와 RTT를 함께 측정해야 한다.
 - **표본 5개(성긴 간격)에서는 오프셋이 여러 군으로 갈라지는 것처럼 보였으나, 표본 9개(기본값)로는 단일 시계의 정상 톱니파로 수렴한다.** 2026-07-12 5샘플 실런들에서는 연속 샘플의 로컬 경과 ~200ms 동안 Date 헤더가 2초 점프하는 것처럼 보여 "서버 풀 간 시계 편차"로 해석했다(worklog 08). 그러나 같은 날 9샘플 실런(worklog 11)에서는 오프셋이 각 Date 초 구간 내에서 샘플 간격(~125~150ms)마다 일관되게 ~200~240ms씩 선형 감소하는 정상 톱니파를 보였고, 초기·최종 보정이 78ms 차이로 수렴했다(−38ms vs +40ms). 즉 5샘플 관측은 성긴 표본·지연 변동에 의한 앨리어싱(착시)이었을 가능성이 높다 — 풀 편차 자체를 완전히 배제할 순 없으나, **표본 9개(기본값)를 쓰면 실용적으로 문제가 재현되지 않는다.** `[실측: 이시즈에, worklog 08/11]`
 
-### 8.1 슬롯 XHR (xhr-slot-watch R1~R5, 2026-07-12 실측: 이시즈에 — 단일 매장, 교차 확인 전 일반화 주의)
+### 8.1 슬롯 XHR (2026-07-12~13 실측: 이시즈에·누와·야키토리묵)
 
 **엔드포인트 (R1).** 슬롯 목록은 `POST https://ct-api.catchtable.co.kr/api/reservation/v1/dining/time-slots?shopRef=<ref>` — **app 오리진이 아니라 별도 API 호스트(Cloudflare 경유)**다. 본문은 `encryptedParamString`(재현 불가 — 직접 호출 금지 유지), 단 요청 헤더에 `yymmdd`(날짜)·`personcount`가 평문으로 실린다. **URL에는 날짜가 없다** → 리소스 타이밍 항목만으로는 어느 날짜의 응답인지 구분 불가(도착 신호는 날짜 불문). 레이트리밋 헤더 `x-ratelimit-*` burst 1200 — 우리 클릭 빈도에서 무해. `[실측]`
 
@@ -205,7 +205,17 @@ t=193ms  테이블 dialog DOM 제거, 다음 dialog 활성
 
 **격리 월드 가시성 (R4).** content script(격리 월드)의 PerformanceObserver가 `time-slots` 리소스 항목을 정상 관측한다 — 2026-07-12 23:05 안전 점검 실런에서 `watch:"live"`·`xhrArrivalServerAtMs` 기록 확인(worklog 13). `[실측]`
 
-**미확정.** 매장 교차 확인, ct-api 호스트와 app 호스트의 시계 편차 여부(시계 동기화는 app 호스트 HEAD 기준인데 게이트는 ct-api 뒤 오리진 — 실오픈 xhr 계측으로 판별 예정).
+**transport·상관관계 재확인 (2026-07-13).** 누와·이시즈에·야키토리묵에서 `PerformanceResourceTiming.initiatorType`과 임시 XHR hook을 교차 확인한 결과 실제 transport는 `XMLHttpRequest`였다. 요청에는 `x-requested-with: XMLHttpRequest`가 있고, `setRequestHeader`에서 `yymmdd`·`personcount`를 읽을 수 있다. URL에는 날짜가 없고 암호화된 요청 body는 저장·복제하지 않는다. `[실측]`
+
+**응답 판독 (2026-07-13).** XHR `responseType`은 기본 text이고 `responseText`를 `JSON.parse`할 수 있었다. 응답의 `data.inputDate`, `data.personCount`, `data.timeSlotMap`으로 요청과 결과를 교차 검증할 수 있다. 누와의 빈 응답은 `timeSlotMap: {}`였고, 이시즈에의 가용 응답은 `"1830"`, `"1900"` 같은 HHmm key와 boolean `availableYn: true`를 사용했다. `tableType`은 문자열이지만 가용 판정 외 정책 근거로 쓰지 않는다. `[실측]`
+
+**body→DOM 선행 시간 (2026-07-13).** 이시즈에의 warm 날짜 토글 3회에서 XHR `loadend`에서 body를 분류한 뒤 표시 가능한 `button[data-busy="false"]`가 처음 관측될 때까지 각각 **24.3ms, 30.0ms, 19.1ms**였다. send/loadend 시점에는 슬롯 DOM이 비어 있었고 이후 버튼이 렌더됐다. 이전 56~182ms 측정과 환경·관측 지점이 다르며 실제 오픈 순간 측정도 아니므로, 현재 결론은 "최대 25ms DOM 폴링 일부를 줄일 가능성"이지 클릭 경로 전환 근거가 아니다. `[실측: 이시즈에, warm toggle]`
+
+**같은 문서의 시간축 (2026-07-13).** `chrome.scripting.executeScript`로 같은 탭의 MAIN/ISOLATED world를 연속 측정한 결과 `performance.timeOrigin`이 정확히 같았다. `performance.now()` 절대값은 같은 document 안에서 직접 비교할 수 있으며, 연속 실행으로 생긴 epoch-now 차이는 2.4ms였다. 문서가 교체되면 time origin도 바뀌므로 probe channel은 런·document 수명에 묶어야 한다. `[실측: 이시즈에]`
+
+**테이블 타입 변형 (2026-07-13).** 야키토리묵 응답에서 `onlineTableTypeUseYn: true`, `onlineTableTypeList: ["H", "B"]`를 확인했다. 슬롯의 `tableType`은 요청 조건에 따라 `""` 또는 `"H"`였다. 이 코드는 진단용으로만 보관하며 홀/바 자동 선택 정책이나 클릭 근거로 해석하지 않는다. `[실측]`
+
+**미확정.** 실제 오픈 순간의 empty→populated 전이와 응답 역전 빈도, ct-api 호스트와 app 호스트의 시계 편차 여부(시계 동기화는 app 호스트 HEAD 기준인데 게이트는 ct-api 뒤 오리진 — 실오픈 xhr 계측으로 판별 예정).
 
 ## 9. 미실측 영역
 
