@@ -12,17 +12,18 @@ test("open-run state follows the documented happy path", () => {
     "WAITING_FOR_OPEN",
     "REFRESHING_SLOTS",
     "SLOT_DETECTED",
-    "SLOT_SELECTED",
+    "SLOT_CLICK_DISPATCHED",
+    "SLOT_TRANSITION_CONFIRMED",
     "ADVANCING_RESERVATION",
     "HANDED_OFF",
   ]) {
     machine.transition(state, `to ${state}`);
   }
   assert.equal(machine.state, "HANDED_OFF");
-  assert.equal(machine.history.length, 10);
+  assert.equal(machine.history.length, 11);
 });
 
-test("dry-run cannot enter SLOT_SELECTED", () => {
+test("dry-run cannot enter slot dispatch or legacy selected states", () => {
   const machine = new RunStateMachine({ dryRun: true, now: () => 10 });
   machine.transition("CONFIGURED", "configured");
   machine.transition("VALIDATING", "validating");
@@ -31,7 +32,8 @@ test("dry-run cannot enter SLOT_SELECTED", () => {
   machine.transition("WAITING_FOR_OPEN", "wait");
   machine.transition("REFRESHING_SLOTS", "refresh");
   machine.transition("SLOT_DETECTED", "detected");
-  assert.throws(() => machine.transition("SLOT_SELECTED", "unsafe"), /dry-run/);
+  assert.throws(() => machine.transition("SLOT_CLICK_DISPATCHED", "unsafe"), /dry-run/);
+  assert.throws(() => machine.transition("SLOT_SELECTED", "legacy unsafe"), /dry-run|허용되지/);
   machine.transition("DRY_RUN_COMPLETED", "detected only");
   assert.equal(machine.state, "DRY_RUN_COMPLETED");
 });

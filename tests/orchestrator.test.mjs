@@ -316,7 +316,7 @@ test("an arrival during detection extends the scan burst and records xhr metrics
   assert.ok(detected?.data?.arrivalToDetectMs >= 50, `arrivalToDetectMs=${detected?.data?.arrivalToDetectMs}`);
 });
 
-test("slot detection and selection carry the monotonic run-elapsed frame, independent of wall-clock jumps", async () => {
+test("slot detection and click dispatch carry the monotonic run-elapsed frame, independent of wall-clock jumps", async () => {
   let jumped = false;
   const h = harness({
     slotAfterCycles: 2,
@@ -329,15 +329,15 @@ test("slot detection and selection carry the monotonic run-elapsed frame, indepe
   const result = await h.orchestrator.start(config({ dryRun: false }));
   assert.equal(result.state, "HANDED_OFF");
   const detected = h.events.find((event) => event.data?.state === "SLOT_DETECTED");
-  const selected = h.events.find((event) => event.data?.state === "SLOT_SELECTED");
+  const dispatched = h.events.find((event) => event.data?.state === "SLOT_CLICK_DISPATCHED");
   assert.equal(typeof detected?.data?.monoFromRunStartMs, "number");
-  assert.equal(typeof selected?.data?.monoFromRunStartMs, "number");
+  assert.equal(typeof dispatched?.data?.monoFromRunStartMs, "number");
   // Both frames advance by real (monotonic) elapsed time only — the 5s wall jump
   // must not appear here (it does appear in openDeltaMs, a separate frame).
   assert.ok(detected.data.monoFromRunStartMs < 2_000, `monoFromRunStartMs=${detected.data.monoFromRunStartMs}`);
 });
 
-test("slot detection and selection carry the reference-clock estimate active at that moment", async () => {
+test("slot detection and click dispatch carry the reference-clock estimate active at that moment", async () => {
   // The armed metric freezes the estimate at WAITING_FOR_OPEN entry (often only
   // 1 sample). On a long wait the rolling sampler keeps improving it, so the
   // detection events must carry the estimate that was actually active at
@@ -346,11 +346,11 @@ test("slot detection and selection carry the reference-clock estimate active at 
   const result = await h.orchestrator.start(config({ dryRun: false }));
   assert.equal(result.state, "HANDED_OFF");
   const detected = h.events.find((event) => event.data?.state === "SLOT_DETECTED");
-  const selected = h.events.find((event) => event.data?.state === "SLOT_SELECTED");
+  const dispatched = h.events.find((event) => event.data?.state === "SLOT_CLICK_DISPATCHED");
   assert.equal(detected?.data?.clockConfidence, "MEDIUM");
-  assert.equal(selected?.data?.clockConfidence, "MEDIUM");
+  assert.equal(dispatched?.data?.clockConfidence, "MEDIUM");
   assert.equal(detected?.data?.clockUncertaintyMs, 140);
-  assert.equal(selected?.data?.clockUncertaintyMs, 140);
+  assert.equal(dispatched?.data?.clockUncertaintyMs, 140);
   // clockOffsetMs at detection is the small wall delta (server − wall), 55 in
   // this fake where wall == monotonic — NOT the epoch-scale offsetCenterMs.
   assert.equal(detected?.data?.clockOffsetMs, 55);
@@ -370,9 +370,9 @@ test("the click carries its own arrival-to-click latency, distinct from arrival-
   const result = await h.orchestrator.start(config({ dryRun: false }));
   assert.equal(result.state, "HANDED_OFF");
   const detected = h.events.find((event) => event.data?.state === "SLOT_DETECTED");
-  const selected = h.events.find((event) => event.data?.state === "SLOT_SELECTED");
-  assert.ok(selected?.data?.arrivalToClickMs >= detected?.data?.arrivalToDetectMs,
-    `arrivalToClickMs=${selected?.data?.arrivalToClickMs} arrivalToDetectMs=${detected?.data?.arrivalToDetectMs}`);
+  const dispatched = h.events.find((event) => event.data?.state === "SLOT_CLICK_DISPATCHED");
+  assert.ok(dispatched?.data?.arrivalToClickMs >= detected?.data?.arrivalToDetectMs,
+    `arrivalToClickMs=${dispatched?.data?.arrivalToClickMs} arrivalToDetectMs=${detected?.data?.arrivalToDetectMs}`);
 });
 
 test("a live watch quiesces the next toggle until the timeout when no arrival comes", async () => {
@@ -563,12 +563,16 @@ test("actual mode clicks one slot and hands off at the reservation form", async 
   const result = await h.orchestrator.start(config({ dryRun: false }));
   assert.equal(result.state, "HANDED_OFF");
   assert.equal(h.slotClicks, 1);
-  const slotSelected = h.events.find((event) => event.data?.state === "SLOT_SELECTED");
-  assert.equal(typeof slotSelected?.data?.openDeltaMs, "number");
-  assert.equal(slotSelected?.data?.openDeltaMs, slotSelected?.serverAt - 1_000);
-  assert.equal(slotSelected?.data?.timingStage, "slot_selected");
-  assert.equal(slotSelected?.data?.timingServerAtMs, slotSelected?.serverAt);
-  assert.match(slotSelected?.message ?? "", /시간 선택을 완료/);
+  const dispatched = h.events.find((event) => event.data?.state === "SLOT_CLICK_DISPATCHED");
+  assert.equal(typeof dispatched?.data?.openDeltaMs, "number");
+  assert.equal(dispatched?.data?.openDeltaMs, dispatched?.serverAt - 1_000);
+  assert.equal(dispatched?.data?.timingStage, "slot_click_dispatched");
+  assert.equal(dispatched?.data?.timingServerAtMs, dispatched?.serverAt);
+  assert.equal(dispatched?.data?.slotTransitionOutcome, "dispatched");
+  assert.match(dispatched?.message ?? "", /클릭을 전달/);
+  const confirmed = h.events.find((event) => event.data?.state === "SLOT_TRANSITION_CONFIRMED");
+  assert.equal(confirmed?.data?.slotTransitionOutcome, "confirmed");
+  assert.match(confirmed?.message ?? "", /후속 예약 화면/);
   assert.equal(h.events.some((event) => event.data?.state === "ADVANCING_RESERVATION"), true);
   const handedOff = h.events.at(-1);
   assert.equal(handedOff?.data?.state, "HANDED_OFF");
@@ -578,7 +582,7 @@ test("actual mode clicks one slot and hands off at the reservation form", async 
   assert.equal(handedOff?.data?.openDeltaMs, handedOff?.data?.timingServerAtMs - 1_000);
 });
 
-test("disabled post-slot automation stops immediately after the slot click", async () => {
+test("disabled post-slot automation confirms the transition without advancing", async () => {
   let inspections = 0;
   const h = harness({
     postSlot: {
@@ -594,9 +598,11 @@ test("disabled post-slot automation stops immediately after the slot click", asy
 
   assert.equal(result.state, "HANDED_OFF");
   assert.equal(h.slotClicks, 1);
-  assert.equal(inspections, 0);
+  assert.equal(inspections, 1);
+  assert.equal(h.events.some((event) => event.data?.state === "SLOT_TRANSITION_CONFIRMED"), true);
   assert.equal(h.events.some((event) => event.data?.state === "ADVANCING_RESERVATION"), false);
-  assert.match(h.events.at(-1)?.message ?? "", /슬롯 선택까지만/);
+  assert.equal(h.events.at(-1)?.data?.slotTransitionOutcome, "confirmed");
+  assert.match(h.events.at(-1)?.message ?? "", /후속 자동 진행이 꺼져/);
 });
 
 test("optional post-slot stages are advanced in observed order", async () => {
@@ -669,6 +675,7 @@ test("unknown post-slot screens hand off with safe structural diagnostics", asyn
   assert.equal(handoff?.data?.postSlotFingerprint, "ps-a1b2c3d4");
   assert.equal(handoff?.data?.dialogTitle, "고객 요청 확인");
   assert.equal(handoff?.data?.dialogButtons, "이전 | 계속");
+  assert.equal(handoff?.data?.slotTransitionOutcome, "unknown");
 });
 
 test("the post-slot timeout handoff records the last inspection diagnostics", async () => {
@@ -707,6 +714,19 @@ test("the post-slot timeout handoff records the last inspection diagnostics", as
   assert.equal(handoff?.data?.postSlotStage, "waiting");
   assert.equal(handoff?.data?.postSlotStrategy, "no-active-dialog-v1");
   assert.equal(handoff?.data?.dialogUrlKind, "other");
+  assert.equal(handoff?.data?.slotTransitionOutcome, "timed_out");
+});
+
+test("a slot lost before dispatch is recorded as contention and returns to refresh", async () => {
+  const h = harness({ clickResult: false, slotAfterCycles: 1 });
+
+  const result = await h.orchestrator.start(config({ dryRun: false, stopAtMs: 1_500 }));
+
+  assert.equal(result.state, "TIMED_OUT");
+  const contention = h.events.find((event) => event.data?.slotTransitionOutcome === "contention_before_dispatch");
+  assert.equal(contention?.data?.state, "REFRESHING_SLOTS");
+  assert.match(contention?.message ?? "", /경합|사라/);
+  assert.equal(h.events.some((event) => event.data?.state === "SLOT_CLICK_DISPATCHED"), false);
 });
 
 test("a promo notice appearing after form arrival is dismissed before handing off", async () => {

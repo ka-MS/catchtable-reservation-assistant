@@ -1,8 +1,8 @@
 # HANDOFF
 
 **갱신:** 2026-07-14
-**브랜치:** `main` (실제 오픈 검증 병합 완료)
-**작업 로그:** `docs/worklog/2026-07-14-02-rt03-slot-ancestor-visibility.md`
+**브랜치:** `main` (RT-01 병합 완료)
+**작업 로그:** `docs/worklog/2026-07-14-03-rt01-slot-transition-outcomes.md`
 
 ## 현재 상태 — Tier 1·Tier 2-1 실제 오픈 검증 완료
 
@@ -26,10 +26,10 @@
 
 실오픈 기준선 판독이 끝난 뒤 다음 항목을 처리하고 검증하기 전에는 Tier 2-2 구현으로 진행하지 않는다.
 
-- `RT-01`: 슬롯 클릭 dispatch와 화면 전환 확인 분리
+- `RT-01`: 완료 — click dispatch와 후속 화면 확인 분리, legacy `SLOT_SELECTED`는 저장 호환 표시만 유지
 - `RT-10`: cycle-correlated shadow timing 보강과 실제 오픈 재측정
 
-`RT-03` SlotAdapter 조상 가시성 검사는 완료했다. 숨겨진 조상 복제 fixture와 live 가시 슬롯 회귀, 스캔 비용을 검증했다.
+`RT-01`, `RT-03` 정확성 안정화는 완료했다. RT-01 전체 자동 게이트는 229개가 통과했고 live 확장 재로드·안전 인계·비최종 후속 화면 출현을 확인했다.
 
 참조: `docs/backlog/post-tier2-1-stabilization.md`
 
@@ -39,9 +39,9 @@ RT-10은 현재 기준선 로그를 먼저 판독한 뒤 구현한다. correlati
 
 ## 다음 작업 1 — 정확성 안정화
 
-- RT-01: 슬롯 클릭 dispatch와 후속 화면 전환 확인 분리
+- RT-01: 완료 — `docs/specs/slot-transition-outcomes/`
 - RT-03: 완료 — `docs/specs/slot-ancestor-visibility/`
-- RT-01을 분석→설계→구현→검증→적대적 리뷰로 완료한 뒤 RT-10으로 진행한다.
+- 다음 브랜치에서 RT-10을 분석→설계→구현→검증→적대적 리뷰로 진행한다.
 
 ## 다음 작업 2 — Tier 2-1 관측 보강과 재측정
 
@@ -66,4 +66,4 @@ npm run check   # WSL: wsl.exe -d ubuntu -e bash -lc "cd ~/source/catchtable-res
 git status --short --branch
 ```
 
-단위·fixture 테스트 228개와 전체 자동 게이트 통과. live match/no-match dry-run도 통과했다.
+단위·fixture 테스트 229개와 전체 자동 게이트 통과. RT-01 live 검증 제한은 해당 `40-verification.md`에 기록했다.

@@ -758,42 +758,113 @@ class RunSession {
       this.deps.trace?.("SLOT_CLICKED", "warn", `${candidate.label} 슬롯 클릭에 실패했습니다.`, {
         serverAt: serverClock.now(),
         state: "SLOT_DETECTED",
-        attributes: { slotMinutes: candidate.minutes, slotLabel: candidate.label, clickOk: false },
+        attributes: {
+          slotMinutes: candidate.minutes,
+          slotLabel: candidate.label,
+          clickOk: false,
+          slotTransitionOutcome: "contention_before_dispatch",
+        },
       });
-      this.transition("REFRESHING_SLOTS", "슬롯이 사라져 날짜 토글을 재개합니다.");
+      this.transition("REFRESHING_SLOTS", "슬롯이 dispatch 전에 사라져 날짜 토글을 재개합니다.", {
+        data: {
+          slotMinutes: candidate.minutes,
+          slotLabel: candidate.label,
+          slotTransitionOutcome: "contention_before_dispatch",
+        },
+      });
       return null;
     }
-    const slotSelectedAt = serverClock.now();
+    const slotClickDispatchedAt = serverClock.now();
     this.deps.trace?.("SLOT_CLICKED", "info", `${candidate.label} 슬롯을 클릭했습니다.`, {
-      serverAt: slotSelectedAt,
-      state: "SLOT_SELECTED",
-      attributes: { slotMinutes: candidate.minutes, slotLabel: candidate.label, clickOk: true },
+      serverAt: slotClickDispatchedAt,
+      state: "SLOT_CLICK_DISPATCHED",
+      attributes: {
+        slotMinutes: candidate.minutes,
+        slotLabel: candidate.label,
+        clickOk: true,
+        slotTransitionOutcome: "dispatched",
+      },
     });
-    this.transition("SLOT_SELECTED", `${candidate.label} 시간 선택을 완료했습니다.`, {
-      data: slotSelectedEventData(
-        slotSelectedAt, config.openAtMs, this.lastArrivalAt,
-        this.monoFromRunStartMs(), clockData,
-      ),
+    this.transition("SLOT_CLICK_DISPATCHED", `${candidate.label} 슬롯 클릭을 전달했습니다.`, {
+      data: {
+        ...slotClickDispatchedEventData(
+          slotClickDispatchedAt, config.openAtMs, this.lastArrivalAt,
+          this.monoFromRunStartMs(), clockData,
+        ),
+        slotMinutes: candidate.minutes,
+        slotLabel: candidate.label,
+        slotTransitionOutcome: "dispatched",
+      },
     });
+
+    const postSlotDeadline = serverClock.now() + 5_000;
+    const slotTransition = await this.waitForSlotTransition(postSlotDeadline);
+    if (slotTransition.kind === "stopped") return this.finishStopped();
+    if (slotTransition.kind === "unknown") {
+      return this.diagnosticHandOff(`${slotTransition.inspection.label} 화면은 자동 진행하지 않습니다.`, {
+        ...postSlotEventData(slotTransition.inspection),
+        slotTransitionOutcome: "unknown",
+      });
+    }
+    if (slotTransition.kind === "timed_out") {
+      return this.diagnosticHandOff("슬롯 클릭 후 후속 예약 화면을 5초 안에 확인하지 못했습니다.", {
+        ...(slotTransition.inspection === null ? {} : postSlotEventData(slotTransition.inspection)),
+        slotTransitionOutcome: "timed_out",
+      });
+    }
+
+    const confirmationData = {
+      ...postSlotEventData(slotTransition.inspection),
+      slotTransitionOutcome: "confirmed",
+    };
+    this.transition(
+      "SLOT_TRANSITION_CONFIRMED",
+      "후속 예약 화면 도착을 확인했습니다. 좌석 확보 여부는 최종 예약 전까지 확정할 수 없습니다.",
+      { data: confirmationData },
+    );
     if (!config.postSlotEnabled) {
-      return this.handOff("후속 선택 자동 진행이 꺼져 있어 슬롯 선택까지만 완료했습니다.");
+      return this.handOff(
+        "후속 예약 화면을 확인했습니다. 후속 자동 진행이 꺼져 있어 사용자에게 인계합니다.",
+        confirmationData,
+      );
     }
     this.transition("ADVANCING_RESERVATION", "예약 폼까지 선택적 중간 단계를 진행합니다.");
-    return this.advancePostSlot();
+    return this.advancePostSlot(slotTransition.inspection, postSlotDeadline);
   }
 
-  private async advancePostSlot(): Promise<RunResult> {
+  private async waitForSlotTransition(deadline: number): Promise<SlotTransitionResult> {
+    const controller = this.controller;
+    const serverClock = this.serverClock;
+    let lastInspection: PostSlotInspection | null = null;
+    while (!controller.signal.aborted && serverClock.now() < deadline) {
+      const inspection = this.deps.postSlot.inspect();
+      lastInspection = inspection;
+      if (inspection.kind === "unknown") return { kind: "unknown", inspection };
+      if (inspection.kind !== "waiting") return { kind: "confirmed", inspection };
+      if (!(await this.deps.sleep(Math.min(20, deadline - serverClock.now()), controller.signal))) break;
+    }
+    return controller.signal.aborted
+      ? { kind: "stopped" }
+      : { kind: "timed_out", inspection: lastInspection };
+  }
+
+  private async advancePostSlot(
+    initialInspection: PostSlotInspection,
+    initialDeadline: number,
+  ): Promise<RunResult> {
     const config = this.config;
     const controller = this.controller;
     const serverClock = this.serverClock;
-    let postSlotDeadline = serverClock.now() + 5_000;
+    let postSlotDeadline = initialDeadline;
     // 홍보 안내 창은 폼 도착 뒤 비결정적으로 늦게 렌더되므로 잠시 머물며 닫을 기회를 준다.
     const formNoticeGraceMs = 1_500;
     let formSeenAtMs: number | null = null;
     let formNoticeDismissed = false;
     let lastInspection: PostSlotInspection | null = null;
+    let pendingInspection: PostSlotInspection | null = initialInspection;
     while (!controller.signal.aborted && serverClock.now() < postSlotDeadline) {
-      const inspection = this.deps.postSlot.inspect();
+      const inspection = pendingInspection ?? this.deps.postSlot.inspect();
+      pendingInspection = null;
       lastInspection = inspection;
       if (inspection.kind === "form") {
         if (formSeenAtMs === null) {
@@ -852,6 +923,11 @@ class RunSession {
 
 type TimingMark = { actualAt: number; scheduledAt: number; phase: string };
 type TogglePlan = ReturnType<typeof nextTogglePlan>;
+type SlotTransitionResult =
+  | { kind: "confirmed"; inspection: Exclude<PostSlotInspection, { kind: "waiting" } | { kind: "unknown" }> }
+  | { kind: "unknown"; inspection: Extract<PostSlotInspection, { kind: "unknown" }> }
+  | { kind: "timed_out"; inspection: PostSlotInspection | null }
+  | { kind: "stopped" };
 
 // armLead 하한은 두지 않는다 — config.preOpenLeadMs 자체가 사용자가 설정한
 // 최소 리드타임이다(20-design §4, 하한 clamp는 toy-scale 테스트와 충돌해 제거).
@@ -977,18 +1053,18 @@ function slotDetectedEventData(
   };
 }
 
-function slotSelectedEventData(
-  slotSelectedAt: number,
+function slotClickDispatchedEventData(
+  slotClickDispatchedAt: number,
   openAtMs: number,
   arrivalAt: number | null,
   monoFromRunStartMs: number,
   clockData: NonNullable<RunEvent["data"]>,
 ): NonNullable<RunEvent["data"]> {
   return {
-    timingStage: "slot_selected",
-    timingServerAtMs: slotSelectedAt,
-    openDeltaMs: Math.round(slotSelectedAt - openAtMs),
-    ...(arrivalAt !== null ? { arrivalToClickMs: Math.round(slotSelectedAt - arrivalAt) } : {}),
+    timingStage: "slot_click_dispatched",
+    timingServerAtMs: slotClickDispatchedAt,
+    openDeltaMs: Math.round(slotClickDispatchedAt - openAtMs),
+    ...(arrivalAt !== null ? { arrivalToClickMs: Math.round(slotClickDispatchedAt - arrivalAt) } : {}),
     monoFromRunStartMs: Math.round(monoFromRunStartMs),
     ...clockData,
   };

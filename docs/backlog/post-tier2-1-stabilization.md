@@ -292,7 +292,7 @@ URL의 `date=260731`과 사용자 보고 예약일 표현이 일치하지 않으
 
 | ID | 항목 | 리뷰 판정 | 처리 시점 | Blocks | 상태 | spec/worklog |
 |---|---|---|---|---|---|---|
-| RT-01 | 슬롯 클릭 dispatch와 화면 전환 확인 분리 | 수용 | 실오픈 기준선 판독 후 | Tier 2-2 진입 | PENDING | - |
+| RT-01 | 슬롯 클릭 dispatch와 화면 전환 확인 분리 | 수용 | 실오픈 기준선 판독 후 | Tier 2-2 진입 | DONE | `docs/specs/slot-transition-outcomes/`, `docs/worklog/2026-07-14-03-rt01-slot-transition-outcomes.md` |
 | RT-02 | `clockSampleCount` 설정 계약 정리 | 수용 | 실오픈 시계 표본 판독 후 별도 정리 | 없음 | PENDING | - |
 | RT-03 | SlotAdapter 조상 가시성 검사 | 수용 | 실오픈 기준선 판독 후 | Tier 2-2 진입 | DONE | `docs/specs/slot-ancestor-visibility/`, `docs/worklog/2026-07-14-02-rt03-slot-ancestor-visibility.md` |
 | RT-04 | 40/60ms 실측과 선택 확인 개선 | 부분 수용 | Tier 2-2 | 없음 | PENDING | - |
