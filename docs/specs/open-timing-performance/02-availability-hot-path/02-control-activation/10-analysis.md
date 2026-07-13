@@ -1,6 +1,6 @@
 # Tier 2-2 — 제어 경로 활성화 분석
 
-**상태:** 조건부 대기. Tier 2-1의 GO 또는 REDUCE 판정 전 구현 금지.
+**상태:** REDUCE 분석 가능. RT-01·RT-03 완료 전 구현 금지.
 **부모:** `../10-analysis.md`
 
 ## 1. 목적
@@ -18,6 +18,16 @@ Tier 2-1에서 신뢰성과 실제 선행 시간이 검증된 availability 신�
 
 하나라도 충족하지 않으면 2-2로 넘어가지 않는다.
 
+### 2026-07-14 실제 오픈 판독
+
+- 실제 `EMPTY → POPULATED` 전환과 body/DOM agreement true를 확인했다.
+- body 분류는 DOM 후보보다 47.7ms 선행했고, DOM 관측부터 클릭까지는 약 7ms였다.
+- 최초 확인된 `POPULATED` 자체가 app ReferenceClock 기준 약 +956ms에 도착했으므로 약 +1011ms 슬롯 클릭의 대부분은 DOM 폴링 비용이 아니다.
+- 날짜 불문 `PerformanceResourceTiming` arrival은 canceled 인접 요청과 target 응답을 구분하지 못했다. target 날짜·인원이 검증된 body 이벤트가 없는 cycle도 존재했다.
+- 따라서 A 경로만 검토한다. B 경로를 시작할 안전한 pre-DOM actuator 근거는 없다.
+
+세부 근거: `../01-observation-safety/40-verification.md` §7.
+
 ## 3. 가능한 활성화 수준
 
 ### A. DOM claim 가속 (REDUCE 경로)
@@ -27,6 +37,8 @@ body 신호는 후속 토글을 중단하고 목표 슬롯 조건을 미리 준�
 - 장점: 자동화 경계와 기존 SlotAdapter 재검증 유지
 - 기대 이득: 최대 25ms 폴링 지연과 불필요한 스캔 일부 제거
 - 한계: responseEnd→DOM 렌더 56~182ms는 제거하지 못함
+
+실제 오픈 표본을 반영하면 wakeup은 임의 resource arrival이 아니라 날짜·인원이 검증된 target body 이벤트에만 연결해야 한다. body 이벤트가 없으면 기존 bounded DOM 대기와 토글 경로를 유지한다.
 
 ### B. 안전한 pre-DOM actuator (GO 경로)
 

@@ -46,22 +46,24 @@ DevTools MCP로 확장 dist 재로드 → 안전 점검(dry-run) 실런 수행. 
 1. **카운트다운 "오픈 경과 +20647일" (표시 회귀).** step 4에서 `clockOffsetMs`를 `offsetCenterMs`(= server−monotonic, epoch 스케일 ~1.78e12)로 별칭했는데, 사이드패널 카운트다운은 `Date.now() + clockOffsetMs`를 계산하므로 폭주했다. `clockOffsetMs`를 wall-clock 델타(server−Date.now(), ~수백 ms)로 되돌리고 `clockOffsetCenterMs`를 진단용으로 분리(`363a32e`). 재검증에서 `clockOffsetMs`=868ms, 카운트다운 "오픈까지 8:55:27"로 정상 확인.
 2. **FALLBACK 앵커 붕괴 (잠재).** FALLBACK 추정치는 `offsetCenterMs=0`이라 `monotonic+0`으로 앵커하면 serverClock이 작은 monotonic 값으로 고정돼 이후 모든 서버시각이 깨진다. FALLBACK일 때 `wall−monotonic`으로 앵커해 serverClock이 로컬 wall로 폴백하게 수정.
 
-### 미완료: 실제 오픈런 스큐 검증 (자정 이후, 판독 레시피)
+## E2E (실제 오픈) — 통과 (2026-07-14, 조광201)
 
-dry-run은 이미 열린 매장(이시즈에) 대상이라 서버 풀 스큐를 자극하지 못한다. **실제 미개장 매장의 오픈 시각** 실런이 필요하다. 사용자 예약 잡 중 가장 이른 것이 **cho__kwang 7/14 00:00**(자정) — 이게 실행되면 그 로그로 확인한다.
+자정 실제 오픈 잡을 코드 변경 없이 실행하고 IndexedDB와 화면 녹화를 판독했다.
 
-**판독 절차** (`use-chrome-devtools`로 사이드패널 열고 IndexedDB `catchtable-reserve-telemetry` 조회):
+- runId: `run-c5463a0b-ffe0-447b-a619-f9c545181ac0`
+- 오픈: 2026-07-14 00:00:00 KST
+- 최종 상태: `HANDED_OFF`, 34/34 events, seq 연속, dropped 0
+- armed estimate: LOW, uncertainty 500ms, wall offset -174ms, sample count 2, armLead 837ms
+- 슬롯 감지 시점: MEDIUM, uncertainty 125ms, wall offset -44ms
+- armed→감지 wall offset 변화는 130ms로, 우려했던 약 1초 단위 점프는 재현되지 않았다.
+- armLead 확장으로 슬롯 갱신은 오픈 약 832ms 전에 진입했다.
+- cycle 결과는 `NO_SLOT`, `NO_SLOT`, `NO_SLOT`, `SLOT_FOUND`였고 슬롯 감지와 클릭은 각각 오픈 +1004ms, +1011ms였다.
+- 오픈 전 목표 body `EMPTY`와 오픈 후 `POPULATED`가 순서대로 관측됐다.
 
-```js
-// 해당 run의 CLOCK_SYNCED(bootstrap/armed) + SLOT_DETECTED 이벤트를 뽑아:
-//  - clockSampleDetail / clockOffsetCenterMs 로 서버 풀 스큐(오프셋 ~1초 갈림) 재현 여부
-//  - armed vs SLOT_DETECTED의 clockConfidence·clockUncertaintyMs·clockOffsetMs 비교
-//    (rolling 샘플러가 대기 중 얼마나 개선했는지)
-//  - DATE_TOGGLE_CYCLE result 시퀀스: 오픈 "전" 사이클이 NO_SLOT인지(=오픈 전
-//    헛클릭 없이 진짜 오픈 순간에 SLOT_FOUND 되는지)
-//  - SLOT_DETECTED openDeltaMs 가 이번엔 **양수**(진짜 오픈 직후)인지
-```
+### 성공 기준 판정
 
-**성공 기준**: (a) 오픈 전 사이클이 NO_SLOT으로 흐르고 진짜 오픈 직후 SLOT_FOUND, (b) estimate가 스큐를 물어 ~1초 튀지 않고(또는 물었다면 LOW confidence로 정직하게 내리고 armLead가 넓어짐), (c) openDeltaMs가 신뢰 가능한 양수 프레임. 확인되면 이 문서를 "실오픈 통과"로 갱신하고 site-behavior §8에 관측된 스큐 폭·빈도 기록.
+1. **오픈 전 NO_SLOT → 오픈 후 SLOT_FOUND:** 통과.
+2. **약 1초 스큐 점프 방어:** 통과. 감지 시점까지 confidence가 LOW→MEDIUM, uncertainty가 약 500ms→125ms로 개선됐고 offset은 130ms 범위에서 수렴했다.
+3. **신뢰 가능한 양수 open delta:** 통과. 감지 +1004ms, 클릭 +1011ms이며 당시 uncertainty는 125ms였다.
 
-**주의**: cho__kwang 잡은 dryRun=false(실제 클릭). 자정 오픈이 실제로 열리면 승인제/후속 단계를 자동 진행하다 알 수 없는 화면(예: "0원 결제로 예약")에서 안전 정지하거나 예약 폼에서 인계한다 — 최종 예약은 자동 확정 안 함(자동화 경계).
+이 표본은 ReferenceClock이 실제 오픈 대기 중 안정화되고 조기 슬롯 클릭 없이 양수 프레임에서 동작했음을 보여준다. 다만 HTTP Date는 1초 해상도이고 시계는 app 호스트, availability gate는 ct-api 호스트이므로 두 호스트의 절대 시계 일치를 직접 증명하지는 않는다. 실제 `POPULATED`가 app 기준 약 +956ms에 도착한 원인이 서버 공개 지연인지 cross-origin 시계 차이인지는 추가 표본이 필요하다.

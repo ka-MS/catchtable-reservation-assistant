@@ -6,7 +6,7 @@
 
 **기준 코드:** `main@8ba22f5` (`Tier 2-1 availability shadow observation` 병합 완료)
 
-**현재 체크포인트:** 실오픈 기준선 측정·판독
+**현재 체크포인트:** 실오픈 기준선 판독 완료 → 정확성 안정화
 
 **다음 성능 단계:** Tier 2-2 축소 검토
 
@@ -29,14 +29,14 @@ Tier 2-1 완료 후 외부 정적 레드팀 리뷰와 실제 후속 예약 흐�
 
 - Tier 1 ReferenceClock 개선 완료
 - Tier 2-1 XHR shadow 관찰 구현·자동 테스트·live dry-run 완료
-- body 후보가 warm 측정에서 DOM 후보보다 앞서는 것은 확인했지만 실제 오픈 `EMPTY -> POPULATED` 전이는 아직 공식 판독 전
+- 실제 오픈 `EMPTY -> POPULATED`를 1회 확인했고 body가 DOM보다 47.7ms 선행했다. 34/34 events, dropped 0, 최종 사용자 인계까지 공식 판독 완료
 - Tier 2-2 판정은 `REDUCE`: body 신호를 실제 클릭 제어에 연결하지 않고 MutationObserver 기반 DOM 감지 축소안만 검토
-- 현재 HANDOFF의 다음 작업은 실오픈 서버 풀 스큐와 empty-to-populated 실행 판독
+- 현재 HANDOFF의 다음 작업은 blocking backlog RT-01·RT-03 정확성 안정화
 
 현재 기준선을 보존하기 위해 다음 제약을 둔다.
 
-1. 실오픈 기준선 판독 전에는 시계, 날짜 토글, 슬롯 탐색·클릭 hot path를 변경하지 않는다.
-2. XHR shadow는 실오픈 비교 자료를 얻을 때까지 관측 전용으로 유지한다.
+1. RT-01·RT-03 완료 전에는 날짜 토글과 슬롯 탐색 hot path를 변경하지 않는다.
+2. XHR shadow는 Tier 2-2 설계가 승인될 때까지 관측 전용으로 유지한다.
 3. body claim만으로 클릭하거나 날짜 토글을 중단하지 않는다.
 4. `SLOT_SELECTED`라는 기존 상태명이 서버 좌석 hold 완료를 증명한다고 간주하지 않는다.
 5. 증거가 부족한 신규 화면은 selector를 추측해 자동 진행하지 않는다.

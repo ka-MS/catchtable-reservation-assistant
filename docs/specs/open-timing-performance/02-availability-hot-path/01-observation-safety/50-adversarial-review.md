@@ -39,11 +39,12 @@ sequence가 직전 이하인 이벤트는 stale 처리하고 claim은 런당 최
 
 ## 3. 잔여 위험
 
-1. **실제 오픈 전이 미실측:** 현재 자료는 warm 토글이다. 실제 empty→populated 순간의 선행 시간·응답 역전은 별도 표본이 필요하다.
-2. **이미 렌더된 warm DOM:** 재실행 시 기존 target 슬롯 DOM이 남아 있으면 body 응답 전에 DOM 경로가 종료될 수 있다. 기존 제어 동작이며 Tier 2-1에서 변경하지 않았다.
-3. **사이트 계약 변경:** endpoint, header, response shape, XHR transport가 바뀌면 shadow 관찰이 중단될 수 있다. 실패 시 기존 DOM 경로는 유지된다.
-4. **`postMessage` spoofing:** channel은 인증이 아니다. 2-2에서도 shadow body만으로 클릭하지 않고 DOM 재검증을 유지해야 한다.
+1. **실제 오픈 표본 부족:** 2026-07-14 조광201에서 empty→populated와 body 47.7ms 선행을 1회 확인했다. 응답 역전 빈도와 매장별 분포는 추가 표본이 필요하다.
+2. **날짜 불문 resource arrival:** cycle 2·3에서 `lastArrivalAt`은 갱신됐지만 검증된 target body 이벤트가 없었다. URL에 날짜가 없으므로 canceled 인접 요청 arrival을 target 응답으로 해석하면 안 된다. Tier 2-2는 날짜·인원이 검증된 body 이벤트만 상관 신호 후보로 사용해야 한다.
+3. **이미 렌더된 warm DOM:** 재실행 시 기존 target 슬롯 DOM이 남아 있으면 body 응답 전에 DOM 경로가 종료될 수 있다. 기존 제어 동작이며 Tier 2-1에서 변경하지 않았다.
+4. **사이트 계약 변경:** endpoint, header, response shape, XHR transport가 바뀌면 shadow 관찰이 중단될 수 있다. 실패 시 기존 DOM 경로는 유지된다.
+5. **`postMessage` spoofing:** channel은 인증이 아니다. 2-2에서도 shadow body만으로 클릭하지 않고 DOM 재검증을 유지해야 한다.
 
 ## 4. 결론
 
-shadow 관찰 자체의 위험은 기존 예약 경로와 분리됐고 자동·live 검증을 통과했다. 제어 활성화는 바로 GO하지 않고 **REDUCE**로 제한한다.
+shadow 관찰 자체의 위험은 기존 예약 경로와 분리됐고 자동·live·실제 오픈 검증을 통과했다. 제어 활성화는 바로 GO하지 않고 **REDUCE**로 제한한다.
