@@ -638,6 +638,7 @@ test("optional post-slot stages are advanced in observed order", async () => {
     { kind: "table_type", options: ["홀", "바"] },
     { kind: "extras" },
     { kind: "menu", options: ["디너 오마카세"] },
+    { kind: "seating_menu", options: ["카운터 디너 오마카세"] },
     { kind: "deposit" },
     { kind: "form" },
   ];
@@ -657,7 +658,7 @@ test("optional post-slot stages are advanced in observed order", async () => {
   const result = await h.orchestrator.start(config({ dryRun: false }));
 
   assert.equal(result.state, "HANDED_OFF");
-  assert.deepEqual(actions, ["table_type", "extras", "menu", "deposit"]);
+  assert.deepEqual(actions, ["table_type", "extras", "menu", "seating_menu", "deposit"]);
   assert.equal(h.events.some((event) => event.data?.postSlotStage === "menu" && "openDeltaMs" in event.data), false);
   assert.match(h.events.at(-1)?.message ?? "", /예약 폼/);
 });

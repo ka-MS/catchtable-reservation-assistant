@@ -21,6 +21,33 @@ export function findVisiblePresentationSheet(document: Document): HTMLElement | 
     .at(-1) ?? null;
 }
 
+function choiceCardHeading(choice: Element, sheet: Element): string {
+  let container = choice.parentElement;
+  while (container && container !== sheet) {
+    const choices = visibleAll(container, '[role="checkbox"][aria-label]');
+    const heading = visibleAll<HTMLElement>(container, 'h1, h2, h3, [role="heading"]').at(0);
+    if (choices.length === 1 && heading) return normalizedText(heading.textContent);
+    container = container.parentElement;
+  }
+  return "";
+}
+
+export function findSeatingMenuSheet(document: Document): HTMLElement | null {
+  return visibleAll<HTMLElement>(document, 'div[role="presentation"]')
+    .filter((sheet) => {
+      const text = normalizedText(sheet.textContent);
+      const choices = visibleAll(sheet, '[role="checkbox"][aria-label]');
+      const headings = choices.map((choice) => choiceCardHeading(choice, sheet));
+      const hasConfirm = visibleAll<HTMLButtonElement>(sheet, "button")
+        .some((button) => normalizedText(button.textContent) === "확인");
+      const hasSeatingHeading = headings.some((heading) => ["홀", "테이블", "바", "카운터", "룸"]
+        .some((label) => heading.includes(label)));
+      return choices.length > 0 && headings.every(Boolean) && hasSeatingHeading
+        && hasConfirm && text.includes("필수") && text.includes("메인 메뉴");
+    })
+    .at(-1) ?? null;
+}
+
 // 실측 2026-07-12 이시즈에 (site-behavior §7.2): 홍보 인터스티셜은 role 계열 속성이 전혀 없어
 // 닫기 버튼 텍스트만 안정 앵커다.
 export function findPromoDismissButton(document: Document): HTMLButtonElement | null {

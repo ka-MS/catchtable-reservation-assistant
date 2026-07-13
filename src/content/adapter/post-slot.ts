@@ -4,8 +4,8 @@ import {
   isZeroDepositControl,
   type PostSlotInspection,
 } from "./post-slot-inspection.js";
-import { findActiveDialog, findPromoDismissButton, findRequestSheet } from "./dialog.js";
-import { isDisabled, normalizedText, visibleAll } from "./dom.js";
+import { findActiveDialog, findPromoDismissButton, findRequestSheet, findSeatingMenuSheet } from "./dialog.js";
+import { isDisabled, normalizedText, safeText, visibleAll } from "./dom.js";
 
 export type { PostSlotCertainty, PostSlotDiagnostics, PostSlotInspection } from "./post-slot-inspection.js";
 
@@ -49,6 +49,12 @@ export class PostSlotAdapter {
         return dialog
           ? this.advanceMenu(dialog, config.menuKeyword, config.personCount)
           : { status: "waiting", message: "다음 후속 화면을 기다립니다." };
+      case "seating_menu": {
+        const sheet = findSeatingMenuSheet(this.document);
+        return sheet
+          ? this.advanceSeatingMenu(sheet, config.tablePreference, config.menuKeyword)
+          : { status: "waiting", message: "다음 후속 화면을 기다립니다." };
+      }
       case "extras":
         return dialog ? this.advanceExtras(dialog) : { status: "waiting", message: "다음 후속 화면을 기다립니다." };
       case "deposit_notice":
@@ -152,6 +158,55 @@ export class PostSlotAdapter {
 
   private advanceExtras(dialog: HTMLElement): PostSlotActionResult {
     return this.clickProgress(dialog, ["다음"], "추가 상품을 선택하지 않고 진행했습니다.");
+  }
+
+  private advanceSeatingMenu(
+    sheet: HTMLElement,
+    preference: TablePreference,
+    keyword: string,
+  ): PostSlotActionResult {
+    const choices = this.enabledChoices(sheet, '[role="checkbox"][aria-label]');
+    const entries = choices.map((choice) => ({
+      choice,
+      heading: this.seatingMenuHeading(choice, sheet),
+      menu: safeText(choice.getAttribute("aria-label")),
+    }));
+    const menuQuery = normalizedText(keyword);
+    const seatingLabels: Record<Exclude<TablePreference, "any">, string[]> = {
+      hall: ["홀", "테이블"],
+      bar: ["바", "카운터"],
+      room: ["룸"],
+    };
+    const matching = entries.filter((entry) => {
+      const menuMatches = !menuQuery || normalizedText(`${entry.heading} ${entry.menu}`).includes(menuQuery);
+      const seatingMatches = preference === "any"
+        || seatingLabels[preference].some((label) => normalizedText(entry.heading).includes(normalizedText(label)));
+      return menuMatches && seatingMatches;
+    });
+    const target = matching.find((entry) => isChecked(entry.choice)) ?? matching[0];
+    if (!target) return { status: "blocked", message: "설정한 좌석과 메뉴 조합을 선택할 수 없습니다." };
+
+    const selectedOther = entries.find((entry) => entry !== target && isChecked(entry.choice));
+    if (selectedOther) {
+      (selectedOther.choice as HTMLElement).click();
+      return { status: "acted", message: "기존 좌석·메뉴 선택을 해제했습니다." };
+    }
+    if (!isChecked(target.choice)) {
+      (target.choice as HTMLElement).click();
+      return { status: "acted", message: `${target.heading || target.menu}를 선택했습니다.` };
+    }
+    return this.clickProgress(sheet, ["확인"], "좌석·메뉴 선택을 완료했습니다.");
+  }
+
+  private seatingMenuHeading(choice: Element, sheet: Element): string {
+    let container = choice.parentElement;
+    while (container && container !== sheet) {
+      const choices = visibleAll(container, '[role="checkbox"][aria-label]');
+      const heading = visibleAll<HTMLElement>(container, 'h1, h2, h3, [role="heading"]').at(0);
+      if (choices.length === 1 && heading) return safeText(heading.textContent);
+      container = container.parentElement;
+    }
+    return "";
   }
 
   private advanceDepositNotice(dialog: HTMLElement): PostSlotActionResult {
