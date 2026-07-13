@@ -10,6 +10,7 @@
 6. [테스트 전략](testing/test-strategy.md)
 7. [구현 계획](plans/mvp-implementation.md)
 8. [현재 HANDOFF](worklog/HANDOFF.md)
+9. HANDOFF에 blocking backlog가 지정된 경우 [Backlog](backlog/README.md)
 
 ## 공식 기준
 
@@ -39,6 +40,7 @@
 | 브랜치 전략 | [branch-strategy.md](development/branch-strategy.md) |
 | 실제 검증 | [mvp-checklist.md](verification/mvp-checklist.md) |
 | 적대적 리뷰 | [adversarial-review.md](reviews/adversarial-review.md) |
+| 착수 전 보완 작업 | [backlog/](backlog/README.md) |
 | 작업 이력 | [worklog/](worklog/HANDOFF.md) |
 
 `폐기된` 제목과 WARNING이 있는 문서는 과거 이력이며 공식 기준으로 사용하지 않습니다.
