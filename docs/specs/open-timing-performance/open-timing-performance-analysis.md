@@ -80,14 +80,11 @@ Availability 응답/DOM = 실제 오픈의 ground truth (클릭 트리거)
 
 ### Tier 2 — `02-availability-hot-path` (지연 최적화)
 
-클릭 경로를 응답 body 직접 감지로 승격. 기존 `xhr-slot-watch` 패키지(도착 신호+DOM 스캔)의 연장선.
+관찰과 제어를 분리한다. body 판정만으로 DOM 버튼 렌더 전 클릭할 수 없으므로 "렌더 지연 전체 제거"를 전제로 구현하지 않는다.
 
-- **MAIN-world fetch/XHR 후킹**으로 응답 body의 빈→채워짐 전이를 직접 판정 → DOM 렌더 지연(실측 56~182ms) 건너뜀
-- 기존 PerformanceObserver 도착 감지·DOM 스캔은 폴백으로 유지
-- 다중 감지기가 생기므로 **원자적 claim guard**(런당 OBSERVING→CLAIMING 1회) 필수 — 이 티어에서 도입
-- 응답 순서 역전·중복 populated 처리
-
-착수 전 **Tier 1 실오픈 검증 후** 세부 핫패스 계측(body 완료→파싱→전이 판정→클릭)으로 필요성 확정.
+- **Tier 2-1:** MAIN-world 응답 shadow 관찰, payload/bridge/지연 실측, claim guard shadow 검증. 기존 클릭 경로 변경 없음.
+- **Tier 2-2:** 2-1에서 실질 이득과 안전한 actuator가 확인된 경우에만 실제 claim 경로 활성화. 기존 PerformanceObserver+DOM 감지는 폴백으로 유지.
+- 안전한 pre-DOM actuator가 없으면 2-2는 MutationObserver 기반 DOM claim 가속으로 축소하거나 구현하지 않는다.
 
 ### Tier 3 — `03-runtime-resilience` (견고성)
 
@@ -99,7 +96,8 @@ Availability 응답/DOM = 실제 오픈의 ground truth (클릭 트리거)
 
 ```
 Tier 1  ReferenceClock 신뢰성   — 진입 시점 정확·정직 (클릭 경로 변경 금지)
-Tier 2  Availability 핫패스     — 응답→클릭 지연 최소화 + claim guard
+Tier 2-1 Availability shadow    — 응답 구조·선행 시간·중재 안전성 검증
+Tier 2-2 Availability control   — 검증된 신호만 실제 claim 경로에 연결
 Tier 3  런타임 견고성           — 탭·SW·실패 복원력
 ```
 
@@ -139,8 +137,9 @@ Tier 3  런타임 견고성           — 탭·SW·실패 복원력
 
 ## 10. 현행 코드 기준선
 
-- 시계: `src/shared/clock.ts`(`selectClockEstimate` boundary/median), `src/content/clock-sync.ts`(버스트 HEAD), `src/shared/toggle-schedule.ts`, `MonotonicEpochClock`(앵커 — 이미 단조). worklog 08~11에서 샘플 상세·합의·표본수 계측을 붙였으나 스큐 방어가 표본 창 편향에 뚫린다.
-- 감지: `src/content/adapter/slot-refresh-watch.ts`(PerformanceObserver 도착 신호), 오케스트레이터 3-모드 감지(worklog 13). 현재 중복 클릭 위험 없음(단일 searchAndReserve 루프).
+- 시계: `src/content/reference-clock-sampler.ts` + `src/shared/clock.ts`의 rolling interval max-coverage `ReferenceClock`. uncertainty 기반 armLead를 결정하고 정밀 토글 직전에 앵커를 동결한다(Tier 1 완료).
+- 감지: `src/content/adapter/slot-refresh-watch.ts`(PerformanceObserver 도착 신호), 오케스트레이터 3-모드 감지(그리드 폴백/700ms 콰이어스/250ms 도착 버스트). 현재 중복 클릭 위험 없음(단일 `searchAndReserve` 루프).
+- 액추에이터: 렌더된 슬롯 버튼을 `SlotAdapter`가 다시 조회·검증한 뒤 클릭한다. pre-DOM 액추에이터는 없다.
 
 ## 참고
 

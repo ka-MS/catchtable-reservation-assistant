@@ -58,7 +58,7 @@ SlotRefreshWatchPort {
   3. **폴백**: 신호가 전혀 안 오는 환경(격리 월드 불가·URL 변경)에서는 현행 사이클-말 스캔 그대로 — 성능 회귀 없음.
 - 계측: `xhrArrivalServerAtMs`·`arrivalToDetectMs`(SLOT_DETECTED) + `watch`·`arrivalAt`(DATE_TOGGLE_CYCLE)을 추가 — 클릭→발사 지연은 `arrivalAt − targetClickedAt`으로 파생(도착 신호에는 발사 시각이 없음). 개선 폭과 ct-api 게이트 시점을 실런에서 직접 검증.
 - **기대 효과**: 오픈 통과 첫 클릭(+0) → 발사 +~280 → 응답 +~340 → 렌더 +~420 → 감지 ≈ **+430ms** (현행 실측 +1303ms 대비 ~870ms 단축).
-- **2단계 후보(별도 스펙)**: 클릭→발사 지연(~250ms)을 역이용해 목표 클릭을 openAt−250ms에 배치하면 요청이 오픈 직후 서버에 도달 → 이론 감지 +150~250ms. 오픈 전 처리되어 빈 응답이 올 위험이 있어 콰이어스+계측으로 게이트 시점 실측 후 판단.
+- **2단계 후보(별도 스펙)**: 후속 작업은 `open-timing-performance/02-availability-hot-path/`의 Tier 2-1/2-2로 분리됐다. 먼저 body shadow 관찰로 선행 시간과 액추에이터 가능성을 측정하며, body를 먼저 알아도 렌더된 버튼이 없으면 클릭할 수 없다는 제약을 검증한다. 목표 클릭 선행 배치는 오픈 전 빈 응답 위험이 있어 Tier 2-2 게이트 전 적용하지 않는다.
 
 ### 성능·안전 불변식
 

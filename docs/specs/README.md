@@ -13,6 +13,8 @@
 - [오픈 타이밍 성능 패키지(우산)](open-timing-performance/open-timing-performance-analysis.md)
   - [Tier 1 · 기준시계 신뢰성](open-timing-performance/01-reference-clock-reliability/10-analysis.md)
   - [Tier 2 · Availability 핫패스](open-timing-performance/02-availability-hot-path/10-analysis.md)
+    - [Tier 2-1 · Shadow 관찰·안전 기반](open-timing-performance/02-availability-hot-path/01-observation-safety/10-analysis.md)
+    - [Tier 2-2 · 제어 경로 활성화](open-timing-performance/02-availability-hot-path/02-control-activation/10-analysis.md)
   - [Tier 3 · 런타임 견고성](open-timing-performance/03-runtime-resilience/10-analysis.md)
 
 과거 번호형 사양 파일은 폐기 안내문으로만 남아 있으며 위 문서가 현재 공식 기준입니다.
