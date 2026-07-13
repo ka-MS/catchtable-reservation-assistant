@@ -199,7 +199,9 @@ t=193ms  테이블 dialog DOM 제거, 다음 dialog 활성
 
 **파이프라인 지연 (R3).** 클릭 → XHR 발사 **217~379ms**(SPA 내부 지연, n=5), XHR 왕복 52~63ms, responseEnd → 슬롯 DOM 렌더 **56~182ms**. 클릭→렌더 합계 ≈ **330~560ms**. 날짜 클릭 시 기존 슬롯 DOM은 발사 시점(클릭+~280ms)에 비워진다 — 그 전까지 이전 날짜의 슬롯이 잔존 표시된다. `[실측]`
 
-**응답 형태 (R5).** 가용 여부와 무관하게 항상 200 + `data.timeSlotMap`(시각→`{availableYn, date, time, ...}`) 구조. 도착 신호는 항상 발생하므로 가용 판정은 DOM(또는 바디) 스캔이 담당해야 한다. `[실측]`
+**응답 형태 (R5).** 가용 여부와 무관하게 항상 200 + `data.timeSlotMap`(시각→`{availableYn, date, time, ...}`) 구조. 도착 신호는 항상 발생하므로 가용 판정은 DOM(또는 바디) 스캔이 담당해야 한다. payload에 ms 서버시각 필드 없음(`resp2`는 ID). `[실측]`
+
+**푸시 채널 없음 (R6, 2026-07-13 실측).** WebSocket/EventSource 생성자를 페이지 로드 전부터 후킹하고 새로고침→예약하기→날짜 토글 전 과정을 돌린 결과 **생성 0건**. 전체 네트워크 538건에도 websocket/eventsource 타입 부재. 스택은 tanstack-query 기반 REST 폴링. **서버 푸시(SSE/WS)가 없으므로 슬롯 오픈은 클라이언트가 요청해야만 알 수 있다 — 관찰할 푸시 이벤트 자체가 존재하지 않는다.** 따라서 감지는 UI 토글로 사이트 XHR을 유발하고 그 응답 전이를 트리거로 삼는 구조가 유일하다(availability 요청 본문 `encryptedParamString` 암호화로 직접 호출도 불가). `[실측: 이시즈에]`
 
 **격리 월드 가시성 (R4).** content script(격리 월드)의 PerformanceObserver가 `time-slots` 리소스 항목을 정상 관측한다 — 2026-07-12 23:05 안전 점검 실런에서 `watch:"live"`·`xhrArrivalServerAtMs` 기록 확인(worklog 13). `[실측]`
 
