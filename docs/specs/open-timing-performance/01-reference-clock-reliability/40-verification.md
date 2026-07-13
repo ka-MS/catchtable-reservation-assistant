@@ -46,6 +46,22 @@ DevTools MCP로 확장 dist 재로드 → 안전 점검(dry-run) 실런 수행. 
 1. **카운트다운 "오픈 경과 +20647일" (표시 회귀).** step 4에서 `clockOffsetMs`를 `offsetCenterMs`(= server−monotonic, epoch 스케일 ~1.78e12)로 별칭했는데, 사이드패널 카운트다운은 `Date.now() + clockOffsetMs`를 계산하므로 폭주했다. `clockOffsetMs`를 wall-clock 델타(server−Date.now(), ~수백 ms)로 되돌리고 `clockOffsetCenterMs`를 진단용으로 분리(`363a32e`). 재검증에서 `clockOffsetMs`=868ms, 카운트다운 "오픈까지 8:55:27"로 정상 확인.
 2. **FALLBACK 앵커 붕괴 (잠재).** FALLBACK 추정치는 `offsetCenterMs=0`이라 `monotonic+0`으로 앵커하면 serverClock이 작은 monotonic 값으로 고정돼 이후 모든 서버시각이 깨진다. FALLBACK일 때 `wall−monotonic`으로 앵커해 serverClock이 로컬 wall로 폴백하게 수정.
 
-### 미완료: 실제 오픈런 스큐 검증
+### 미완료: 실제 오픈런 스큐 검증 (자정 이후, 판독 레시피)
 
-dry-run은 이미 열린 매장(이시즈에) 대상이라 서버 풀 스큐를 자극하지 못한다. **실제 미개장 매장의 오픈 시각** 실런에서 (a) 오픈 전 불필요 토글 소멸, (b) estimate가 스큐를 물지 않고 정직한 confidence/uncertainty로 내리는지, (c) openDelta가 진짜 프레임과 정합하는지 확인이 남아 있다. 사용자의 예약 잡(여러 개 예정) 중 하나로 자연 관측 가능. 확인되면 site-behavior §8에 스큐 폭·빈도 갱신.
+dry-run은 이미 열린 매장(이시즈에) 대상이라 서버 풀 스큐를 자극하지 못한다. **실제 미개장 매장의 오픈 시각** 실런이 필요하다. 사용자 예약 잡 중 가장 이른 것이 **cho__kwang 7/14 00:00**(자정) — 이게 실행되면 그 로그로 확인한다.
+
+**판독 절차** (`use-chrome-devtools`로 사이드패널 열고 IndexedDB `catchtable-reserve-telemetry` 조회):
+
+```js
+// 해당 run의 CLOCK_SYNCED(bootstrap/armed) + SLOT_DETECTED 이벤트를 뽑아:
+//  - clockSampleDetail / clockOffsetCenterMs 로 서버 풀 스큐(오프셋 ~1초 갈림) 재현 여부
+//  - armed vs SLOT_DETECTED의 clockConfidence·clockUncertaintyMs·clockOffsetMs 비교
+//    (rolling 샘플러가 대기 중 얼마나 개선했는지)
+//  - DATE_TOGGLE_CYCLE result 시퀀스: 오픈 "전" 사이클이 NO_SLOT인지(=오픈 전
+//    헛클릭 없이 진짜 오픈 순간에 SLOT_FOUND 되는지)
+//  - SLOT_DETECTED openDeltaMs 가 이번엔 **양수**(진짜 오픈 직후)인지
+```
+
+**성공 기준**: (a) 오픈 전 사이클이 NO_SLOT으로 흐르고 진짜 오픈 직후 SLOT_FOUND, (b) estimate가 스큐를 물어 ~1초 튀지 않고(또는 물었다면 LOW confidence로 정직하게 내리고 armLead가 넓어짐), (c) openDeltaMs가 신뢰 가능한 양수 프레임. 확인되면 이 문서를 "실오픈 통과"로 갱신하고 site-behavior §8에 관측된 스큐 폭·빈도 기록.
+
+**주의**: cho__kwang 잡은 dryRun=false(실제 클릭). 자정 오픈이 실제로 열리면 승인제/후속 단계를 자동 진행하다 알 수 없는 화면(예: "0원 결제로 예약")에서 안전 정지하거나 예약 폼에서 인계한다 — 최종 예약은 자동 확정 안 함(자동화 경계).
