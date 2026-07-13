@@ -28,8 +28,11 @@
 
 - `RT-01`: 슬롯 클릭 dispatch와 화면 전환 확인 분리
 - `RT-03`: SlotAdapter 조상 가시성 검사
+- `RT-10`: cycle-correlated shadow timing 보강과 실제 오픈 재측정
 
 참조: `docs/backlog/post-tier2-1-stabilization.md`
+
+RT-10은 현재 기준선 로그를 먼저 판독한 뒤 구현한다. correlation trace가 포함된 `EXACT` 또는 `STRONG` 실제 오픈 표본을 확보하기 전에는 Tier 2-2 성능 결론이나 구현으로 진행하지 않는다.
 
 `Blocks`가 `없음`인 다른 backlog 항목은 남아 있어도 Tier 2-2 진입을 자동으로 막지 않는다.
 
@@ -37,9 +40,15 @@
 
 - RT-01: 슬롯 클릭 dispatch와 후속 화면 전환 확인 분리
 - RT-03: SlotAdapter 조상 가시성 검사
-- 두 항목을 분석→설계→구현→검증→적대적 리뷰로 완료하기 전 Tier 2-2 구현에 진입하지 않는다.
+- 두 항목을 분석→설계→구현→검증→적대적 리뷰로 완료한 뒤 RT-10으로 진행한다.
 
-## 다음 작업 2 — Tier 2-2 축소 설계
+## 다음 작업 2 — Tier 2-1 관측 보강과 재측정
+
+- RT-10: cycle-correlated shadow timing을 구현하고 shadow가 제어 경로에 영향을 주지 않는지 검증
+- 실제 오픈 `EMPTY -> POPULATED`를 재측정해 `EXACT` 또는 `STRONG` 표본 확보
+- 위 조건을 충족하기 전 Tier 2-2 성능 결론이나 구현에 진입하지 않는다.
+
+## 다음 작업 3 — Tier 2-2 축소 설계
 
 Tier 2-1의 `40-verification.md`와 `50-adversarial-review.md`를 먼저 읽는다.
 

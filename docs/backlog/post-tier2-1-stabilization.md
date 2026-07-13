@@ -195,6 +195,38 @@ body 신호를 actuator로 승격하는 것은 별도 안전 근거가 없는 �
 - 클릭 dispatch와 실제 예약 흐름 진입을 같은 성공으로 표시하면 안 된다.
 - hot path 변경은 실오픈 기준선 측정 이후 근거를 바탕으로 수행해야 한다.
 
+### 3.8 Tier 2-1 shadow timing의 cycle 상관관계가 부족함
+
+**후속 리뷰 지적**
+
+현재 `bodyLeadOverDomMs`는 MAIN world에서 payload 분류가 끝난 시각부터 DOM 후보 관측까지를 계산한다. ISOLATED world의 content script가 신호를 실제로 사용할 수 있는 시점은 `bridgeReceivedMonoMs` 이후이므로 실제 제어 가능 시간의 상한은 `domObservedMonoMs - bridgeReceivedMonoMs`로 봐야 한다.
+
+또한 `latestTargetShadow`와 최초 shadow claim이 run 전체에 유지돼 이전 날짜 토글 cycle의 body와 이후 cycle의 DOM 후보를 비교할 수 있다. 실제 오픈 성능 통계에는 요청·응답·DOM이 같은 target click에서 발생했다는 상관관계가 필요하다.
+
+**코드 대조**
+
+- `requestSequence`, `responseCompletedMonoMs`, `payloadClassifiedMonoMs`, `bridgeReceivedMonoMs`, `domObservedMonoMs` 원시값은 이미 trace에 존재한다.
+- `bodyLeadOverDomMs`는 `domObservedMonoMs - payloadClassifiedMonoMs`다.
+- `requestSequence`는 body trace와 DOM 비교의 `bodySequence`에 존재하지만 날짜 토글 `cycle`과 결합돼 있지 않다.
+- `latestTargetShadow`와 `ShadowClaimCoordinator.claim`은 run 단위로 유지된다.
+- 목표 날짜 클릭 전후 DOM mutation generation과 stale DOM 존재 여부를 같은 correlation record로 남기지 않는다.
+
+**판정: 수용**
+
+문제는 원시 timestamp 부족보다 cycle correlation 부족이다. RT-10에서는 다음 관측 계약을 설계한다.
+
+- target click마다 `cycleId`와 monotonic 기준점을 등록
+- target date/person과 `requestSequence`를 같은 cycle에 연결
+- response completed, payload classified, bridge received, DOM mutation, DOM candidate 관측을 같은 record에 연결
+- `bridgeToDomMs`와 `targetResponseToDomMs`를 명확한 기준점으로 계산
+- 클릭 직전 동기 DOM 전체 검색을 추가하지 않고 observer generation으로 stale DOM 여부 판정
+- `correlationQuality`를 `EXACT`, `STRONG`, `WEAK`, `NONE`으로 분류
+- Tier 2 성능 통계에는 `EXACT`와 `STRONG` 표본만 포함
+
+RT-10은 현재 기준선 로그를 먼저 판독한 뒤 구현한다. 이후 correlation trace가 포함된 실제 오픈 표본을 다시 확보하기 전에는 Tier 2-2 성능 결론이나 제어 구현으로 진행하지 않는다.
+
+**보완 항목:** RT-10
+
 ## 4. 실제 후속 화면 신규 사례
 
 ### 4.1 비스트로 꼬꼬뜨 예약금 안내의 `다음` 버튼
@@ -269,6 +301,7 @@ URL의 `date=260731`과 사용자 보고 예약일 표현이 일치하지 않으
 | RT-07 | 야키토리묵 신규 후속 단계 조사 | 조사 필요 | 정확성·호환성 안정화 | 없음 | INVESTIGATE | - |
 | RT-08 | 일반 DOM strategy·fixture·drift 대응 | 부분 수용 | Tier 3 | 없음 | DEFERRED | `03-runtime-resilience` 예정 |
 | RT-09 | 장시간·고빈도 운영 안전장치 검토 | 부분 수용·보류 | Tier 3 | 없음 | DEFERRED | `03-runtime-resilience` 예정 |
+| RT-10 | cycle-correlated shadow timing 보강 | 수용 | 현재 기준선 판독과 RT-03 완료 후 | Tier 2-2 구현 진입 | PENDING | - |
 
 상태 값은 다음 의미로 사용한다.
 
@@ -283,11 +316,13 @@ URL의 `date=260731`과 사용자 보고 예약일 표현이 일치하지 않으
 
 | 체크포인트 | 수행·확인 항목 | 단계 전환 조건 |
 |---|---|---|
-| A. Tier 2-1 완료 직후 | 현재 코드로 실오픈 `EMPTY -> POPULATED`, 스큐, body/DOM lead, 40/60ms 자료 판독 | hot path 코드 변경 없이 기준선 확보 |
-| B. 실오픈 판독 후 정확성 안정화 | RT-01, RT-03 우선 수행. RT-02, RT-06, RT-07은 blocking과 분리해 순차 처리 | RT-01·RT-03 검증 완료 전 Tier 2-2 구현 진입 금지 |
-| C. Tier 2-2 분석·구현 | RT-04를 실제 오픈 분포에 근거해 설계. body 신호만으로 클릭하지 않고 DOM 재검증 유지 | Tier 2-2 자체 성공 기준 통과 |
-| D. Tier 2-2 종료 판정 | RT-05에서 XHR probe의 제거·진단 전용·기본 비활성 중 하나를 결정 | RT-05 결정과 회귀 검증 없이는 Tier 2-2 종료 처리 금지 |
-| E. Tier 3 | RT-08, RT-09를 runtime resilience 범위에서 재분석 | 해당 Tier spec의 성공 기준에 따름 |
+| A. Tier 2-1 완료 직후 | 현재 코드로 실오픈 `EMPTY -> POPULATED`, 스큐, body/DOM lead, 40/60ms 자료 판독 | hot path 코드 변경 없이 현재 기준선 확보 |
+| B. 현재 기준선 판독 후 정확성 안정화 | RT-01, RT-03 우선 수행. RT-02, RT-06, RT-07은 blocking과 분리해 순차 처리 | RT-01·RT-03 검증 완료 전 Tier 2-2 구현 진입 금지 |
+| C. Tier 2-1 관측 보강 | RT-03으로 DOM 후보 정확성을 확보한 뒤 RT-10의 cycle correlation trace 구현 | RT-10 자동 게이트와 shadow 제어 독립성 검증 |
+| D. correlation 실오픈 재측정 | RT-10 적용 상태로 실제 오픈 `EMPTY -> POPULATED`를 다시 측정하고 `EXACT` 또는 `STRONG` 표본 확보 | 유효 상관 표본 없이 Tier 2-2 성능 결론·구현 금지 |
+| E. Tier 2-2 분석·구현 | RT-04를 상관된 실제 오픈 분포에 근거해 설계. body 신호만으로 클릭하지 않고 DOM 재검증 유지 | Tier 2-2 자체 성공 기준 통과 |
+| F. Tier 2-2 종료 판정 | RT-05에서 XHR probe의 제거·진단 전용·기본 비활성 중 하나를 결정 | RT-05 결정과 회귀 검증 없이는 Tier 2-2 종료 처리 금지 |
+| G. Tier 3 | RT-08, RT-09를 runtime resilience 범위에서 재분석 | 해당 Tier spec의 성공 기준에 따름 |
 
 RT-02, RT-06, RT-07은 중요하지만 현재 Tier 2-2 진입 blocking으로 지정하지 않는다. 다만 HANDOFF가 정확성·호환성 안정화를 현재 체크포인트로 선택하면 해당 세션의 실제 다음 작업이 될 수 있다.
 
@@ -342,6 +377,17 @@ RT-02, RT-06, RT-07은 중요하지만 현재 Tier 2-2 진입 blocking으로 지
 
 Tier 3 분석에서 범위와 성공 기준을 다시 확정한다. 이 backlog 단계에서는 추측 구현하지 않는다.
 
+### RT-10
+
+- target click cycle과 target date/person 요청이 결합됨
+- 동일 `requestSequence`의 response·bridge·DOM mutation·DOM 후보를 하나의 correlation record로 조회할 수 있음
+- `bridgeToDomMs`, `targetResponseToDomMs`의 기준점과 단위가 trace 계약에 명시됨
+- `correlationQuality`가 결정 규칙과 함께 기록됨
+- `WEAK`와 `NONE` 표본이 성능 집계에서 제외됨
+- run 전체의 오래된 shadow나 claim이 이후 cycle 통계에 섞이지 않음
+- 관측 코드 실패가 기존 날짜 토글·DOM 슬롯 선택·상태 전이에 영향을 주지 않음
+- correlation trace를 포함한 실제 오픈 유효 표본을 확보함
+
 ## 8. Spec 승격과 추적 규칙
 
 1. 항목 구현 분석을 시작할 때 해당 소유 영역에 spec을 만든다.
@@ -373,6 +419,7 @@ HANDOFF는 이 표 전체를 복사하지 않는다. 현재 체크포인트와 �
 Blocking backlog:
 - RT-01 슬롯 클릭/화면 전환 확인 분리
 - RT-03 슬롯 조상 가시성 검사
+- RT-10 cycle-correlated shadow timing 보강
 
 참조: docs/backlog/post-tier2-1-stabilization.md
 ```
