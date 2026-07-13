@@ -196,6 +196,16 @@ test("a failed bootstrap sample falls back honestly instead of pretending a cloc
   assert.match(metric.message, /측정 실패/);
 });
 
+test("a failed bootstrap's honest uncertainty pushes armLead to the safety ceiling instead of a bare preOpenLeadMs", async () => {
+  // Regression for a real bug found in review: FALLBACK previously reported
+  // uncertaintyMs: 0 despite confidence "LOW", so armLead silently ignored
+  // "we know nothing" and used preOpenLeadMs as if the clock were trusted.
+  const h = harness({ bootstrapFails: true });
+  await h.orchestrator.start(config({ preOpenLeadMs: 300 }));
+  const armed = h.events.find((event) => event.data?.clockPhase === "armed");
+  assert.equal(armed.data.clockArmLeadMs, 30_000);
+});
+
 test("the armed metric carries the computed armLead", async () => {
   const h = harness({ referenceEstimate: { uncertaintyMs: 200, p95RttMs: 50 } });
   await h.orchestrator.start(config({ preOpenLeadMs: 300 }));

@@ -50,8 +50,14 @@ const MEDIUM_CONFIDENCE_MIN_SAMPLES = 3;
 // 이전 estimate가 HIGH일 때, 경쟁 클러스터가 이전 중심에 이만큼 더 가까워야 "이력 지속"으로 인정한다.
 const CONTINUITY_TOLERANCE_MS = 250;
 
+// 표본이 전혀 없으면 offset을 추측할 근거가 없다 — uncertaintyMs를 0으로 두면
+// 소비자의 armLead 계산(base + uncertainty + p95Rtt)이 "모른다"를 무시하고
+// 마치 확신 있는 것처럼 행동한다. 임의로 크게 잡아 정직하게 "매우 불확실함"을
+// 전달한다. 실제 상한은 소비자(오케스트레이터의 MAX_ARM_LEAD_MS)가 결정한다.
+const UNKNOWN_UNCERTAINTY_MS = 24 * 60 * 60 * 1000;
+
 const FALLBACK_ESTIMATE: ReferenceClockEstimate = {
-  offsetLowerMs: 0, offsetCenterMs: 0, offsetUpperMs: 0, uncertaintyMs: 0,
+  offsetLowerMs: 0, offsetCenterMs: 0, offsetUpperMs: 0, uncertaintyMs: UNKNOWN_UNCERTAINTY_MS,
   confidence: "LOW", dominantClusterSupport: 0, competingClusterSupport: 0,
   clusterSeparationMs: -1, medianRttMs: 0, p95RttMs: 0, sampleCount: 0,
   observationSpanMs: 0, source: "FALLBACK", updatedAtMonoMs: 0,

@@ -22,6 +22,11 @@ test("reference clock estimate falls back explicitly when no samples exist", () 
   assert.equal(estimate.dominantClusterSupport, 0);
   assert.equal(estimate.competingClusterSupport, 0);
   assert.equal(estimate.clusterSeparationMs, -1);
+  // LOW confidence must carry an uncertainty large enough that a consumer's
+  // armLead calculation (base + uncertainty + p95Rtt) actually reacts to it —
+  // a FALLBACK estimate that knows nothing must not claim uncertaintyMs: 0,
+  // or "we have no idea" silently behaves like "we are certain of offset 0".
+  assert.ok(estimate.uncertaintyMs >= 30_000, `uncertaintyMs=${estimate.uncertaintyMs}`);
 });
 
 test("a single clean pool over a wide span yields HIGH confidence bracketing the true offset", () => {
