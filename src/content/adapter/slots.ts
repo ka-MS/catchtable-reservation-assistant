@@ -1,5 +1,6 @@
 import { parseKoreanTime } from "../../shared/time.js";
 import type { SlotCandidate } from "../../shared/slot-selection.js";
+import { isElementHidden } from "./dom.js";
 
 interface SlotWithButton extends SlotCandidate {
   button: HTMLButtonElement;
@@ -26,8 +27,7 @@ export class SlotAdapter {
     for (const button of buttons) {
       if (
         button.dataset.busy !== "false" ||
-        button.getAttribute("aria-hidden") === "true" ||
-        button.hidden ||
+        isElementHidden(button) ||
         button.disabled
       ) {
         continue;

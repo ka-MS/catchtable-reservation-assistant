@@ -2,7 +2,7 @@
 
 **갱신:** 2026-07-14
 **브랜치:** `main` (실제 오픈 검증 병합 완료)
-**작업 로그:** `docs/worklog/2026-07-14-01-actual-open-verification.md`
+**작업 로그:** `docs/worklog/2026-07-14-02-rt03-slot-ancestor-visibility.md`
 
 ## 현재 상태 — Tier 1·Tier 2-1 실제 오픈 검증 완료
 
@@ -27,8 +27,9 @@
 실오픈 기준선 판독이 끝난 뒤 다음 항목을 처리하고 검증하기 전에는 Tier 2-2 구현으로 진행하지 않는다.
 
 - `RT-01`: 슬롯 클릭 dispatch와 화면 전환 확인 분리
-- `RT-03`: SlotAdapter 조상 가시성 검사
 - `RT-10`: cycle-correlated shadow timing 보강과 실제 오픈 재측정
+
+`RT-03` SlotAdapter 조상 가시성 검사는 완료했다. 숨겨진 조상 복제 fixture와 live 가시 슬롯 회귀, 스캔 비용을 검증했다.
 
 참조: `docs/backlog/post-tier2-1-stabilization.md`
 
@@ -39,8 +40,8 @@ RT-10은 현재 기준선 로그를 먼저 판독한 뒤 구현한다. correlati
 ## 다음 작업 1 — 정확성 안정화
 
 - RT-01: 슬롯 클릭 dispatch와 후속 화면 전환 확인 분리
-- RT-03: SlotAdapter 조상 가시성 검사
-- 두 항목을 분석→설계→구현→검증→적대적 리뷰로 완료한 뒤 RT-10으로 진행한다.
+- RT-03: 완료 — `docs/specs/slot-ancestor-visibility/`
+- RT-01을 분석→설계→구현→검증→적대적 리뷰로 완료한 뒤 RT-10으로 진행한다.
 
 ## 다음 작업 2 — Tier 2-1 관측 보강과 재측정
 
