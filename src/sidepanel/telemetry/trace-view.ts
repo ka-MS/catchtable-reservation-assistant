@@ -34,17 +34,33 @@ function eventDetail(event: TraceEvent): string {
   if (event.code === "CLOCK_SYNCED") {
     const phase = event.attributes.clockPhase ?? "-";
     const offset = event.attributes.clockOffsetMs;
-    const precision = event.attributes.clockPrecisionMs;
+    const uncertainty = event.attributes.clockUncertaintyMs;
     const offsetText = typeof offset === "number" ? `${Math.round(offset)}ms` : "-";
-    const precisionText = typeof precision === "number" ? `±${Math.round(precision)}ms` : "±-";
-    let base = `${phase} · 오프셋 ${offsetText} · ${event.attributes.clockMethod ?? "-"} ${precisionText}`;
-    const used = event.attributes.clockSamples;
-    const collected = event.attributes.clockCollectedSamples;
-    if (typeof used === "number" && typeof collected === "number" && collected > used) {
-      base += ` · 표본 ${collected}개 중 ${used}개 사용`;
+    const uncertaintyText = typeof uncertainty === "number" ? `±${Math.round(uncertainty)}ms` : "±-";
+    const parts = [
+      `${phase} · 오프셋 ${offsetText} ${uncertaintyText}`,
+      `${event.attributes.clockConfidence ?? "-"}`,
+    ];
+    const sampleCount = event.attributes.clockSampleCount;
+    const spanMs = event.attributes.clockObservationSpanMs;
+    if (typeof sampleCount === "number") {
+      parts.push(`표본 ${sampleCount}${typeof spanMs === "number" ? `(관측 ${Math.round(spanMs)}ms)` : ""}`);
     }
-    const sampleDetail = event.attributes.clockSampleDetail;
-    return typeof sampleDetail === "string" && sampleDetail !== "" ? `${base} · 샘플 ${sampleDetail}` : base;
+    const medianRtt = event.attributes.clockMedianRttMs;
+    const p95Rtt = event.attributes.clockP95RttMs;
+    if (typeof medianRtt === "number" && typeof p95Rtt === "number") {
+      parts.push(`RTT 중앙값${Math.round(medianRtt)}/p95${Math.round(p95Rtt)}ms`);
+    }
+    const competing = event.attributes.clockCompetingSupport;
+    const separation = event.attributes.clockClusterSeparationMs;
+    if (typeof competing === "number" && competing > 0 && typeof separation === "number" && separation >= 0) {
+      parts.push(`경쟁 ${competing}(간격 ${Math.round(separation)}ms)`);
+    }
+    const source = event.attributes.clockSource;
+    if (source === "FALLBACK") parts.push("FALLBACK");
+    const armLead = event.attributes.clockArmLeadMs;
+    if (typeof armLead === "number") parts.push(`armLead ${Math.round(armLead)}ms`);
+    return parts.join(" · ");
   }
   if (typeof event.attributes.snapshotFingerprint === "string") {
     const stage = event.attributes.snapshotRunState ?? "-";

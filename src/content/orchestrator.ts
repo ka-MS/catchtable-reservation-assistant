@@ -1,11 +1,12 @@
 import { validateReservationConfig } from "../shared/config.js";
-import { finalClockSyncAt, type ClockEstimate } from "../shared/clock.js";
+import { estimateReferenceClock, type ReferenceClockEstimate } from "../shared/clock.js";
 import { waitUntil, type Clock, type Sleep } from "../shared/scheduler.js";
 import { MonotonicEpochClock } from "../shared/monotonic-clock.js";
 import { selectPreferredSlot, type SlotCandidate } from "../shared/slot-selection.js";
 import { RunStateMachine } from "../shared/state-machine.js";
 import { nextTogglePlan } from "../shared/toggle-schedule.js";
 import type { SlotRefreshWatchPort } from "./adapter/slot-refresh-watch.js";
+import type { ReferenceClockPort } from "./reference-clock-sampler.js";
 import type { ReservationConfig, RunEvent, RunState } from "../shared/types.js";
 import type { TraceCode } from "../shared/telemetry/codes.js";
 import type { TraceAttributes, TraceSeverity } from "../shared/telemetry/types.js";
@@ -45,7 +46,8 @@ interface PostSlotPort {
 interface Dependencies {
   clock: Clock;
   monotonicClock: Clock;
-  syncClock(config: ReservationConfig, signal: AbortSignal): Promise<ClockEstimate>;
+  /** 런마다 새 포트를 만든다(이전 런의 누적 표본이 새 런에 섞이지 않도록). */
+  referenceClock(config: ReservationConfig): ReferenceClockPort;
   entry: EntryPort;
   calendar: CalendarPort;
   person: PersonPort;
@@ -74,6 +76,10 @@ export interface RunResult {
 // 클릭 후 ~450ms 안. 700ms는 유실 판정 타임아웃, 250ms는 응답→렌더(56~182ms) 커버.
 const QUIESCE_TIMEOUT_MS = 700;
 const ARRIVAL_BURST_MS = 250;
+
+// 오픈 타이밍 성능 Tier1(20-design §4): 병리적 불확실성이 감시를 몇 분씩 당기지
+// 않도록 하는 안전 상한. 하한은 없음 — config.preOpenLeadMs 자체가 최소 리드타임.
+const MAX_ARM_LEAD_MS = 30_000;
 
 const TERMINAL = new Set<RunState>([
   "DRY_RUN_COMPLETED",
@@ -137,6 +143,9 @@ class RunSession {
   private adjacentDate: string | null = null;
   private watchLive = false;
   private lastArrivalAt: number | null = null;
+  private referenceClockPort: ReferenceClockPort | null = null;
+  private latestAppliedEstimate: ReferenceClockEstimate | null = null;
+  private readonly runStartMonoMs: number;
 
   constructor(
     private readonly deps: Dependencies,
@@ -146,6 +155,12 @@ class RunSession {
     this.runId = requestedRunId ?? deps.runId();
     this.machine = new RunStateMachine({ dryRun: config.dryRun, now: () => deps.clock.now() });
     this.serverClock = new MonotonicEpochClock(deps.monotonicClock);
+    // frame 1(monotonic): 기준시계 오차·wall-clock 점프와 무관한 실제 경과.
+    this.runStartMonoMs = deps.monotonicClock.now();
+  }
+
+  private monoFromRunStartMs(): number {
+    return this.deps.monotonicClock.now() - this.runStartMonoMs;
   }
 
   private emit(kind: RunEvent["kind"], message: string, data?: RunEvent["data"]): void {
@@ -243,6 +258,7 @@ class RunSession {
       return this.finish();
     } finally {
       this.deps.slotWatch?.stop();
+      this.stopReferenceClock(); // waitForOpen 도달 전 조기 종료 시 안전망(참조를 비워 정상 경로에서 중복 호출 없음)
       await this.deps.flushTrace?.().catch(() => undefined);
     }
   }
@@ -259,14 +275,47 @@ class RunSession {
 
   private async syncInitialClock(): Promise<RunResult | null> {
     this.transition("SYNCING_CLOCK", "캐치테이블 서버 시계를 측정합니다.");
-    const estimate = await this.deps.syncClock(this.config, this.controller.signal);
+    const port = this.deps.referenceClock(this.config);
+    this.referenceClockPort = port;
+    const sample = await port.sampleOnce(this.controller.signal);
     if (this.controller.signal.aborted) return this.finishStopped();
-    this.offsetMs = estimate.offsetMs;
-    this.serverClock.anchor(this.deps.clock.now() + this.offsetMs);
-    this.serverClockReady = true;
-    this.emit("metric", estimate.fallback ? "서버 시계 측정 실패로 로컬 시계를 사용합니다." : "서버 시계 보정을 완료했습니다.",
-      clockMetricData(estimate, "initial", estimate.offsetMs));
+    const estimate = sample ? port.ingest(sample) : port.latest ?? estimateReferenceClock([]);
+    this.applyReferenceClockEstimate(estimate);
+    this.emit("metric",
+      estimate.source === "FALLBACK" ? "서버 시계 측정 실패로 로컬 시계를 사용합니다." : "서버 시계 보정을 완료했습니다.",
+      referenceClockMetricData(estimate, "bootstrap", this.wallOffsetMs()));
+    // 대기 시간(prepareEntry~waitForOpen)을 관통해 계속 관측한다 — 부트스트랩은
+    // 단일 표본이라 거친 앵커일 뿐이고, armLead 결정 시점까지 confidence가
+    // 자연히 개선된다(20-design §3). waitForOpen()이 stop()으로 종료시킨다.
+    void port.start((next) => this.applyReferenceClockEstimate(next));
     return null;
+  }
+
+  private stopReferenceClock(): void {
+    this.referenceClockPort?.stop();
+    this.referenceClockPort = null;
+  }
+
+  private applyReferenceClockEstimate(estimate: ReferenceClockEstimate): void {
+    // FALLBACK(표본 전무)은 offsetCenterMs=0이라 monotonic+0으로 앵커하면
+    // serverClock이 monotonic(작은 값)으로 고정돼 이후 모든 서버시각 계산이
+    // 깨진다. 이 경우 "serverClock ≈ 로컬 wall"이 되도록 wall−monotonic을 쓴다.
+    const offset = estimate.source === "FALLBACK"
+      ? this.deps.clock.now() - this.deps.monotonicClock.now()
+      : estimate.offsetCenterMs;
+    this.offsetMs = offset;
+    // ⚠️ t0/t1이 monotonic epoch이므로 재앵커도 monotonicClock 기준이어야 한다
+    // (wall clock인 deps.clock을 쓰면 서로 다른 시간 공간을 더하는 버그가 된다).
+    this.serverClock.anchor(this.deps.monotonicClock.now() + offset);
+    this.serverClockReady = true;
+    this.latestAppliedEstimate = estimate;
+  }
+
+  /** 사이드패널 카운트다운·배지가 읽는 wall-clock 델타(server − Date.now()).
+   * offsetCenterMs(= server − monotonic, epoch 스케일)를 그대로 노출하면
+   * `Date.now() + offset`이 폭주한다(E2E에서 "+20647일"로 관측). */
+  private wallOffsetMs(): number {
+    return this.serverClock.now() - this.deps.clock.now();
   }
 
   private async prepareEntry(): Promise<RunResult | null> {
@@ -376,31 +425,19 @@ class RunSession {
     const controller = this.controller;
     const serverClock = this.serverClock;
     this.transition("WAITING_FOR_OPEN", "예약 오픈 직전까지 대기합니다.");
-    const finalSyncAt = finalClockSyncAt(config.openAtMs, config.preOpenLeadMs);
-    if (serverClock.now() < finalSyncAt) {
-      const finalSyncWait = await waitUntil(finalSyncAt, {
-        clock: serverClock,
-        stopAtMs: config.stopAtMs,
-        signal: controller.signal,
-        sleep: this.deps.sleep,
-      });
-      const finalSyncExit = this.stopOrTimeout(finalSyncWait);
-      if (finalSyncExit) return finalSyncExit;
-      const finalEstimate = await this.deps.syncClock(config, controller.signal);
-      if (controller.signal.aborted) return this.finishStopped();
-      if (!finalEstimate.fallback) {
-        this.offsetMs = finalEstimate.offsetMs;
-        serverClock.anchor(this.deps.clock.now() + this.offsetMs);
-      }
-      this.emit("metric", finalEstimate.fallback ? "오픈 직전 시계 재측정에 실패해 기존 기준을 유지합니다." : "오픈 직전 서버 시계를 다시 보정했습니다.",
-        clockMetricData(finalEstimate, "final", this.offsetMs ?? 0));
-    }
-    const waitResult = await waitUntil(config.openAtMs - config.preOpenLeadMs, {
+    const estimate = this.referenceClockPort?.latest ?? this.latestAppliedEstimate ?? estimateReferenceClock([]);
+    const armLeadMs = computeArmLeadMs(config.preOpenLeadMs, estimate);
+    this.emit("metric", "예약 오픈 직전 진입 시점을 결정했습니다.",
+      referenceClockMetricData(estimate, "armed", this.wallOffsetMs(), armLeadMs));
+    const waitResult = await waitUntil(config.openAtMs - armLeadMs, {
       clock: serverClock,
       stopAtMs: config.stopAtMs,
       signal: controller.signal,
       sleep: this.deps.sleep,
     });
+    // 정밀 토글 그리드 진입 전 앵커를 동결한다 — 계속 갱신되게 두면 클릭 그리드
+    // 계산 도중 앵커가 흔들릴 수 있다(20-design §3).
+    this.stopReferenceClock();
     const waitingExit = this.stopOrTimeout(waitResult);
     if (waitingExit) return waitingExit;
     return null;
@@ -583,8 +620,12 @@ class RunSession {
     const config = this.config;
     const serverClock = this.serverClock;
     const slotDetectedAt = serverClock.now();
+    const clockConfidence = this.latestAppliedEstimate?.confidence ?? "LOW";
     this.transition("SLOT_DETECTED", `${candidate.label} 슬롯을 감지했습니다.`, {
-      data: slotDetectedEventData(slotDetectedAt, this.adjacentTiming, this.targetTiming, config.openAtMs, this.lastArrivalAt),
+      data: slotDetectedEventData(
+        slotDetectedAt, this.adjacentTiming, this.targetTiming, config.openAtMs,
+        this.lastArrivalAt, this.monoFromRunStartMs(), clockConfidence,
+      ),
     });
     this.emit("detect", "예약 조건과 일치하는 슬롯을 찾았습니다.", { slotMinutes: candidate.minutes, slotLabel: candidate.label });
     if (config.dryRun) {
@@ -610,7 +651,10 @@ class RunSession {
       attributes: { slotMinutes: candidate.minutes, slotLabel: candidate.label, clickOk: true },
     });
     this.transition("SLOT_SELECTED", `${candidate.label} 시간 선택을 완료했습니다.`, {
-      data: slotSelectedEventData(slotSelectedAt, config.openAtMs),
+      data: slotSelectedEventData(
+        slotSelectedAt, config.openAtMs, this.lastArrivalAt,
+        this.monoFromRunStartMs(), clockConfidence,
+      ),
     });
     if (!config.postSlotEnabled) {
       return this.handOff("후속 선택 자동 진행이 꺼져 있어 슬롯 선택까지만 완료했습니다.");
@@ -690,23 +734,39 @@ class RunSession {
 type TimingMark = { actualAt: number; scheduledAt: number; phase: string };
 type TogglePlan = ReturnType<typeof nextTogglePlan>;
 
-function clockMetricData(
-  estimate: ClockEstimate,
-  phase: "initial" | "final",
-  offsetMs: number,
+// armLead 하한은 두지 않는다 — config.preOpenLeadMs 자체가 사용자가 설정한
+// 최소 리드타임이다(20-design §4, 하한 clamp는 toy-scale 테스트와 충돌해 제거).
+function computeArmLeadMs(preOpenLeadMs: number, estimate: ReferenceClockEstimate): number {
+  return Math.min(MAX_ARM_LEAD_MS, preOpenLeadMs + estimate.uncertaintyMs + estimate.p95RttMs);
+}
+
+function referenceClockMetricData(
+  estimate: ReferenceClockEstimate,
+  phase: "bootstrap" | "armed",
+  wallOffsetMs: number,
+  armLeadMs?: number,
 ): NonNullable<RunEvent["data"]> {
   return {
-    clockOffsetMs: offsetMs,
-    clockSamples: estimate.sampleCount,
-    clockCollectedSamples: estimate.collectedSamples,
-    clockSpreadMs: estimate.spreadMs ?? -1,
-    clockFallback: estimate.fallback,
-    clockMethod: estimate.method,
-    clockPrecisionMs: estimate.precisionMs ?? -1,
     clockPhase: phase,
-    ...(estimate.sampleDetail === null || estimate.sampleDetail === undefined
-      ? {}
-      : { clockSampleDetail: estimate.sampleDetail }),
+    // clockOffsetMs: 사이드패널 카운트다운·오프셋 배지·실행 로그 줄 렌더러가
+    // 읽는 하위호환 필드명(worklog 08). 반드시 wall-clock 델타(server − Date.now())
+    // 여야 한다 — offsetCenterMs(server − monotonic, epoch 스케일)를 넣으면
+    // 카운트다운 `Date.now() + offset`이 폭주한다.
+    clockOffsetMs: Math.round(wallOffsetMs),
+    clockOffsetCenterMs: estimate.offsetCenterMs,
+    clockOffsetLowerMs: estimate.offsetLowerMs,
+    clockOffsetUpperMs: estimate.offsetUpperMs,
+    clockUncertaintyMs: estimate.uncertaintyMs,
+    clockConfidence: estimate.confidence,
+    clockDominantSupport: estimate.dominantClusterSupport,
+    clockCompetingSupport: estimate.competingClusterSupport,
+    clockClusterSeparationMs: estimate.clusterSeparationMs,
+    clockMedianRttMs: estimate.medianRttMs,
+    clockP95RttMs: estimate.p95RttMs,
+    clockSampleCount: estimate.sampleCount,
+    clockObservationSpanMs: estimate.observationSpanMs,
+    clockSource: estimate.source,
+    ...(armLeadMs !== undefined ? { clockArmLeadMs: armLeadMs } : {}),
   };
 }
 
@@ -765,6 +825,8 @@ function slotDetectedEventData(
   target: TimingMark | null,
   openAtMs: number,
   arrivalAt: number | null,
+  monoFromRunStartMs: number,
+  clockConfidence: ReferenceClockEstimate["confidence"],
 ): NonNullable<RunEvent["data"]> {
   return {
     timingStage: "slot_detected",
@@ -788,14 +850,27 @@ function slotDetectedEventData(
       targetScheduleDriftMs: Math.round(target.actualAt - target.scheduledAt),
       targetTogglePhase: target.phase,
     } : {}),
+    // frame 1(monotonic run-elapsed)·frame 2 신뢰도 컨텍스트 — openDeltaMs(frame 2
+    // 델타) 자체는 이미 reference-clock 기반이라 별도 필드로 중복하지 않는다.
+    monoFromRunStartMs: Math.round(monoFromRunStartMs),
+    clockConfidence,
   };
 }
 
-function slotSelectedEventData(slotSelectedAt: number, openAtMs: number): NonNullable<RunEvent["data"]> {
+function slotSelectedEventData(
+  slotSelectedAt: number,
+  openAtMs: number,
+  arrivalAt: number | null,
+  monoFromRunStartMs: number,
+  clockConfidence: ReferenceClockEstimate["confidence"],
+): NonNullable<RunEvent["data"]> {
   return {
     timingStage: "slot_selected",
     timingServerAtMs: slotSelectedAt,
     openDeltaMs: Math.round(slotSelectedAt - openAtMs),
+    ...(arrivalAt !== null ? { arrivalToClickMs: Math.round(slotSelectedAt - arrivalAt) } : {}),
+    monoFromRunStartMs: Math.round(monoFromRunStartMs),
+    clockConfidence,
   };
 }
 

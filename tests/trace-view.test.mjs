@@ -72,28 +72,31 @@ test("trace view appends live batches incrementally and caps the DOM at one hund
   assert.equal(document.querySelector("#trace-event-count").textContent, "100개");
 });
 
-test("clock sync detail shows phase, precision, and the per-sample breakdown past the attribute cap", () => {
+test("clock sync detail shows phase, offset, uncertainty, confidence, and RTT/sample stats", () => {
   const document = documentFixture();
   const view = new TraceHistoryView(document, { select: () => undefined, remove: () => undefined });
   view.renderRuns([run("run-c", 1)]);
   view.renderEvents([{
     schemaVersion: 1, runId: "run-c", seq: 1, code: "CLOCK_SYNCED", severity: "trace",
-    component: "content", localAt: 1, serverAt: 1, state: "SYNCING_CLOCK", message: "보정",
+    component: "content", localAt: 1, serverAt: 1, state: "WAITING_FOR_OPEN", message: "진입 시점 결정",
     attributes: {
       eventKind: "metric",
-      clockOffsetMs: 1067.949951171875, clockSamples: 2, clockSpreadMs: 276.1,
-      clockFallback: false, clockMethod: "boundary", clockPrecisionMs: 138.05,
-      clockPhase: "final", clockSampleDetail: "o-44 l648 d0 | o1068 l95 d1000",
+      clockPhase: "armed", clockOffsetMs: 1068, clockUncertaintyMs: 138,
+      clockConfidence: "HIGH", clockDominantSupport: 5, clockCompetingSupport: 0,
+      clockClusterSeparationMs: -1, clockMedianRttMs: 62, clockP95RttMs: 95,
+      clockSampleCount: 5, clockObservationSpanMs: 6200, clockSource: "APP_HEAD_HTTP_DATE",
+      clockArmLeadMs: 550,
     },
   }]);
   const detail = document.querySelector("#trace-event-list .event-detail")?.textContent ?? "";
-  assert.match(detail, /final/);
-  assert.match(detail, /오프셋 1068ms/);
-  assert.match(detail, /boundary ±138ms/);
-  assert.match(detail, /샘플 o-44 l648 d0 \| o1068 l95 d1000/);
+  assert.match(detail, /armed/);
+  assert.match(detail, /오프셋 1068ms ±138ms/);
+  assert.match(detail, /HIGH/);
+  assert.match(detail, /표본 5/);
+  assert.match(detail, /armLead 550ms/);
 });
 
-test("clock sync detail flags when fewer samples arrived than were used, hinting at fetch failures", () => {
+test("clock sync detail flags a competing cluster with its separation", () => {
   const document = documentFixture();
   const view = new TraceHistoryView(document, { select: () => undefined, remove: () => undefined });
   view.renderRuns([run("run-c", 1)]);
@@ -102,32 +105,35 @@ test("clock sync detail flags when fewer samples arrived than were used, hinting
     component: "content", localAt: 1, serverAt: 1, state: "SYNCING_CLOCK", message: "보정",
     attributes: {
       eventKind: "metric",
-      clockOffsetMs: 1037, clockSamples: 3, clockCollectedSamples: 5, clockSpreadMs: 1489,
-      clockFallback: false, clockMethod: "median", clockPrecisionMs: 536,
-      clockPhase: "initial",
+      clockPhase: "bootstrap", clockOffsetMs: 2630, clockUncertaintyMs: 1350,
+      clockConfidence: "LOW", clockDominantSupport: 3, clockCompetingSupport: 2,
+      clockClusterSeparationMs: 1350, clockMedianRttMs: 40, clockP95RttMs: 40,
+      clockSampleCount: 5, clockObservationSpanMs: 3440, clockSource: "APP_HEAD_HTTP_DATE",
     },
   }]);
   const detail = document.querySelector("#trace-event-list .event-detail")?.textContent ?? "";
-  assert.match(detail, /표본 5개 중 3개 사용/);
+  assert.match(detail, /LOW/);
+  assert.match(detail, /경쟁 2\(간격 1350ms\)/);
+  assert.doesNotMatch(detail, /armLead/);
 });
 
-test("clock sync detail omits the sample section when no breakdown was recorded", () => {
+test("clock sync detail reports a failed bootstrap honestly via the FALLBACK source", () => {
   const document = documentFixture();
   const view = new TraceHistoryView(document, { select: () => undefined, remove: () => undefined });
   view.renderRuns([run("run-c", 1)]);
   view.renderEvents([{
     schemaVersion: 1, runId: "run-c", seq: 1, code: "CLOCK_SYNCED", severity: "trace",
-    component: "content", localAt: 1, serverAt: 1, state: "SYNCING_CLOCK", message: "보정",
+    component: "content", localAt: 1, serverAt: 1, state: "SYNCING_CLOCK", message: "시계 측정 실패",
     attributes: {
       eventKind: "metric",
-      clockOffsetMs: -43.625, clockSamples: 2, clockSpreadMs: 647.65,
-      clockFallback: false, clockMethod: "boundary", clockPrecisionMs: 323.83,
-      clockPhase: "initial",
+      clockPhase: "bootstrap", clockOffsetMs: 0, clockUncertaintyMs: 0,
+      clockConfidence: "LOW", clockDominantSupport: 0, clockCompetingSupport: 0,
+      clockClusterSeparationMs: -1, clockMedianRttMs: 0, clockP95RttMs: 0,
+      clockSampleCount: 0, clockObservationSpanMs: 0, clockSource: "FALLBACK",
     },
   }]);
   const detail = document.querySelector("#trace-event-list .event-detail")?.textContent ?? "";
-  assert.match(detail, /initial · 오프셋 -44ms · boundary ±324ms/);
-  assert.doesNotMatch(detail, /샘플/);
+  assert.match(detail, /FALLBACK/);
 });
 
 test("persisted trace detail surfaces snapshot identity fields (snippet, fingerprint, run-state)", () => {
