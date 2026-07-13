@@ -1,6 +1,6 @@
 # HANDOFF
 
-**갱신:** 2026-07-13
+**갱신:** 2026-07-14
 **브랜치:** `main` (Tier 2-1 병합 완료)
 **작업 로그:** `docs/worklog/2026-07-13-05-tier2-1-shadow-observation.md`
 
@@ -15,6 +15,21 @@
   2. `dispatch.ts`로 무효 컨텍스트 sendMessage 동기 throw 삼킴 — 콘솔 "Extension context invalidated" 제거(`f812a5d`).
 - Tier 2-1 live dry-run에서 body/DOM이 같은 18:30 슬롯을 골랐고 body가 79.4ms 선행했다. 종료 뒤 XHR 원복, trace seq 연속, dropped 0을 확인했다.
 - Tier 2-2 판정은 **REDUCE**다. 안전한 pre-DOM actuator가 없어 응답 기반 클릭으로 승격하지 않고, 실제 오픈 표본 뒤 MutationObserver 기반 DOM claim 가속만 검토한다.
+
+## 현재 체크포인트 — 실오픈 기준선 측정·판독
+
+현재 Tier 1·Tier 2-1 코드를 기준선으로 유지하고, 실제 오픈 `EMPTY -> POPULATED`, 서버 풀 스큐, body/DOM 선행 시간과 날짜 선택 타이밍을 먼저 판독한다.
+
+## Tier 2-2 진입 Blocking Backlog
+
+실오픈 기준선 판독이 끝난 뒤 다음 항목을 처리하고 검증하기 전에는 Tier 2-2 구현으로 진행하지 않는다.
+
+- `RT-01`: 슬롯 클릭 dispatch와 화면 전환 확인 분리
+- `RT-03`: SlotAdapter 조상 가시성 검사
+
+참조: `docs/backlog/post-tier2-1-stabilization.md`
+
+`Blocks`가 `없음`인 다른 backlog 항목은 남아 있어도 Tier 2-2 진입을 자동으로 막지 않는다.
 
 ## 다음 작업 1 — 실오픈 스큐 검증 (자정 이후, 코드 무변경)
 
