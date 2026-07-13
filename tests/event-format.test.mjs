@@ -7,18 +7,18 @@ test("event timestamps include milliseconds", () => {
   assert.match(formatEventTime(timestamp), /^\d{2}:\d{2}:\d{2}\.123$/);
 });
 
-test("time selection shows server time and signed opening delta", () => {
+test("slot click dispatch shows server time and signed opening delta", () => {
   const serverAt = new Date(2026, 6, 10, 13, 0, 0, 120).getTime();
   const message = formatEventMessage({
     at: serverAt - 5,
     serverAt,
     runId: "run-1",
     kind: "action",
-    message: "오후 7:30 시간 선택을 완료했습니다.",
+    message: "오후 7:30 슬롯 클릭을 전달했습니다.",
     data: { openDeltaMs: 120 },
   });
 
-  assert.match(message, /시간 선택을 완료했습니다\./);
+  assert.match(message, /슬롯 클릭을 전달했습니다\./);
   assert.match(message, /서버 \d{2}:\d{2}:\d{2}\.120 \(\+120ms\)/);
 });
 
@@ -28,7 +28,7 @@ test("opening delta keeps a negative sign", () => {
     serverAt: 1_000,
     runId: "run-2",
     kind: "action",
-    message: "오후 7:30 시간 선택을 완료했습니다.",
+    message: "오후 7:30 슬롯 클릭을 전달했습니다.",
     data: { openDeltaMs: -35 },
   };
   assert.match(formatEventMessage(event), /\(-35ms\)/);

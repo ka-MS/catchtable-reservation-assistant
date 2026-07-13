@@ -92,6 +92,8 @@ const STATE_LABEL: Record<RunState, string> = {
   WAITING_FOR_OPEN: "예약 오픈 시각을 기다리는 중입니다.",
   REFRESHING_SLOTS: "예약 슬롯을 갱신 중입니다.",
   SLOT_DETECTED: "조건에 맞는 슬롯을 감지했습니다.",
+  SLOT_CLICK_DISPATCHED: "슬롯 클릭을 전달했습니다.",
+  SLOT_TRANSITION_CONFIRMED: "후속 예약 화면을 확인했습니다.",
   SLOT_SELECTED: "슬롯을 선택했습니다.",
   ADVANCING_RESERVATION: "예약 폼으로 이동 중입니다.",
   DRY_RUN_COMPLETED: "Dry-run 감지를 완료했습니다.",
@@ -115,6 +117,8 @@ const STATE_BADGE: Record<RunState, string> = {
   WAITING_FOR_OPEN: "오픈 대기",
   REFRESHING_SLOTS: "슬롯 탐색",
   SLOT_DETECTED: "슬롯 감지",
+  SLOT_CLICK_DISPATCHED: "클릭 전달",
+  SLOT_TRANSITION_CONFIRMED: "화면 전환 확인",
   SLOT_SELECTED: "슬롯 선택",
   ADVANCING_RESERVATION: "예약 진행",
   DRY_RUN_COMPLETED: "점검 완료",
@@ -128,6 +132,8 @@ const STATE_BADGE: Record<RunState, string> = {
 const POST_OPEN_STAGES = new Set<RunState>([
   "REFRESHING_SLOTS",
   "SLOT_DETECTED",
+  "SLOT_CLICK_DISPATCHED",
+  "SLOT_TRANSITION_CONFIRMED",
   "SLOT_SELECTED",
   "ADVANCING_RESERVATION",
 ]);
@@ -310,7 +316,10 @@ function eventTone(event: RunEvent): "neutral" | "info" | "action" | "success" |
   if (event.kind === "error" || state === "FAILED" || state === "TIMED_OUT") return "error";
   if (["HANDED_OFF", "COMPLETED", "DRY_RUN_COMPLETED"].includes(state)) return "success";
   if (event.kind === "detect" || state === "SLOT_DETECTED") return "info";
-  if (event.kind === "action" || state === "SLOT_SELECTED" || state === "ADVANCING_RESERVATION") return "action";
+  if (
+    event.kind === "action"
+    || ["SLOT_CLICK_DISPATCHED", "SLOT_TRANSITION_CONFIRMED", "SLOT_SELECTED", "ADVANCING_RESERVATION"].includes(state)
+  ) return "action";
   return "neutral";
 }
 

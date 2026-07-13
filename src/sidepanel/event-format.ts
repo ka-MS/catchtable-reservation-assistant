@@ -33,6 +33,8 @@ export function formatEventDetail(event: RunEvent): string {
   const timingServerAt = typeof data?.timingServerAtMs === "number" ? data.timingServerAtMs : event.serverAt;
   const stageLabel = data?.timingStage === "slot_detected"
     ? "감지"
+    : data?.timingStage === "slot_click_dispatched"
+      ? "클릭"
     : data?.timingStage === "target_date_click"
       ? "목표"
       : "";
