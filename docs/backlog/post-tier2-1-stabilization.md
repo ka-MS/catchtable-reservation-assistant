@@ -223,7 +223,7 @@ body 신호를 actuator로 승격하는 것은 별도 안전 근거가 없는 �
 - `correlationQuality`를 `EXACT`, `STRONG`, `WEAK`, `NONE`으로 분류
 - Tier 2 성능 통계에는 `EXACT`와 `STRONG` 표본만 포함
 
-RT-10은 현재 기준선 로그를 먼저 판독한 뒤 구현한다. 이후 correlation trace가 포함된 실제 오픈 표본을 다시 확보하기 전에는 Tier 2-2 성능 결론이나 제어 구현으로 진행하지 않는다.
+RT-10은 현재 기준선 로그를 먼저 판독한 뒤 구현한다. correlation trace가 포함된 실제 오픈 표본 재측정은 RT-10M으로 분리한다. RT-10M 전에도 fallback을 보존한 Tier 2-2 분석·구현은 가능하지만 성능 이득 확정이나 body 기반 actuator 승격은 하지 않는다.
 
 **보완 항목:** RT-10
 
@@ -301,7 +301,8 @@ URL의 `date=260731`과 사용자 보고 예약일 표현이 일치하지 않으
 | RT-07 | 야키토리묵 신규 후속 단계 조사 | 조사 필요 | 정확성·호환성 안정화 | 없음 | INVESTIGATE | - |
 | RT-08 | 일반 DOM strategy·fixture·drift 대응 | 부분 수용 | Tier 3 | 없음 | DEFERRED | `03-runtime-resilience` 예정 |
 | RT-09 | 장시간·고빈도 운영 안전장치 검토 | 부분 수용·보류 | Tier 3 | 없음 | DEFERRED | `03-runtime-resilience` 예정 |
-| RT-10 | cycle-correlated shadow timing 보강 | 수용 | 현재 기준선 판독과 RT-03 완료 후 | Tier 2-2 구현 진입 | PENDING | - |
+| RT-10 | cycle-correlated shadow timing 보강 | 수용 | 현재 기준선 판독과 RT-03 완료 후 | Tier 2-2 구현 진입 | DONE | `docs/specs/availability-cycle-correlation/`, `docs/worklog/2026-07-14-04-rt10-cycle-correlation.md` |
+| RT-10M | correlation 실제 오픈 재측정 | 후속 측정 | 다음 실제 오픈 가능 시점 | 성능 결론·actuator 승격 | DEFERRED | RT-10 `40-verification.md` |
 
 상태 값은 다음 의미로 사용한다.
 
@@ -319,8 +320,8 @@ URL의 `date=260731`과 사용자 보고 예약일 표현이 일치하지 않으
 | A. Tier 2-1 완료 직후 | 현재 코드로 실오픈 `EMPTY -> POPULATED`, 스큐, body/DOM lead, 40/60ms 자료 판독 | hot path 코드 변경 없이 현재 기준선 확보 |
 | B. 현재 기준선 판독 후 정확성 안정화 | RT-03 완료. RT-01을 수행하고 RT-02, RT-06, RT-07은 blocking과 분리해 순차 처리 | RT-01 검증 완료 전 Tier 2-2 구현 진입 금지 |
 | C. Tier 2-1 관측 보강 | RT-03으로 DOM 후보 정확성을 확보한 뒤 RT-10의 cycle correlation trace 구현 | RT-10 자동 게이트와 shadow 제어 독립성 검증 |
-| D. correlation 실오픈 재측정 | RT-10 적용 상태로 실제 오픈 `EMPTY -> POPULATED`를 다시 측정하고 `EXACT` 또는 `STRONG` 표본 확보 | 유효 상관 표본 없이 Tier 2-2 성능 결론·구현 금지 |
-| E. Tier 2-2 분석·구현 | RT-04를 상관된 실제 오픈 분포에 근거해 설계. body 신호만으로 클릭하지 않고 DOM 재검증 유지 | Tier 2-2 자체 성공 기준 통과 |
+| D. correlation 실오픈 재측정 | RT-10M에서 실제 오픈 `EMPTY -> POPULATED`를 다시 측정하고 `EXACT` 또는 `STRONG` 표본 확보 | 유효 상관 표본 없이 성능 이득 확정·actuator 승격 금지 |
+| E. Tier 2-2 분석·구현 | fallback을 보존하고 body 신호만으로 클릭하지 않으며 DOM 재검증 유지 | Tier 2-2 자체 성공 기준 통과; 성능 판정은 RT-10M 이후 |
 | F. Tier 2-2 종료 판정 | RT-05에서 XHR probe의 제거·진단 전용·기본 비활성 중 하나를 결정 | RT-05 결정과 회귀 검증 없이는 Tier 2-2 종료 처리 금지 |
 | G. Tier 3 | RT-08, RT-09를 runtime resilience 범위에서 재분석 | 해당 Tier spec의 성공 기준에 따름 |
 
@@ -386,7 +387,12 @@ Tier 3 분석에서 범위와 성공 기준을 다시 확정한다. 이 backlog 
 - `WEAK`와 `NONE` 표본이 성능 집계에서 제외됨
 - run 전체의 오래된 shadow나 claim이 이후 cycle 통계에 섞이지 않음
 - 관측 코드 실패가 기존 날짜 토글·DOM 슬롯 선택·상태 전이에 영향을 주지 않음
-- correlation trace를 포함한 실제 오픈 유효 표본을 확보함
+
+### RT-10M
+
+- correlation trace를 포함한 실제 오픈 `EMPTY -> POPULATED` 유효 표본을 확보함
+- `EXACT` 또는 `STRONG` body와 같은 cycle DOM 후보의 원시 시각·지연을 보존함
+- 표본 확보 전에는 Tier 2-2 성능 이득이나 body actuator 승격을 주장하지 않음
 
 ## 8. Spec 승격과 추적 규칙
 

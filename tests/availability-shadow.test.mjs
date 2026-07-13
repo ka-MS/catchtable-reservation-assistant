@@ -5,7 +5,6 @@ import {
   isAvailabilityShadowEvent,
   normalizeReservationDate,
 } from "../dist/shared/availability-shadow.js";
-import { ShadowClaimCoordinator } from "../dist/content/availability-shadow-observer.js";
 
 const request = { requestDate: "260801", personCount: 2 };
 
@@ -56,9 +55,11 @@ test("bridge event validation rejects malformed and oversized payloads", () => {
   const valid = {
     source: "ct-reserve-main",
     type: "AVAILABILITY_SHADOW_EVENT",
-    schemaVersion: 1,
+    schemaVersion: 2,
     channelId: "channel-1",
     sequence: 1,
+    cycle: null,
+    targetClickMonoMs: null,
     requestDate: "260801",
     personCount: 2,
     classification: "POPULATED",
@@ -72,20 +73,8 @@ test("bridge event validation rejects malformed and oversized payloads", () => {
   assert.equal(isAvailabilityShadowEvent(valid, "channel-1"), true);
   assert.equal(isAvailabilityShadowEvent({ ...valid, channelId: "other" }, "channel-1"), false);
   assert.equal(isAvailabilityShadowEvent({ ...valid, sequence: 0 }, "channel-1"), false);
+  assert.equal(isAvailabilityShadowEvent({ ...valid, cycle: 1 }, "channel-1"), false);
+  assert.equal(isAvailabilityShadowEvent({ ...valid, targetClickMonoMs: 1 }, "channel-1"), false);
   assert.equal(isAvailabilityShadowEvent({ ...valid, availableMinutes: Array.from({ length: 65 }, (_, i) => i) }, "channel-1"), false);
   assert.equal(isAvailabilityShadowEvent({ ...valid, availableMinutes: [1440] }, "channel-1"), false);
-});
-
-test("shadow claim coordinator keeps the first diagnostic claim only", () => {
-  const coordinator = new ShadowClaimCoordinator();
-  const first = coordinator.propose({ source: "body", minutes: 1140, observedMonoMs: 10, sequence: 7 });
-  const second = coordinator.propose({ source: "dom", minutes: 1140, observedMonoMs: 30, sequence: null });
-  assert.equal(first.accepted, true);
-  assert.equal(second.accepted, false);
-  assert.deepEqual(coordinator.claim, {
-    source: "body",
-    minutes: 1140,
-    observedMonoMs: 10,
-    sequence: 7,
-  });
 });

@@ -65,6 +65,7 @@ function harness({
   bootstrapFails = false,
   readSlots = null,
   availabilityShadow = null,
+  slotDomMutationWatch = null,
   captureSnapshot = () => ({
     urlKind: "shop", headings: [], buttons: ["확인"], disabledButtons: [false],
     disabledButtonCount: 0, dialogLabel: "", dialogTitle: "", textSnippet: "", fingerprint: "ss-test",
@@ -125,6 +126,7 @@ function harness({
     slots,
     postSlot,
     slotWatch,
+    ...(slotDomMutationWatch ? { slotDomMutationWatch } : {}),
     ...(availabilityShadow ? { availabilityShadow } : {}),
     sleep: async (ms, signal) => {
       if (signal.aborted) return false;
@@ -170,26 +172,33 @@ test("clock metrics transition from bootstrap to armed and forward the offset vi
 });
 
 test("availability shadow records body/DOM agreement without changing the slot control result", async () => {
-  const calls = { started: 0, stopped: 0 };
+  const calls = { started: 0, marked: 0, stopped: 0 };
+  let listener = null;
   const availabilityShadow = {
-    start: (_expiresAt, listener) => {
+    start: (_expiresAt, nextListener) => {
       calls.started += 1;
+      listener = nextListener;
+    },
+    markTargetCycle: (marker) => {
+      calls.marked += 1;
       listener({
         source: "ct-reserve-main",
         type: "AVAILABILITY_SHADOW_EVENT",
-        schemaVersion: 1,
+        schemaVersion: 2,
         channelId: "channel-1",
         sequence: 2,
+        cycle: marker.cycle,
+        targetClickMonoMs: marker.targetClickMonoMs,
         requestDate: "260730",
         personCount: 2,
         classification: "POPULATED",
         availableMinutes: [1140],
         responseStatus: 200,
-        requestSentMonoMs: 10,
-        responseCompletedMonoMs: 20,
-        bodyReadCompletedMonoMs: 21,
-        payloadClassifiedMonoMs: 22,
-        bridgeReceivedMonoMs: 23,
+        requestSentMonoMs: marker.targetClickMonoMs + 10,
+        responseCompletedMonoMs: marker.targetClickMonoMs + 20,
+        bodyReadCompletedMonoMs: marker.targetClickMonoMs + 21,
+        payloadClassifiedMonoMs: marker.targetClickMonoMs + 22,
+        bridgeReceivedMonoMs: marker.targetClickMonoMs + 23,
       });
     },
     stop: () => { calls.stopped += 1; },
@@ -205,11 +214,31 @@ test("availability shadow records body/DOM agreement without changing the slot c
   assert.equal(observedResult.state, baselineResult.state);
   assert.equal(observed.slotClicks, baseline.slotClicks);
   assert.equal(calls.started, 1);
+  assert.equal(calls.marked, 1);
   assert.equal(calls.stopped, 1);
   const shadow = observed.traces.filter((trace) => trace.code === "AVAILABILITY_SHADOW");
   assert.deepEqual(shadow.map((trace) => trace.options.attributes.phase), ["body", "dom_compare"]);
   assert.equal(shadow[1].options.attributes.agreement, true);
+  assert.equal(shadow[1].options.attributes.correlationQuality, "EXACT");
+  assert.equal(shadow[1].options.attributes.correlationId, "cycle:1:request:2");
+  assert.equal(typeof shadow[1].options.attributes.bridgeToDomMs, "number");
   assert.equal(shadow[1].options.attributes.claimSource, "body");
+});
+
+test("a failing DOM mutation observer cannot change the reservation result", async () => {
+  const failingWatch = {
+    start: () => { throw new Error("observer start failed"); },
+    snapshot: () => { throw new Error("observer snapshot failed"); },
+    stop: () => { throw new Error("observer stop failed"); },
+  };
+  const observed = harness({ slotDomMutationWatch: failingWatch });
+  const baseline = harness();
+  const [observedResult, baselineResult] = await Promise.all([
+    observed.orchestrator.start(config({ dryRun: false })),
+    baseline.orchestrator.start(config({ dryRun: false })),
+  ]);
+  assert.equal(observedResult.state, baselineResult.state);
+  assert.equal(observed.slotClicks, baseline.slotClicks);
 });
 
 test("clockOffsetMs is the small wall-clock delta, not the epoch-scale monotonic offset", async () => {

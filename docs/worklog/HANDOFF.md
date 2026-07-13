@@ -1,8 +1,8 @@
 # HANDOFF
 
 **갱신:** 2026-07-14
-**브랜치:** `main` (RT-01 병합 완료)
-**작업 로그:** `docs/worklog/2026-07-14-03-rt01-slot-transition-outcomes.md`
+**브랜치:** `main` (RT-10 병합 완료, RT-02 착수 전)
+**작업 로그:** `docs/worklog/2026-07-14-04-rt10-cycle-correlation.md`
 
 ## 현재 상태 — Tier 1·Tier 2-1 실제 오픈 검증 완료
 
@@ -18,22 +18,24 @@
 - 실제 run `run-c5463a0b-ffe0-447b-a619-f9c545181ac0`은 34/34 events, seq 연속, dropped 0, 최종 `HANDED_OFF`다.
 - Tier 2-2 판정은 **REDUCE** 유지다. 안전한 pre-DOM actuator가 없어 응답 기반 직접 클릭으로 승격하지 않는다.
 
-## 현재 체크포인트 — 실오픈 판독 후 정확성 안정화
+## 현재 체크포인트 — Tier 2-2 진입 전 안정화
 
 실오픈 기준선 판독은 완료했다. 날짜 불문 `lastArrivalAt`이 canceled 인접 요청에도 갱신될 수 있음을 확인했으므로 Tier 2-2는 target 날짜·인원이 검증된 body 이벤트만 상관 신호 후보로 사용해야 한다.
 
-## Tier 2-2 진입 Blocking Backlog
+## 현재 안정화 목표
 
 실오픈 기준선 판독이 끝난 뒤 다음 항목을 처리하고 검증하기 전에는 Tier 2-2 구현으로 진행하지 않는다.
 
 - `RT-01`: 완료 — click dispatch와 후속 화면 확인 분리, legacy `SLOT_SELECTED`는 저장 호환 표시만 유지
-- `RT-10`: cycle-correlated shadow timing 보강과 실제 오픈 재측정
+- `RT-10`: 완료 — cycle-correlated shadow timing, 순서 독립 body/DOM 결합, 관측 독립성 검증
 
 `RT-01`, `RT-03` 정확성 안정화는 완료했다. RT-01 전체 자동 게이트는 229개가 통과했고 live 확장 재로드·안전 인계·비최종 후속 화면 출현을 확인했다.
 
+현재 사용자 승인 목표에 따라 RT-02, RT-06, RT-07도 Tier 2-2 전에 순서대로 완료한다. 다음 항목은 RT-02다.
+
 참조: `docs/backlog/post-tier2-1-stabilization.md`
 
-RT-10은 현재 기준선 로그를 먼저 판독한 뒤 구현한다. correlation trace가 포함된 `EXACT` 또는 `STRONG` 실제 오픈 표본을 확보하기 전에는 Tier 2-2 성능 결론이나 구현으로 진행하지 않는다.
+RT-10 구현은 완료했다. 실제 오픈 `EXACT` 또는 `STRONG` 표본은 RT-10M으로 분리하며, 확보 전에는 Tier 2-2 성능 이득이나 body 기반 actuator 승격을 주장하지 않는다.
 
 `Blocks`가 `없음`인 다른 backlog 항목은 남아 있어도 Tier 2-2 진입을 자동으로 막지 않는다.
 
@@ -41,13 +43,13 @@ RT-10은 현재 기준선 로그를 먼저 판독한 뒤 구현한다. correlati
 
 - RT-01: 완료 — `docs/specs/slot-transition-outcomes/`
 - RT-03: 완료 — `docs/specs/slot-ancestor-visibility/`
-- 다음 브랜치에서 RT-10을 분석→설계→구현→검증→적대적 리뷰로 진행한다.
+- 다음 브랜치에서 RT-02를 분석→설계→구현→검증→적대적 리뷰로 진행한다.
 
 ## 다음 작업 2 — Tier 2-1 관측 보강과 재측정
 
-- RT-10: cycle-correlated shadow timing을 구현하고 shadow가 제어 경로에 영향을 주지 않는지 검증
-- 실제 오픈 `EMPTY -> POPULATED`를 재측정해 `EXACT` 또는 `STRONG` 표본 확보
-- 위 조건을 충족하기 전 Tier 2-2 성능 결론이나 구현에 진입하지 않는다.
+- RT-10: 완료 — cycle-correlated shadow timing과 shadow 제어 독립성 검증
+- RT-10M: 다음 실제 오픈 가능 시점에 `EMPTY -> POPULATED`를 재측정해 `EXACT` 또는 `STRONG` 표본 확보
+- RT-10M 전에도 fallback을 보존한 분석·구현은 가능하지만 성능 결론과 actuator 승격은 금지한다.
 
 ## 다음 작업 3 — Tier 2-2 축소 설계
 
@@ -66,4 +68,4 @@ npm run check   # WSL: wsl.exe -d ubuntu -e bash -lc "cd ~/source/catchtable-res
 git status --short --branch
 ```
 
-단위·fixture 테스트 229개와 전체 자동 게이트 통과. RT-01 live 검증 제한은 해당 `40-verification.md`에 기록했다.
+단위·fixture 테스트 236개와 전체 자동 게이트 통과. RT-10 live 양성 표본 제한은 해당 `40-verification.md`에 기록했다.

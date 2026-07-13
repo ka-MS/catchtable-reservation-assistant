@@ -1,6 +1,7 @@
 export const AVAILABILITY_SHADOW_EVENT_TYPE = "AVAILABILITY_SHADOW_EVENT";
 export const AVAILABILITY_SHADOW_ACTIVATE_TYPE = "AVAILABILITY_SHADOW_ACTIVATE";
 export const AVAILABILITY_SHADOW_DEACTIVATE_TYPE = "AVAILABILITY_SHADOW_DEACTIVATE";
+export const AVAILABILITY_SHADOW_TARGET_CYCLE_TYPE = "AVAILABILITY_SHADOW_TARGET_CYCLE";
 export const AVAILABILITY_SHADOW_MAIN_SOURCE = "ct-reserve-main";
 export const AVAILABILITY_SHADOW_ISOLATED_SOURCE = "ct-reserve-isolated";
 
@@ -24,12 +25,21 @@ export interface AvailabilityClassificationResult {
   availableMinutes: number[];
 }
 
+export interface AvailabilityTargetCycleMarker {
+  cycle: number;
+  targetDate: string;
+  personCount: number;
+  targetClickMonoMs: number;
+}
+
 export interface AvailabilityShadowEvent extends AvailabilityRequestIdentity {
   source: typeof AVAILABILITY_SHADOW_MAIN_SOURCE;
   type: typeof AVAILABILITY_SHADOW_EVENT_TYPE;
-  schemaVersion: 1;
+  schemaVersion: 2;
   channelId: string;
   sequence: number;
+  cycle: number | null;
+  targetClickMonoMs: number | null;
   classification: AvailabilityClassification;
   availableMinutes: number[];
   responseStatus: number;
@@ -135,7 +145,7 @@ export function isAvailabilityShadowEvent(value: unknown, channelId: string): va
   if (!event) return false;
   if (event.source !== AVAILABILITY_SHADOW_MAIN_SOURCE
     || event.type !== AVAILABILITY_SHADOW_EVENT_TYPE
-    || event.schemaVersion !== 1
+    || event.schemaVersion !== 2
     || event.channelId !== channelId
     || typeof event.channelId !== "string"
     || event.channelId.length < 1
@@ -144,6 +154,9 @@ export function isAvailabilityShadowEvent(value: unknown, channelId: string): va
     || (event.sequence as number) < 1
     || !CLASSIFICATIONS.has(event.classification as AvailabilityClassification)) return false;
   if (event.requestDate !== null && (typeof event.requestDate !== "string" || event.requestDate.length > 16)) return false;
+  if (event.cycle !== null && (!Number.isInteger(event.cycle) || (event.cycle as number) < 1)) return false;
+  if (event.targetClickMonoMs !== null && !finiteNumber(event.targetClickMonoMs)) return false;
+  if ((event.cycle === null) !== (event.targetClickMonoMs === null)) return false;
   if (event.personCount !== null && normalizePersonCount(event.personCount) === null) return false;
   if (!Array.isArray(event.availableMinutes) || event.availableMinutes.length > MAX_AVAILABLE_MINUTES) return false;
   if (!event.availableMinutes.every((minute) => Number.isInteger(minute) && minute >= 0 && minute < 1440)) return false;
@@ -152,4 +165,14 @@ export function isAvailabilityShadowEvent(value: unknown, channelId: string): va
     && finiteNumber(event.responseCompletedMonoMs)
     && finiteNumber(event.bodyReadCompletedMonoMs)
     && finiteNumber(event.payloadClassifiedMonoMs);
+}
+
+export function isAvailabilityTargetCycleMarker(value: unknown): value is AvailabilityTargetCycleMarker {
+  const marker = objectValue(value);
+  return marker !== null
+    && Number.isInteger(marker.cycle)
+    && (marker.cycle as number) > 0
+    && normalizeReservationDate(marker.targetDate) !== null
+    && normalizePersonCount(marker.personCount) !== null
+    && finiteNumber(marker.targetClickMonoMs);
 }

@@ -2,7 +2,9 @@ import {
   AVAILABILITY_SHADOW_ACTIVATE_TYPE,
   AVAILABILITY_SHADOW_DEACTIVATE_TYPE,
   AVAILABILITY_SHADOW_ISOLATED_SOURCE,
+  AVAILABILITY_SHADOW_TARGET_CYCLE_TYPE,
   isAvailabilityShadowEvent,
+  type AvailabilityTargetCycleMarker,
   type ReceivedAvailabilityShadowEvent,
 } from "../shared/availability-shadow.js";
 
@@ -51,6 +53,17 @@ export class AvailabilityShadowBridge {
       schemaVersion: 1,
       channelId: this.channelId,
       expiresAtEpochMs,
+    });
+  }
+
+  markTargetCycle(marker: AvailabilityTargetCycleMarker): void {
+    if (!this.channelId) return;
+    this.host.postMessage({
+      source: AVAILABILITY_SHADOW_ISOLATED_SOURCE,
+      type: AVAILABILITY_SHADOW_TARGET_CYCLE_TYPE,
+      schemaVersion: 1,
+      channelId: this.channelId,
+      ...marker,
     });
   }
 
