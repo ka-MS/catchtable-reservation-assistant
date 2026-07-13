@@ -145,6 +145,7 @@ class RunSession {
   private lastArrivalAt: number | null = null;
   private referenceClockPort: ReferenceClockPort | null = null;
   private latestAppliedEstimate: ReferenceClockEstimate | null = null;
+  private readonly runStartMonoMs: number;
 
   constructor(
     private readonly deps: Dependencies,
@@ -154,6 +155,12 @@ class RunSession {
     this.runId = requestedRunId ?? deps.runId();
     this.machine = new RunStateMachine({ dryRun: config.dryRun, now: () => deps.clock.now() });
     this.serverClock = new MonotonicEpochClock(deps.monotonicClock);
+    // frame 1(monotonic): 기준시계 오차·wall-clock 점프와 무관한 실제 경과.
+    this.runStartMonoMs = deps.monotonicClock.now();
+  }
+
+  private monoFromRunStartMs(): number {
+    return this.deps.monotonicClock.now() - this.runStartMonoMs;
   }
 
   private emit(kind: RunEvent["kind"], message: string, data?: RunEvent["data"]): void {
@@ -600,8 +607,12 @@ class RunSession {
     const config = this.config;
     const serverClock = this.serverClock;
     const slotDetectedAt = serverClock.now();
+    const clockConfidence = this.latestAppliedEstimate?.confidence ?? "LOW";
     this.transition("SLOT_DETECTED", `${candidate.label} 슬롯을 감지했습니다.`, {
-      data: slotDetectedEventData(slotDetectedAt, this.adjacentTiming, this.targetTiming, config.openAtMs, this.lastArrivalAt),
+      data: slotDetectedEventData(
+        slotDetectedAt, this.adjacentTiming, this.targetTiming, config.openAtMs,
+        this.lastArrivalAt, this.monoFromRunStartMs(), clockConfidence,
+      ),
     });
     this.emit("detect", "예약 조건과 일치하는 슬롯을 찾았습니다.", { slotMinutes: candidate.minutes, slotLabel: candidate.label });
     if (config.dryRun) {
@@ -627,7 +638,10 @@ class RunSession {
       attributes: { slotMinutes: candidate.minutes, slotLabel: candidate.label, clickOk: true },
     });
     this.transition("SLOT_SELECTED", `${candidate.label} 시간 선택을 완료했습니다.`, {
-      data: slotSelectedEventData(slotSelectedAt, config.openAtMs),
+      data: slotSelectedEventData(
+        slotSelectedAt, config.openAtMs, this.lastArrivalAt,
+        this.monoFromRunStartMs(), clockConfidence,
+      ),
     });
     if (!config.postSlotEnabled) {
       return this.handOff("후속 선택 자동 진행이 꺼져 있어 슬롯 선택까지만 완료했습니다.");
@@ -795,6 +809,8 @@ function slotDetectedEventData(
   target: TimingMark | null,
   openAtMs: number,
   arrivalAt: number | null,
+  monoFromRunStartMs: number,
+  clockConfidence: ReferenceClockEstimate["confidence"],
 ): NonNullable<RunEvent["data"]> {
   return {
     timingStage: "slot_detected",
@@ -818,14 +834,27 @@ function slotDetectedEventData(
       targetScheduleDriftMs: Math.round(target.actualAt - target.scheduledAt),
       targetTogglePhase: target.phase,
     } : {}),
+    // frame 1(monotonic run-elapsed)·frame 2 신뢰도 컨텍스트 — openDeltaMs(frame 2
+    // 델타) 자체는 이미 reference-clock 기반이라 별도 필드로 중복하지 않는다.
+    monoFromRunStartMs: Math.round(monoFromRunStartMs),
+    clockConfidence,
   };
 }
 
-function slotSelectedEventData(slotSelectedAt: number, openAtMs: number): NonNullable<RunEvent["data"]> {
+function slotSelectedEventData(
+  slotSelectedAt: number,
+  openAtMs: number,
+  arrivalAt: number | null,
+  monoFromRunStartMs: number,
+  clockConfidence: ReferenceClockEstimate["confidence"],
+): NonNullable<RunEvent["data"]> {
   return {
     timingStage: "slot_selected",
     timingServerAtMs: slotSelectedAt,
     openDeltaMs: Math.round(slotSelectedAt - openAtMs),
+    ...(arrivalAt !== null ? { arrivalToClickMs: Math.round(slotSelectedAt - arrivalAt) } : {}),
+    monoFromRunStartMs: Math.round(monoFromRunStartMs),
+    clockConfidence,
   };
 }
 

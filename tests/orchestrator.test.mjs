@@ -228,6 +228,56 @@ test("an arrival during detection extends the scan burst and records xhr metrics
   assert.ok(detected?.data?.arrivalToDetectMs >= 50, `arrivalToDetectMs=${detected?.data?.arrivalToDetectMs}`);
 });
 
+test("slot detection and selection carry the monotonic run-elapsed frame, independent of wall-clock jumps", async () => {
+  let jumped = false;
+  const h = harness({
+    slotAfterCycles: 2,
+    onCalendarInspect: () => {
+      if (jumped) return;
+      jumped = true;
+      h.jumpWall(5_000); // wall clock jumps; monotonic must not
+    },
+  });
+  const result = await h.orchestrator.start(config({ dryRun: false }));
+  assert.equal(result.state, "HANDED_OFF");
+  const detected = h.events.find((event) => event.data?.state === "SLOT_DETECTED");
+  const selected = h.events.find((event) => event.data?.state === "SLOT_SELECTED");
+  assert.equal(typeof detected?.data?.monoFromRunStartMs, "number");
+  assert.equal(typeof selected?.data?.monoFromRunStartMs, "number");
+  // Both frames advance by real (monotonic) elapsed time only — the 5s wall jump
+  // must not appear here (it does appear in openDeltaMs, a separate frame).
+  assert.ok(detected.data.monoFromRunStartMs < 2_000, `monoFromRunStartMs=${detected.data.monoFromRunStartMs}`);
+});
+
+test("slot detection and selection carry the reference-clock confidence active at that moment", async () => {
+  const h = harness({ slotAfterCycles: 1, referenceEstimate: { confidence: "MEDIUM" } });
+  const result = await h.orchestrator.start(config({ dryRun: false }));
+  assert.equal(result.state, "HANDED_OFF");
+  const detected = h.events.find((event) => event.data?.state === "SLOT_DETECTED");
+  const selected = h.events.find((event) => event.data?.state === "SLOT_SELECTED");
+  assert.equal(detected?.data?.clockConfidence, "MEDIUM");
+  assert.equal(selected?.data?.clockConfidence, "MEDIUM");
+});
+
+test("the click carries its own arrival-to-click latency, distinct from arrival-to-detect", async () => {
+  let arrivalAt = null;
+  const h = harness({
+    readSlots: (ctx) => {
+      if (ctx.scans === 1) { ctx.fireArrival(); arrivalAt = ctx.now; return []; }
+      if (arrivalAt !== null && ctx.now >= arrivalAt + 50) {
+        return [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }];
+      }
+      return [];
+    },
+  });
+  const result = await h.orchestrator.start(config({ dryRun: false }));
+  assert.equal(result.state, "HANDED_OFF");
+  const detected = h.events.find((event) => event.data?.state === "SLOT_DETECTED");
+  const selected = h.events.find((event) => event.data?.state === "SLOT_SELECTED");
+  assert.ok(selected?.data?.arrivalToClickMs >= detected?.data?.arrivalToDetectMs,
+    `arrivalToClickMs=${selected?.data?.arrivalToClickMs} arrivalToDetectMs=${detected?.data?.arrivalToDetectMs}`);
+});
+
 test("a live watch quiesces the next toggle until the timeout when no arrival comes", async () => {
   // 사이클1 스캔 중 도착 신호 1회(watch live 전환) 후 침묵 → 사이클2는
   // 그리드가 아니라 목표클릭+700ms까지 기다렸다가 다음 토글로 넘어가야 한다.
