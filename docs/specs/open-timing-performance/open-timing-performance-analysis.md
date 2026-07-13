@@ -103,7 +103,41 @@ Tier 2  Availability 핫패스     — 응답→클릭 지연 최소화 + claim 
 Tier 3  런타임 견고성           — 탭·SW·실패 복원력
 ```
 
-## 6. 현행 코드 기준선
+## 6. 진단 재현 레시피 (콜드 세션용)
+
+이 문서의 주장(풀 스큐·시계 오차)은 재측정으로 검증 가능하다. `use-chrome-devtools` + `catchtable-recon` 스킬로 로그인된 캐치테이블 탭에서:
+
+1. **HEAD 오프셋 클러스터 측정.** same-origin 매장 URL에 `fetch(..., {method:"HEAD", cache:"no-store"})`를 ~70ms 간격 24회. 각 응답의 `Date`(초)와 로컬 `Date.now()` 초를 비교. 다수가 일치(오프셋~0)하고 일부가 +1초면 풀 스큐다. `serverDateMs`가 로컬 경과보다 크게 앞서 점프하는 표본이 스큐 풀.
+2. **boundary 반복 측정.** 같은 측정을 여러 번 하면 boundary 오프셋이 ~0과 ~+1000으로 갈린다 → 스큐 확정. 한 번의 boundary만 믿으면 안 되는 이유.
+3. **네이비즘 교차검증.** `time.navyism.com/?host=app.catchtable.co.kr` 탭의 표시 서버시각을 로컬 `Date.now()`와 같은 순간 읽어 비교. 같은 초면 진짜 오프셋 ~0.
+4. **텔레메트리 재해석.** IndexedDB `catchtable-reserve-telemetry`의 실오픈 run에서 CLOCK_SYNCED `clockOffsetMs`가 ~+1000인데 위 재측정이 ~0이면, 그 run은 스큐에 락된 것. openDelta에 그 오차를 빼서 진짜 프레임으로 환산.
+
+## 7. 거부한 대안과 이유 (재발 방지 — YAGNI)
+
+외부 피드백에서 제안됐으나 우리 실측 제약상 채택 안 함. 다시 제안하기 전에 이 근거를 반박해야 한다.
+
+| 제안 | 거부 이유 |
+|---|---|
+| availability API 직접 호출(DIRECT_PROBE) | 본문 `encryptedParamString` 암호화·재현 불가(P1). UI 토글만 가능. |
+| 동시 다중 요청·stagger 폴링 | 요청이 UI 토글 유발이라 다중 토글은 DOM 충돌. 적용 불가. |
+| availability 응답을 시계 표본으로 재사용("한 요청 두 역할") | ct-api는 CORS로 `Date` 미노출·payload에 ms 시각 없음(P2). 시계는 app HEAD로 분리. |
+| 128표본 NTP급 통계 필터 | 시간 분산 rolling + 구간 최대피복으로 충분. 링버퍼 64로 시작, 과설계 회피. |
+| 클러스터 단순 최다지지 확정 | 오염 클러스터가 과반이면 틀린 값 확정. "모호하면 LOW confidence"가 올바른 요구. |
+
+## 8. 잔여 미지수 (과신 금지)
+
+- **어느 풀이 오픈을 판정하나?** 우리는 다수 풀(~0)이 진짜라고 결론했으나, 예약을 실제로 여는 ct-api 애플리케이션 서버가 스큐 풀(+1초) 시계로 도는 가능성을 완전히 배제하진 못했다. 그래서 시계를 절대 트리거로 쓰지 않고(응답 주도), armLead를 넉넉히 잡아 어느 쪽이든 놓치지 않게 한다. 이 미지수가 응답주도 설계의 존재 이유다.
+- **스큐 폭·빈도의 변동.** 스큐가 항상 ~+1초인지, 매장·시간대별로 다른지 미실측. Tier 1 rolling 로그로 계속 관측.
+- **매장 교차 확인.** 시계 스큐는 호스트 단위라 매장 무관할 것으로 보이나, 슬롯 등장 지연은 매장별로 다를 수 있음(에스콘디도 ~320ms). 다른 매장 실오픈으로 확인 필요.
+
+## 9. 용어 계약 (전 티어 공통)
+
+- **ReferenceClock**: app HEAD `Date`로 추정한 기준시각. 오픈 구간 접근용 관측값이지 예약 서버의 절대 진실이 아니다. 코드·필드는 `ReferenceClock*`/`reference*`로 명명. `ServerClock` 금지(거짓 권위 함의).
+- **armLead**: 감시(토글) 단계로 조기 진입하는 리드타임. uncertainty 상한 기반. 클릭을 앞당기는 값이 아니다.
+- **populated 전이**: availability 응답/DOM이 빈 슬롯→채워진 슬롯으로 바뀌는 순간. 유일한 클릭 트리거.
+- **3-프레임**: monotonic(런 경과) / reference(기준시각 오픈 대비) / availability(empty·populated·DOM·클릭 시점). 로그는 셋을 함께 싣는다.
+
+## 10. 현행 코드 기준선
 
 - 시계: `src/shared/clock.ts`(`selectClockEstimate` boundary/median), `src/content/clock-sync.ts`(버스트 HEAD), `src/shared/toggle-schedule.ts`, `MonotonicEpochClock`(앵커 — 이미 단조). worklog 08~11에서 샘플 상세·합의·표본수 계측을 붙였으나 스큐 방어가 표본 창 편향에 뚫린다.
 - 감지: `src/content/adapter/slot-refresh-watch.ts`(PerformanceObserver 도착 신호), 오케스트레이터 3-모드 감지(worklog 13). 현재 중복 클릭 위험 없음(단일 searchAndReserve 루프).
