@@ -161,10 +161,10 @@ function supportedInspection(dialog: HTMLElement, value: DialogSnapshot): PostSl
   if (title.includes("추가 상품") && value.hasNext) {
     return { kind: "extras", ...meta(value, "supported", "extras-title-structure-v1", ["extras title", "next button"]) };
   }
-  if (title.includes("예약금 안내") && value.hasConfirm && value.diagnostics.zeroDepositControlCount === 0) {
+  if (title.includes("예약금 안내") && progress && value.diagnostics.zeroDepositControlCount === 0) {
     return {
       kind: "deposit_notice",
-      ...meta(value, "supported", "deposit-notice-title-structure-v1", ["deposit notice title", "confirm button"]),
+      ...meta(value, "supported", "deposit-notice-title-structure-v1", ["deposit notice title", "progress button"]),
     };
   }
   if (title.includes("예약금") && title.includes("결제") && value.diagnostics.radioCount > 0 && progress) {

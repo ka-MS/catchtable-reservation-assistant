@@ -1,8 +1,8 @@
 # HANDOFF
 
 **갱신:** 2026-07-14
-**브랜치:** `codex/rt-02-clock-setting-contract` (RT-02 완료, 병합 전)
-**작업 로그:** `docs/worklog/2026-07-14-05-rt02-clock-setting-contract.md`
+**브랜치:** `codex/rt-06-deposit-next` (RT-06 완료, 병합 전)
+**작업 로그:** `docs/worklog/2026-07-14-06-rt06-deposit-notice-next.md`
 
 ## 현재 상태 — Tier 1·Tier 2-1 실제 오픈 검증 완료
 
@@ -29,10 +29,11 @@
 - `RT-01`: 완료 — click dispatch와 후속 화면 확인 분리, legacy `SLOT_SELECTED`는 저장 호환 표시만 유지
 - `RT-10`: 완료 — cycle-correlated shadow timing, 순서 독립 body/DOM 결합, 관측 독립성 검증
 - `RT-02`: 완료 — dead `clockSampleCount` 사용자 설정 제거, legacy 저장 호환과 telemetry metric 유지
+- `RT-06`: 완료 — 예약금 안내의 `확인/다음` 변형 지원, 선택 control이 있으면 안전 인계
 
 `RT-01`, `RT-03` 정확성 안정화는 완료했다. RT-01 전체 자동 게이트는 229개가 통과했고 live 확장 재로드·안전 인계·비최종 후속 화면 출현을 확인했다.
 
-현재 사용자 승인 목표에 따라 RT-06, RT-07도 Tier 2-2 전에 순서대로 완료한다. 다음 항목은 RT-06이다.
+현재 사용자 승인 목표에 따라 RT-07도 Tier 2-2 전에 완료한다. 다음 항목은 RT-07이다.
 
 참조: `docs/backlog/post-tier2-1-stabilization.md`
 
@@ -45,7 +46,8 @@ RT-10 구현은 완료했다. 실제 오픈 `EXACT` 또는 `STRONG` 표본은 RT
 - RT-01: 완료 — `docs/specs/slot-transition-outcomes/`
 - RT-03: 완료 — `docs/specs/slot-ancestor-visibility/`
 - RT-02: 완료 — `docs/specs/clock-sample-setting-contract/`
-- 다음 브랜치에서 RT-06을 분석→설계→구현→검증→적대적 리뷰로 진행한다.
+- RT-06: 완료 — `docs/specs/deposit-notice-next/`
+- 다음 브랜치에서 RT-07을 조사→설계 판단→fixture/필요 구현→검증→적대적 리뷰로 진행한다.
 
 ## 다음 작업 2 — Tier 2-1 관측 보강과 재측정
 
@@ -70,4 +72,4 @@ npm run check   # WSL: wsl.exe -d ubuntu -e bash -lc "cd ~/source/catchtable-res
 git status --short --branch
 ```
 
-단위·fixture 테스트 238개와 전체 자동 게이트 통과. RT-10 live 양성 표본 제한은 해당 `40-verification.md`에 기록했다.
+단위·fixture 테스트 242개와 전체 자동 게이트 통과. RT-10 live 양성 표본 제한은 해당 `40-verification.md`에 기록했다.
