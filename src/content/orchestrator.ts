@@ -163,6 +163,18 @@ class RunSession {
     return this.deps.monotonicClock.now() - this.runStartMonoMs;
   }
 
+  /** 감지 시점에 실제로 활성이던 기준시계 스냅샷. armed metric은 진입 시점에
+   * (종종 표본 1개로) 얼어붙지만, rolling 샘플러가 대기 중 개선하므로 감지·선택
+   * 이벤트는 그 순간의 confidence·uncertainty·wall offset을 함께 남긴다. */
+  private detectionClockData(): NonNullable<RunEvent["data"]> {
+    const estimate = this.latestAppliedEstimate;
+    return {
+      clockConfidence: estimate?.confidence ?? "LOW",
+      clockUncertaintyMs: Math.round(estimate?.uncertaintyMs ?? 0),
+      clockOffsetMs: Math.round(this.wallOffsetMs()),
+    };
+  }
+
   private emit(kind: RunEvent["kind"], message: string, data?: RunEvent["data"]): void {
     const at = this.deps.clock.now();
     this.deps.emit({ at, serverAt: this.serverClockReady ? this.serverClock.now() : null, runId: this.runId, kind, message, data });
@@ -620,11 +632,11 @@ class RunSession {
     const config = this.config;
     const serverClock = this.serverClock;
     const slotDetectedAt = serverClock.now();
-    const clockConfidence = this.latestAppliedEstimate?.confidence ?? "LOW";
+    const clockData = this.detectionClockData();
     this.transition("SLOT_DETECTED", `${candidate.label} 슬롯을 감지했습니다.`, {
       data: slotDetectedEventData(
         slotDetectedAt, this.adjacentTiming, this.targetTiming, config.openAtMs,
-        this.lastArrivalAt, this.monoFromRunStartMs(), clockConfidence,
+        this.lastArrivalAt, this.monoFromRunStartMs(), clockData,
       ),
     });
     this.emit("detect", "예약 조건과 일치하는 슬롯을 찾았습니다.", { slotMinutes: candidate.minutes, slotLabel: candidate.label });
@@ -653,7 +665,7 @@ class RunSession {
     this.transition("SLOT_SELECTED", `${candidate.label} 시간 선택을 완료했습니다.`, {
       data: slotSelectedEventData(
         slotSelectedAt, config.openAtMs, this.lastArrivalAt,
-        this.monoFromRunStartMs(), clockConfidence,
+        this.monoFromRunStartMs(), clockData,
       ),
     });
     if (!config.postSlotEnabled) {
@@ -826,7 +838,7 @@ function slotDetectedEventData(
   openAtMs: number,
   arrivalAt: number | null,
   monoFromRunStartMs: number,
-  clockConfidence: ReferenceClockEstimate["confidence"],
+  clockData: NonNullable<RunEvent["data"]>,
 ): NonNullable<RunEvent["data"]> {
   return {
     timingStage: "slot_detected",
@@ -850,10 +862,11 @@ function slotDetectedEventData(
       targetScheduleDriftMs: Math.round(target.actualAt - target.scheduledAt),
       targetTogglePhase: target.phase,
     } : {}),
-    // frame 1(monotonic run-elapsed)·frame 2 신뢰도 컨텍스트 — openDeltaMs(frame 2
-    // 델타) 자체는 이미 reference-clock 기반이라 별도 필드로 중복하지 않는다.
+    // frame 1(monotonic run-elapsed) + 감지 시점 기준시계 스냅샷(clockData:
+    // confidence/uncertainty/wall offset). openDeltaMs(frame 2 델타) 자체는 이미
+    // reference-clock 기반이라 별도 필드로 중복하지 않는다.
     monoFromRunStartMs: Math.round(monoFromRunStartMs),
-    clockConfidence,
+    ...clockData,
   };
 }
 
@@ -862,7 +875,7 @@ function slotSelectedEventData(
   openAtMs: number,
   arrivalAt: number | null,
   monoFromRunStartMs: number,
-  clockConfidence: ReferenceClockEstimate["confidence"],
+  clockData: NonNullable<RunEvent["data"]>,
 ): NonNullable<RunEvent["data"]> {
   return {
     timingStage: "slot_selected",
@@ -870,7 +883,7 @@ function slotSelectedEventData(
     openDeltaMs: Math.round(slotSelectedAt - openAtMs),
     ...(arrivalAt !== null ? { arrivalToClickMs: Math.round(slotSelectedAt - arrivalAt) } : {}),
     monoFromRunStartMs: Math.round(monoFromRunStartMs),
-    clockConfidence,
+    ...clockData,
   };
 }
 

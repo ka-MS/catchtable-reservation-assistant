@@ -292,14 +292,23 @@ test("slot detection and selection carry the monotonic run-elapsed frame, indepe
   assert.ok(detected.data.monoFromRunStartMs < 2_000, `monoFromRunStartMs=${detected.data.monoFromRunStartMs}`);
 });
 
-test("slot detection and selection carry the reference-clock confidence active at that moment", async () => {
-  const h = harness({ slotAfterCycles: 1, referenceEstimate: { confidence: "MEDIUM" } });
+test("slot detection and selection carry the reference-clock estimate active at that moment", async () => {
+  // The armed metric freezes the estimate at WAITING_FOR_OPEN entry (often only
+  // 1 sample). On a long wait the rolling sampler keeps improving it, so the
+  // detection events must carry the estimate that was actually active at
+  // detection (confidence + uncertainty + wall offset), not the stale armed one.
+  const h = harness({ slotAfterCycles: 1, referenceEstimate: { confidence: "MEDIUM", uncertaintyMs: 140, offsetCenterMs: 55 } });
   const result = await h.orchestrator.start(config({ dryRun: false }));
   assert.equal(result.state, "HANDED_OFF");
   const detected = h.events.find((event) => event.data?.state === "SLOT_DETECTED");
   const selected = h.events.find((event) => event.data?.state === "SLOT_SELECTED");
   assert.equal(detected?.data?.clockConfidence, "MEDIUM");
   assert.equal(selected?.data?.clockConfidence, "MEDIUM");
+  assert.equal(detected?.data?.clockUncertaintyMs, 140);
+  assert.equal(selected?.data?.clockUncertaintyMs, 140);
+  // clockOffsetMs at detection is the small wall delta (server − wall), 55 in
+  // this fake where wall == monotonic — NOT the epoch-scale offsetCenterMs.
+  assert.equal(detected?.data?.clockOffsetMs, 55);
 });
 
 test("the click carries its own arrival-to-click latency, distinct from arrival-to-detect", async () => {
