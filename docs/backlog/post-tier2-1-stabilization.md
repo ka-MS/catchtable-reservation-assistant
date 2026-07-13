@@ -31,11 +31,11 @@ Tier 2-1 완료 후 외부 정적 레드팀 리뷰와 실제 후속 예약 흐�
 - Tier 2-1 XHR shadow 관찰 구현·자동 테스트·live dry-run 완료
 - 실제 오픈 `EMPTY -> POPULATED`를 1회 확인했고 body가 DOM보다 47.7ms 선행했다. 34/34 events, dropped 0, 최종 사용자 인계까지 공식 판독 완료
 - Tier 2-2 판정은 `REDUCE`: body 신호를 실제 클릭 제어에 연결하지 않고 MutationObserver 기반 DOM 감지 축소안만 검토
-- 현재 HANDOFF의 다음 작업은 blocking backlog RT-01·RT-03 정확성 안정화
+- RT-03 조상 가시성 검사를 완료했고 현재 HANDOFF의 다음 작업은 blocking backlog RT-01 정확성 안정화
 
 현재 기준선을 보존하기 위해 다음 제약을 둔다.
 
-1. RT-01·RT-03 완료 전에는 날짜 토글과 슬롯 탐색 hot path를 변경하지 않는다.
+1. RT-01 완료 전에는 RT-01과 완료된 RT-03 정확성 수정 외의 날짜 토글·슬롯 탐색 hot-path 변경을 하지 않는다.
 2. XHR shadow는 Tier 2-2 설계가 승인될 때까지 관측 전용으로 유지한다.
 3. body claim만으로 클릭하거나 날짜 토글을 중단하지 않는다.
 4. `SLOT_SELECTED`라는 기존 상태명이 서버 좌석 hold 완료를 증명한다고 간주하지 않는다.
@@ -294,7 +294,7 @@ URL의 `date=260731`과 사용자 보고 예약일 표현이 일치하지 않으
 |---|---|---|---|---|---|---|
 | RT-01 | 슬롯 클릭 dispatch와 화면 전환 확인 분리 | 수용 | 실오픈 기준선 판독 후 | Tier 2-2 진입 | PENDING | - |
 | RT-02 | `clockSampleCount` 설정 계약 정리 | 수용 | 실오픈 시계 표본 판독 후 별도 정리 | 없음 | PENDING | - |
-| RT-03 | SlotAdapter 조상 가시성 검사 | 수용 | 실오픈 기준선 판독 후 | Tier 2-2 진입 | PENDING | - |
+| RT-03 | SlotAdapter 조상 가시성 검사 | 수용 | 실오픈 기준선 판독 후 | Tier 2-2 진입 | DONE | `docs/specs/slot-ancestor-visibility/`, `docs/worklog/2026-07-14-02-rt03-slot-ancestor-visibility.md` |
 | RT-04 | 40/60ms 실측과 선택 확인 개선 | 부분 수용 | Tier 2-2 | 없음 | PENDING | - |
 | RT-05 | XHR probe 운영·진단 격리 결정 | 부분 수용 | Tier 2-2 종료 판정 | Tier 2-2 종료 | PENDING | - |
 | RT-06 | 비스트로 꼬꼬뜨 예약금 안내 `다음` 지원 | 수용 | 정확성·호환성 안정화 | 없음 | PENDING | - |
@@ -317,7 +317,7 @@ URL의 `date=260731`과 사용자 보고 예약일 표현이 일치하지 않으
 | 체크포인트 | 수행·확인 항목 | 단계 전환 조건 |
 |---|---|---|
 | A. Tier 2-1 완료 직후 | 현재 코드로 실오픈 `EMPTY -> POPULATED`, 스큐, body/DOM lead, 40/60ms 자료 판독 | hot path 코드 변경 없이 현재 기준선 확보 |
-| B. 현재 기준선 판독 후 정확성 안정화 | RT-01, RT-03 우선 수행. RT-02, RT-06, RT-07은 blocking과 분리해 순차 처리 | RT-01·RT-03 검증 완료 전 Tier 2-2 구현 진입 금지 |
+| B. 현재 기준선 판독 후 정확성 안정화 | RT-03 완료. RT-01을 수행하고 RT-02, RT-06, RT-07은 blocking과 분리해 순차 처리 | RT-01 검증 완료 전 Tier 2-2 구현 진입 금지 |
 | C. Tier 2-1 관측 보강 | RT-03으로 DOM 후보 정확성을 확보한 뒤 RT-10의 cycle correlation trace 구현 | RT-10 자동 게이트와 shadow 제어 독립성 검증 |
 | D. correlation 실오픈 재측정 | RT-10 적용 상태로 실제 오픈 `EMPTY -> POPULATED`를 다시 측정하고 `EXACT` 또는 `STRONG` 표본 확보 | 유효 상관 표본 없이 Tier 2-2 성능 결론·구현 금지 |
 | E. Tier 2-2 분석·구현 | RT-04를 상관된 실제 오픈 분포에 근거해 설계. body 신호만으로 클릭하지 않고 DOM 재검증 유지 | Tier 2-2 자체 성공 기준 통과 |
@@ -418,7 +418,6 @@ HANDOFF는 이 표 전체를 복사하지 않는다. 현재 체크포인트와 �
 
 Blocking backlog:
 - RT-01 슬롯 클릭/화면 전환 확인 분리
-- RT-03 슬롯 조상 가시성 검사
 - RT-10 cycle-correlated shadow timing 보강
 
 참조: docs/backlog/post-tier2-1-stabilization.md
