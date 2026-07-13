@@ -115,6 +115,8 @@ const CLUSTER_DOMINANCE_RATIO = 2;
 const HIGH_CONFIDENCE_MIN_SAMPLES = 5;
 const HIGH_CONFIDENCE_MIN_SPAN_MS = 3_000;
 const MEDIUM_CONFIDENCE_MIN_SAMPLES = 3;
+// 이전 estimate가 HIGH일 때, 경쟁 클러스터가 이전 중심에 이만큼 더 가까워야 "이력 지속"으로 인정한다.
+const CONTINUITY_TOLERANCE_MS = 250;
 
 const FALLBACK_ESTIMATE: ReferenceClockEstimate = {
   offsetLowerMs: 0, offsetCenterMs: 0, offsetUpperMs: 0, uncertaintyMs: 0,
@@ -183,7 +185,10 @@ function findMaxCoverageCluster(intervals: OffsetInterval[]): Cluster | null {
   return best;
 }
 
-export function estimateReferenceClock(samples: ReferenceClockSample[]): ReferenceClockEstimate {
+export function estimateReferenceClock(
+  samples: ReferenceClockSample[],
+  previous?: Pick<ReferenceClockEstimate, "offsetCenterMs" | "confidence">,
+): ReferenceClockEstimate {
   const usable = samples.filter((sample) => !sample.fromCache);
   if (usable.length === 0) return { ...FALLBACK_ESTIMATE };
 
@@ -192,10 +197,26 @@ export function estimateReferenceClock(samples: ReferenceClockSample[]): Referen
   const kept = usable.filter((sample) => sample.rttMs <= rttThreshold);
   if (kept.length === 0) return { ...FALLBACK_ESTIMATE };
 
-  const dominant = findMaxCoverageCluster(kept);
-  if (dominant === null) return { ...FALLBACK_ESTIMATE };
-  const remaining = kept.filter((iv) => iv.upperMs <= dominant.lower || iv.lowerMs >= dominant.upper);
-  const competing = findMaxCoverageCluster(remaining);
+  const rawDominant = findMaxCoverageCluster(kept);
+  if (rawDominant === null) return { ...FALLBACK_ESTIMATE };
+  const remaining = kept.filter((iv) => iv.upperMs <= rawDominant.lower || iv.lowerMs >= rawDominant.upper);
+  const rawCompeting = findMaxCoverageCluster(remaining);
+
+  // 연속성 히스테리시스: 직전이 HIGH였는데 max-coverage dominant가 이전 중심에서 멀어지고
+  // (경쟁 클러스터가 이전에 훨씬 가깝고) 지지 차가 근소하면, 강한 증거 없이 점프하지 않도록
+  // 이전 풀을 잇는 클러스터를 dominant로 유지한다. 강한 다수(≥2×)면 이력을 덮고 갱신한다.
+  let dominant = rawDominant;
+  let competing = rawCompeting;
+  if (previous?.confidence === "HIGH" && rawCompeting !== null) {
+    const dominantDist = Math.abs(rawDominant.center - previous.offsetCenterMs);
+    const competingDist = Math.abs(rawCompeting.center - previous.offsetCenterMs);
+    const historyContinues = competingDist + CONTINUITY_TOLERANCE_MS < dominantDist;
+    const weakLead = rawDominant.support < CLUSTER_DOMINANCE_RATIO * rawCompeting.support;
+    if (historyContinues && weakLead) {
+      dominant = rawCompeting;
+      competing = rawDominant;
+    }
+  }
 
   const sortedRtts = kept.map((sample) => sample.rttMs).sort((left, right) => left - right);
   const observationSpanMs = Math.max(...kept.map((s) => s.t1)) - Math.min(...kept.map((s) => s.t0));

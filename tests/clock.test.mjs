@@ -313,6 +313,56 @@ test("a lone skew sample against a strong majority stays trustworthy (MEDIUM, do
   assert.equal(e.sampleCount, 7);
 });
 
+test("hysteresis: a HIGH prior blocks a ~1000ms jump when a skew burst only narrowly leads", () => {
+  const cleanPool = [
+    createReferenceClockSample({ t0: 0, t1: 40, serverDateMs: 1_000 }),
+    createReferenceClockSample({ t0: 800, t1: 840, serverDateMs: 2_000 }),
+    createReferenceClockSample({ t0: 1_700, t1: 1_740, serverDateMs: 3_000 }),
+    createReferenceClockSample({ t0: 2_600, t1: 2_640, serverDateMs: 4_000 }),
+    createReferenceClockSample({ t0: 3_400, t1: 3_440, serverDateMs: 4_000 }),
+    createReferenceClockSample({ t0: 4_200, t1: 4_240, serverDateMs: 5_000 }),
+  ];
+  const previous = estimateReferenceClock(cleanPool);
+  assert.equal(previous.confidence, "HIGH");
+  assert.equal(previous.offsetCenterMs, 1_480);
+
+  // 스큐 3 + 진짜 2. 스큐가 근소하게 앞서 max-coverage dominant지만, 직전이 HIGH이고
+  // 지지 차가 근소(3 < 2×2)하므로 이전 클러스터(진짜, ~1480 근처)를 유지한다.
+  const skewBurst = [
+    createReferenceClockSample({ t0: 0, t1: 40, serverDateMs: 1_000 }),
+    createReferenceClockSample({ t0: 3_400, t1: 3_440, serverDateMs: 4_000 }),
+    createReferenceClockSample({ t0: 0, t1: 40, serverDateMs: 2_000 }),
+    createReferenceClockSample({ t0: 800, t1: 840, serverDateMs: 3_000 }),
+    createReferenceClockSample({ t0: 1_700, t1: 1_740, serverDateMs: 4_000 }),
+  ];
+  assert.equal(estimateReferenceClock(skewBurst).offsetCenterMs, 2_630); // 이력 없으면 스큐로 점프
+  const held = estimateReferenceClock(skewBurst, previous);
+  assert.equal(held.offsetCenterMs, 1_280);   // 점프 안 함 — 이전 풀 유지
+  assert.equal(held.confidence, "LOW");
+  assert.equal(held.dominantClusterSupport, 2);
+  assert.equal(held.competingClusterSupport, 3);
+  assert.equal(held.clusterSeparationMs, 1_350);
+  assert.equal(held.uncertaintyMs, 1_350);
+});
+
+test("hysteresis: strong majority evidence overrides a HIGH prior and updates normally", () => {
+  const previous = { offsetCenterMs: 1_480, confidence: "HIGH" };
+  // 스큐 5 + 진짜 1. 다수(5) ≥ 2×소수(1)이므로 강한 증거 — 이전 HIGH여도 정상 갱신(점프).
+  const strongSkew = [
+    createReferenceClockSample({ t0: 0, t1: 40, serverDateMs: 2_000 }),
+    createReferenceClockSample({ t0: 800, t1: 840, serverDateMs: 3_000 }),
+    createReferenceClockSample({ t0: 1_700, t1: 1_740, serverDateMs: 4_000 }),
+    createReferenceClockSample({ t0: 2_600, t1: 2_640, serverDateMs: 5_000 }),
+    createReferenceClockSample({ t0: 3_400, t1: 3_440, serverDateMs: 5_000 }),
+    createReferenceClockSample({ t0: 0, t1: 40, serverDateMs: 1_000 }), // lone true
+  ];
+  const updated = estimateReferenceClock(strongSkew, previous);
+  assert.equal(updated.offsetCenterMs, 2_480);   // 점프함 (강한 증거)
+  assert.equal(updated.confidence, "MEDIUM");
+  assert.equal(updated.dominantClusterSupport, 5);
+  assert.equal(updated.competingClusterSupport, 1);
+});
+
 test("cached samples are excluded from the estimate", () => {
   const samples = [
     createReferenceClockSample({ t0: 0, t1: 40, serverDateMs: 1_000 }),
