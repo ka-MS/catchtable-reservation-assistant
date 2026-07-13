@@ -1,8 +1,8 @@
 # HANDOFF
 
 **갱신:** 2026-07-14
-**브랜치:** `codex/rt-07-yakitorimook-stage` (RT-07 완료·병합 대기)
-**작업 로그:** `docs/worklog/2026-07-14-07-rt07-seating-menu-sheet.md`
+**브랜치:** `main` (Tier 2-2 진입 전 안정화 완료)
+**작업 로그:** `docs/worklog/2026-07-14-08-tier2-2-preentry-complete.md`
 
 ## 현재 상태 — Tier 1·Tier 2-1 실제 오픈 검증 완료
 
@@ -18,13 +18,13 @@
 - 실제 run `run-c5463a0b-ffe0-447b-a619-f9c545181ac0`은 34/34 events, seq 연속, dropped 0, 최종 `HANDED_OFF`다.
 - Tier 2-2 판정은 **REDUCE** 유지다. 안전한 pre-DOM actuator가 없어 응답 기반 직접 클릭으로 승격하지 않는다.
 
-## 현재 체크포인트 — Tier 2-2 진입 전 안정화
+## 현재 체크포인트 — Tier 2-2 분석 착수 가능
 
 실오픈 기준선 판독은 완료했다. 날짜 불문 `lastArrivalAt`이 canceled 인접 요청에도 갱신될 수 있음을 확인했으므로 Tier 2-2는 target 날짜·인원이 검증된 body 이벤트만 상관 신호 후보로 사용해야 한다.
 
-## 현재 안정화 목표
+## 완료한 안정화 목표
 
-실오픈 기준선 판독이 끝난 뒤 다음 항목을 처리하고 검증하기 전에는 Tier 2-2 구현으로 진행하지 않는다.
+실오픈 기준선 판독 뒤 Tier 2-2 진입 전에 지정한 다음 항목을 모두 처리하고 검증했다.
 
 - `RT-01`: 완료 — click dispatch와 후속 화면 확인 분리, legacy `SLOT_SELECTED`는 저장 호환 표시만 유지
 - `RT-10`: 완료 — cycle-correlated shadow timing, 순서 독립 body/DOM 결합, 관측 독립성 검증
@@ -56,7 +56,7 @@ RT-10 구현은 완료했다. 실제 오픈 `EXACT` 또는 `STRONG` 표본은 RT
 - RT-10M: 다음 실제 오픈 가능 시점에 `EMPTY -> POPULATED`를 재측정해 `EXACT` 또는 `STRONG` 표본 확보
 - RT-10M 전에도 fallback을 보존한 분석·구현은 가능하지만 성능 결론과 actuator 승격은 금지한다.
 
-## 다음 작업 3 — Tier 2-2 축소 설계
+## 다음 작업 3 — Tier 2-2 축소 설계 착수
 
 Tier 2-1의 `40-verification.md`와 `50-adversarial-review.md`를 먼저 읽는다.
 
