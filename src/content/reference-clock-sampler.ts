@@ -72,6 +72,11 @@ export class ReferenceClockSampler implements ReferenceClockPort {
         signal,
       });
     } catch (error) {
+      // stop()이 진행 중인 fetch를 abort하면 AbortError(DOMException, TypeError
+      // 아님)가 던져진다 — signal.aborted를 먼저 확인해야 start() 루프가 이걸
+      // 삼키고 깨끗이 종료한다(그렇지 않으면 fire-and-forget start()가 매 런마다
+      // unhandled rejection이 된다 — 50-adversarial-review에서 실측).
+      if (signal.aborted) return null;
       if (error instanceof TypeError) return null; // 네트워크 실패 표본은 무시
       throw error;
     }

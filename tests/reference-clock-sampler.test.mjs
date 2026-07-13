@@ -93,6 +93,27 @@ test("start emits an estimate per sample and stops emitting after stop()", async
   assert.equal(sampler.latest, emitted[0]);
 });
 
+test("start() does not reject when stop() aborts a fetch that is still in flight", async () => {
+  // A real fetch rejects an aborted request with a DOMException named
+  // "AbortError" — NOT a TypeError. If sampleOnce only swallows TypeError,
+  // this rethrows out of the start() loop and start()'s fire-and-forget
+  // promise (orchestrator calls it with `void`) becomes an unhandled
+  // rejection on every run, since stopReferenceClock() always fires while
+  // the persistent sampler may have a HEAD request in flight.
+  const sampler = makeSampler({
+    fetch: (_url, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => {
+        reject(new DOMException("The operation was aborted.", "AbortError"));
+      });
+    }),
+    sleep: async () => true,
+  });
+  const startPromise = sampler.start(() => {});
+  await new Promise((resolve) => setTimeout(resolve, 0)); // let the fetch become "in flight"
+  sampler.stop();
+  await assert.doesNotReject(startPromise);
+});
+
 test("stop before start makes start a no-op-safe loop that exits immediately", async () => {
   const sampler = makeSampler({
     fetch: async () => new Response(null, { headers: { Date: "Mon, 13 Jul 2026 09:00:00 GMT" } }),
