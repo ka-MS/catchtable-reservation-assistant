@@ -40,7 +40,6 @@ export interface ReservationConfig {
   dryRun: boolean;
   preOpenLeadMs: number;
   toggleIntervalMs: number;
-  clockSampleCount: number;
 }
 
 export type SavedConfigList = "history" | "favorites";

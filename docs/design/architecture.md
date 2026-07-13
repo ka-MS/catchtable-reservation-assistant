@@ -49,7 +49,6 @@ interface ReservationConfig {
   dryRun: boolean;
   preOpenLeadMs: number;
   toggleIntervalMs: number;
-  clockSampleCount: number;
 }
 ```
 
@@ -64,6 +63,8 @@ interface ClockSyncAdapter {
   measure(url: string, signal: AbortSignal): Promise<ClockMeasurement>;
 }
 ```
+
+ReferenceClock 표본 수와 rolling buffer는 자동 관리한다. 사용자 설정에는 노출하지 않으며 trace의 `clockSampleCount`는 estimator가 실제 사용한 관측 수를 뜻한다.
 
 `ClockMeasurement`는 서버 Date 초 값, 로컬 요청 중간 시각, RTT를 포함한다. 연속 표본에서 서버 초 값이 바뀌면 그 로컬 구간의 중간점을 서버 초 경계로 사용한다. 경계를 관찰하지 못한 경우에만 최소 RTT 표본군의 중앙 오프셋을 선택한다. 비즈니스 로직은 직접 `Date.now()`를 호출하지 않는다.
 

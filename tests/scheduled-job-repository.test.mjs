@@ -29,7 +29,6 @@ function config(overrides = {}) {
     dryRun: false,
     preOpenLeadMs: 3_000,
     toggleIntervalMs: 150,
-    clockSampleCount: 9,
     ...overrides,
   };
 }

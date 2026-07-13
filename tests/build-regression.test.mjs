@@ -28,12 +28,13 @@ test("sidepanel exposes an explicit entry mode instead of pagePrepared", async (
   assert.doesNotMatch(html, /id="page-prepared"/);
 });
 
-test("advanced settings explain their effect and allow fifty millisecond lead steps", async () => {
+test("advanced settings expose only effective timing controls", async () => {
   const html = await readFile("dist/sidepanel/sidepanel.html", "utf8");
   assert.match(html, /id="pre-open-lead"[^>]*step="50"/);
   assert.match(html, /오픈 전에 날짜 갱신 루프/);
   assert.match(html, /목표 날짜 재클릭 주기/);
-  assert.match(html, /서버 시계 측정 횟수/);
+  assert.doesNotMatch(html, /id="clock-samples"/);
+  assert.doesNotMatch(html, /서버 시계 측정 횟수/);
 });
 
 test("sidepanel includes history and favorites controls", async () => {

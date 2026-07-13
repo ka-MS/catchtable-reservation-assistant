@@ -25,7 +25,6 @@ function job(overrides = {}) {
       dryRun: false,
       preOpenLeadMs: 3_000,
       toggleIntervalMs: 150,
-      clockSampleCount: 9,
     },
     result: null,
     ...overrides,

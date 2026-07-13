@@ -19,7 +19,6 @@ const config = {
   dryRun: false,
   preOpenLeadMs: 3000,
   toggleIntervalMs: 150,
-  clockSampleCount: 9,
 };
 
 function descriptor(runId, startedAt) {
