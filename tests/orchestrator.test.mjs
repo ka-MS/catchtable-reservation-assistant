@@ -159,10 +159,43 @@ test("clock metrics transition from bootstrap to armed and forward the offset vi
   assert.deepEqual(metrics.map((m) => m.data.clockPhase), ["bootstrap", "armed"]);
   for (const metric of metrics) {
     // clockOffsetMs is the legacy field name the sidepanel countdown/badge and
-    // event-format log line still read — kept for continuity, not renamed.
+    // event-format log line still read. It is the WALL-clock delta
+    // (serverClock − Date.now()), not the epoch-scale offsetCenterMs. In this
+    // fake wall == monotonic so both happen to equal 42.
     assert.equal(metric.data.clockOffsetMs, 42);
     assert.equal(metric.data.clockOffsetCenterMs, 42);
   }
+});
+
+test("clockOffsetMs is the small wall-clock delta, not the epoch-scale monotonic offset", async () => {
+  // Regression for a real bug caught in E2E: the sidepanel countdown does
+  // `Date.now() + clockOffsetMs`, so clockOffsetMs must be server−wall (a few
+  // hundred ms), NOT offsetCenterMs (= server−monotonic, an epoch-scale number).
+  // The bug showed "오픈 경과 +20647일" because Date.now() + 1.78e12 overflowed
+  // the countdown. Here wall and monotonic diverge like the real extension
+  // (Date.now() ≈ 1.78e12, performance.now() small).
+  let mono = 50;
+  const WALL_MINUS_MONO = 1_000_000 - 50; // wall = mono + this
+  const rc = fakeReferenceClock({ estimate: { offsetCenterMs: 1_000_300 - 50 } }); // server epoch 1_000_300
+  const events = [];
+  const orchestrator = new OpenRunOrchestrator({
+    clock: { now: () => mono + WALL_MINUS_MONO },
+    monotonicClock: { now: () => mono },
+    referenceClock: () => rc.port,
+    calendar: {
+      inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: "2026-07-29" }),
+      clickDate: () => true,
+    },
+    slots: { readAvailableSlots: () => [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }], clickSlot: () => true },
+    postSlot: { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "x" }) },
+    sleep: async (ms) => { mono += ms; return true; },
+    emit: (event) => events.push(event),
+    runId: () => "run-diverge",
+  });
+  await orchestrator.start(config({ openAtMs: 1_000_500, stopAtMs: 1_002_000, dryRun: true }));
+  const bootstrap = events.find((e) => e.data?.clockPhase === "bootstrap");
+  assert.equal(bootstrap.data.clockOffsetMs, 300);          // server(1_000_300) − wall(1_000_000)
+  assert.equal(bootstrap.data.clockOffsetCenterMs, 1_000_250); // server − monotonic (epoch-scale)
 });
 
 test("clock metrics forward uncertainty, confidence, and cluster support", async () => {

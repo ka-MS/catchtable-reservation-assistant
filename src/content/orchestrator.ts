@@ -283,7 +283,7 @@ class RunSession {
     this.applyReferenceClockEstimate(estimate);
     this.emit("metric",
       estimate.source === "FALLBACK" ? "서버 시계 측정 실패로 로컬 시계를 사용합니다." : "서버 시계 보정을 완료했습니다.",
-      referenceClockMetricData(estimate, "bootstrap"));
+      referenceClockMetricData(estimate, "bootstrap", this.wallOffsetMs()));
     // 대기 시간(prepareEntry~waitForOpen)을 관통해 계속 관측한다 — 부트스트랩은
     // 단일 표본이라 거친 앵커일 뿐이고, armLead 결정 시점까지 confidence가
     // 자연히 개선된다(20-design §3). waitForOpen()이 stop()으로 종료시킨다.
@@ -297,12 +297,25 @@ class RunSession {
   }
 
   private applyReferenceClockEstimate(estimate: ReferenceClockEstimate): void {
-    this.offsetMs = estimate.offsetCenterMs;
+    // FALLBACK(표본 전무)은 offsetCenterMs=0이라 monotonic+0으로 앵커하면
+    // serverClock이 monotonic(작은 값)으로 고정돼 이후 모든 서버시각 계산이
+    // 깨진다. 이 경우 "serverClock ≈ 로컬 wall"이 되도록 wall−monotonic을 쓴다.
+    const offset = estimate.source === "FALLBACK"
+      ? this.deps.clock.now() - this.deps.monotonicClock.now()
+      : estimate.offsetCenterMs;
+    this.offsetMs = offset;
     // ⚠️ t0/t1이 monotonic epoch이므로 재앵커도 monotonicClock 기준이어야 한다
     // (wall clock인 deps.clock을 쓰면 서로 다른 시간 공간을 더하는 버그가 된다).
-    this.serverClock.anchor(this.deps.monotonicClock.now() + this.offsetMs);
+    this.serverClock.anchor(this.deps.monotonicClock.now() + offset);
     this.serverClockReady = true;
     this.latestAppliedEstimate = estimate;
+  }
+
+  /** 사이드패널 카운트다운·배지가 읽는 wall-clock 델타(server − Date.now()).
+   * offsetCenterMs(= server − monotonic, epoch 스케일)를 그대로 노출하면
+   * `Date.now() + offset`이 폭주한다(E2E에서 "+20647일"로 관측). */
+  private wallOffsetMs(): number {
+    return this.serverClock.now() - this.deps.clock.now();
   }
 
   private async prepareEntry(): Promise<RunResult | null> {
@@ -415,7 +428,7 @@ class RunSession {
     const estimate = this.referenceClockPort?.latest ?? this.latestAppliedEstimate ?? estimateReferenceClock([]);
     const armLeadMs = computeArmLeadMs(config.preOpenLeadMs, estimate);
     this.emit("metric", "예약 오픈 직전 진입 시점을 결정했습니다.",
-      referenceClockMetricData(estimate, "armed", armLeadMs));
+      referenceClockMetricData(estimate, "armed", this.wallOffsetMs(), armLeadMs));
     const waitResult = await waitUntil(config.openAtMs - armLeadMs, {
       clock: serverClock,
       stopAtMs: config.stopAtMs,
@@ -730,13 +743,16 @@ function computeArmLeadMs(preOpenLeadMs: number, estimate: ReferenceClockEstimat
 function referenceClockMetricData(
   estimate: ReferenceClockEstimate,
   phase: "bootstrap" | "armed",
+  wallOffsetMs: number,
   armLeadMs?: number,
 ): NonNullable<RunEvent["data"]> {
   return {
     clockPhase: phase,
     // clockOffsetMs: 사이드패널 카운트다운·오프셋 배지·실행 로그 줄 렌더러가
-    // 읽는 하위호환 필드명(worklog 08). 값은 offsetCenterMs와 동일.
-    clockOffsetMs: estimate.offsetCenterMs,
+    // 읽는 하위호환 필드명(worklog 08). 반드시 wall-clock 델타(server − Date.now())
+    // 여야 한다 — offsetCenterMs(server − monotonic, epoch 스케일)를 넣으면
+    // 카운트다운 `Date.now() + offset`이 폭주한다.
+    clockOffsetMs: Math.round(wallOffsetMs),
     clockOffsetCenterMs: estimate.offsetCenterMs,
     clockOffsetLowerMs: estimate.offsetLowerMs,
     clockOffsetUpperMs: estimate.offsetUpperMs,
