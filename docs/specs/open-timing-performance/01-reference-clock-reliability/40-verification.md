@@ -30,9 +30,22 @@ git status --short --branch
 
 ## 결과
 
-- `npm run check` 통과 — 단위·fixture 테스트 212개, `dist`·모듈 독립성 검증 통과
-- 브랜치 `codex/tier1-reference-clock`, main 대비 커밋 10개(estimator·히스테리시스·샘플러·오케스트레이터 통합·죽은 코드 제거·3-프레임 텔레메트리·버그 수정 2건)
-- **미완료: 실오픈 E2E 검증.** `chrome-devtools` MCP가 이 세션에서 연결 해제되어 확장 재로드·라이브 실런을 수행하지 못했다. 다음 세션(또는 사용자 직접 실런)에서:
-  1. 확장 dist 재로드 → 연습(dry-run) 실런으로 3-프레임 로그·estimate 필드가 IndexedDB에 정상 기록되는지 확인.
-  2. 실제 오픈 시각에 돌려 오픈 전 불필요 토글이 사라졌는지, estimate가 스큐를 물지 않고 HIGH 또는 충분한 uncertainty로 정직하게 내리는지, openDelta가 (더 이상 오염되지 않은) 진짜 프레임과 정합하는지 확인.
-  3. 확인되면 site-behavior §8에 관측된 스큐 폭·빈도를 갱신하고 이 문서를 "E2E 통과"로 업데이트.
+- `npm run check` 통과 — 단위·fixture 테스트 213개, `dist`·모듈 독립성 검증 통과
+- 브랜치 `codex/tier1-reference-clock`, main 대비 커밋 다수(estimator·히스테리시스·샘플러·오케스트레이터 통합·죽은 코드 제거·3-프레임 텔레메트리·버그 수정 4건)
+
+## E2E (dry-run) — 통과 (2026-07-13, 이시즈에)
+
+DevTools MCP로 확장 dist 재로드 → 안전 점검(dry-run) 실런 수행. IndexedDB(`catchtable-reserve-telemetry`) 판독:
+
+- **bootstrap→armed 전이 정상**: armLead 790ms 계산, rolling 샘플러가 ~60초 대기 중 confidence를 LOW(표본 2)→MEDIUM(감지 시점)으로 개선.
+- **3-프레임 텔레메트리 기록**: `monoFromRunStartMs`(57418, 실경과 ~57s와 일치), `clockConfidence`(MEDIUM), `arrivalToDetectMs`(120).
+- **dry-run 완결**: DRY_RUN_COMPLETED, 18이벤트, 슬롯 클릭 없음.
+
+### E2E에서 잡은 버그 2건 (수정 완료)
+
+1. **카운트다운 "오픈 경과 +20647일" (표시 회귀).** step 4에서 `clockOffsetMs`를 `offsetCenterMs`(= server−monotonic, epoch 스케일 ~1.78e12)로 별칭했는데, 사이드패널 카운트다운은 `Date.now() + clockOffsetMs`를 계산하므로 폭주했다. `clockOffsetMs`를 wall-clock 델타(server−Date.now(), ~수백 ms)로 되돌리고 `clockOffsetCenterMs`를 진단용으로 분리(`363a32e`). 재검증에서 `clockOffsetMs`=868ms, 카운트다운 "오픈까지 8:55:27"로 정상 확인.
+2. **FALLBACK 앵커 붕괴 (잠재).** FALLBACK 추정치는 `offsetCenterMs=0`이라 `monotonic+0`으로 앵커하면 serverClock이 작은 monotonic 값으로 고정돼 이후 모든 서버시각이 깨진다. FALLBACK일 때 `wall−monotonic`으로 앵커해 serverClock이 로컬 wall로 폴백하게 수정.
+
+### 미완료: 실제 오픈런 스큐 검증
+
+dry-run은 이미 열린 매장(이시즈에) 대상이라 서버 풀 스큐를 자극하지 못한다. **실제 미개장 매장의 오픈 시각** 실런에서 (a) 오픈 전 불필요 토글 소멸, (b) estimate가 스큐를 물지 않고 정직한 confidence/uncertainty로 내리는지, (c) openDelta가 진짜 프레임과 정합하는지 확인이 남아 있다. 사용자의 예약 잡(여러 개 예정) 중 하나로 자연 관측 가능. 확인되면 site-behavior §8에 스큐 폭·빈도 갱신.

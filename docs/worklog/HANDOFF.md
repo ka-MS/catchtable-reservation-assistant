@@ -17,17 +17,17 @@
   1. `stop()`이 in-flight fetch를 abort하면 unhandled rejection이던 것
   2. FALLBACK 추정치의 `uncertaintyMs`가 0이라 "모른다"가 armLead에 반영 안 되던 것
 
-## 다음 작업 — 6단계 E2E, 여기서 시작
+## 상태 — Tier 1 코드 완료 + dry-run E2E 통과, main 병합 대기
 
-**`chrome-devtools` MCP가 이번 세션에서 연결 해제되어 E2E를 수행하지 못했다.** 재연결되면(또는 사용자가 직접):
+dry-run E2E 통과(40-verification): 확장 재로드 후 실런에서 bootstrap→armed·rolling 개선·3-프레임 텔레메트리 정상 기록, dry-run 완결. **E2E에서 표시 버그 2건 추가 발견·수정**:
+- `clockOffsetMs` epoch 스케일 → 카운트다운 "+20647일"(step4 회귀). wall 델타로 수정, 재검증 정상(`363a32e`).
+- FALLBACK 앵커 붕괴(잠재) 동반 수정.
 
-1. `use-chrome-devtools` 스킬로 확장 dist 재로드.
-2. 안전 점검(dry-run) 실런 1회 → IndexedDB에서 3-프레임 필드(`monoFromRunStartMs`·`clockConfidence`·`clockUncertaintyMs`·`clockArmLeadMs` 등) 정상 기록 확인.
-3. **실제 오픈 시각**에 실런 → 오픈 전 불필요 토글이 사라졌는지, 스큐가 있어도 estimate가 오염되지 않고 HIGH 또는 정직한 LOW+큰 uncertainty로 내리는지, openDelta가 이제 신뢰 가능한 프레임인지 확인.
-4. 통과하면 `01-reference-clock-reliability/40-verification.md`를 "E2E 통과"로 갱신, site-behavior §8에 관측된 스큐 폭·빈도 기록.
-5. main 병합.
+## 다음 작업
 
-이후: Tier 2(`02-availability-hot-path` — MAIN-world body 감지, claim guard), Tier 3(`03-runtime-resilience` — 탭 focus, SW reconcile, 실패 주입 테스트). 둘 다 현재 개요 스텁만 있음, Tier 1 실오픈 검증 후 착수.
+1. **main 병합** — Tier 1 코드+dry-run E2E 완료. 213 테스트 green.
+2. **실제 오픈런 스큐 검증(자연 관측)** — dry-run은 이미 열린 매장이라 풀 스큐를 자극 못 함. 사용자 예약 잡(cho__kwang 7/14 00:00 등 다수 예정) 중 하나가 실행되면 IndexedDB에서 (a)오픈 전 토글 소멸 (b)estimate 스큐 미오염 (c)openDelta 프레임 정합 확인. 통과 시 site-behavior §8 스큐 폭·빈도 갱신.
+3. Tier 2(`02-availability-hot-path`), Tier 3(`03-runtime-resilience`) — 개요 스텁만 있음.
 
 ## 검증
 
