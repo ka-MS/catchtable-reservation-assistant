@@ -2,8 +2,10 @@ import {
   AVAILABILITY_SHADOW_EVENT_TYPE,
   AVAILABILITY_SHADOW_MAIN_SOURCE,
   classifyAvailabilityResponse,
+  normalizeReservationDate,
   type AvailabilityRequestIdentity,
   type AvailabilityShadowEvent,
+  type AvailabilityTargetCycleMarker,
 } from "../shared/availability-shadow.js";
 
 interface XhrLike {
@@ -37,12 +39,19 @@ export interface ProbeActivation {
 
 export interface XhrAvailabilityProbe {
   activate(activation: ProbeActivation): void;
+  markTargetCycle(marker: AvailabilityTargetCycleMarker): void;
   deactivate(): void;
 }
 
 interface RequestMetadata extends AvailabilityRequestIdentity {
   method: string;
   url: string;
+}
+
+interface RequestObservation {
+  identity: AvailabilityRequestIdentity;
+  requestSentMonoMs: number;
+  marker: AvailabilityTargetCycleMarker | null;
 }
 
 function isTimeSlotsRequest(method: string, url: string): boolean {
@@ -67,9 +76,27 @@ export function createXhrAvailabilityProbe(host: ProbeHost): XhrAvailabilityProb
   let expiryTimer: unknown = null;
   let sequence = 0;
   let installed = false;
+  let targetMarkers: AvailabilityTargetCycleMarker[] = [];
+  const pending = new Set<RequestObservation>();
+
+  const matchingMarker = (
+    identity: AvailabilityRequestIdentity,
+    requestSentMonoMs: number,
+  ): AvailabilityTargetCycleMarker | null => {
+    const requestDate = normalizeReservationDate(identity.requestDate);
+    if (requestDate === null || identity.personCount === null) return null;
+    return targetMarkers
+      .filter((marker) => marker.targetDate === requestDate
+        && marker.personCount === identity.personCount
+        && requestSentMonoMs >= marker.targetClickMonoMs - 5
+        && requestSentMonoMs <= marker.targetClickMonoMs + 700)
+      .at(-1) ?? null;
+  };
 
   const deactivate = (): void => {
     activation = null;
+    targetMarkers = [];
+    pending.clear();
     if (expiryTimer !== null) host.clearTimer(expiryTimer);
     expiryTimer = null;
     if (!installed) return;
@@ -109,7 +136,13 @@ export function createXhrAvailabilityProbe(host: ProbeHost): XhrAvailabilityProb
         const requestSentMonoMs = host.monotonicNow();
         const channelId = currentActivation.channelId;
         const identity = { requestDate: request.requestDate, personCount: request.personCount };
-        this.addEventListener("loadend", () => {
+        const observation: RequestObservation = {
+          identity,
+          requestSentMonoMs,
+          marker: matchingMarker(identity, requestSentMonoMs),
+        };
+        pending.add(observation);
+        const onLoadEnd = () => {
           try {
             const responseCompletedMonoMs = host.monotonicNow();
             const successful = this.status >= 200 && this.status < 300;
@@ -124,9 +157,11 @@ export function createXhrAvailabilityProbe(host: ProbeHost): XhrAvailabilityProb
             host.postMessage({
               source: AVAILABILITY_SHADOW_MAIN_SOURCE,
               type: AVAILABILITY_SHADOW_EVENT_TYPE,
-              schemaVersion: 1,
+              schemaVersion: 2,
               channelId,
               sequence: requestSequence,
+              cycle: observation.marker?.cycle ?? null,
+              targetClickMonoMs: observation.marker?.targetClickMonoMs ?? null,
               requestDate: identity.requestDate,
               personCount: identity.personCount,
               classification: result.classification,
@@ -139,8 +174,16 @@ export function createXhrAvailabilityProbe(host: ProbeHost): XhrAvailabilityProb
             });
           } catch {
             // Shadow 관측 실패는 사이트 XHR 완료 경로로 전파하지 않는다.
+          } finally {
+            pending.delete(observation);
           }
-        }, { once: true });
+        };
+        try {
+          this.addEventListener("loadend", onLoadEnd, { once: true });
+        } catch (error) {
+          pending.delete(observation);
+          throw error;
+        }
       }
     } catch {
       // Observer 설치 실패 시에도 아래 원본 send는 반드시 호출한다.
@@ -161,6 +204,8 @@ export function createXhrAvailabilityProbe(host: ProbeHost): XhrAvailabilityProb
       if (expiryTimer !== null) host.clearTimer(expiryTimer);
       activation = next;
       sequence = 0;
+      targetMarkers = [];
+      pending.clear();
       install();
       const expire = (): void => {
         const remaining = next.expiresAtEpochMs - host.epochNow();
@@ -171,6 +216,16 @@ export function createXhrAvailabilityProbe(host: ProbeHost): XhrAvailabilityProb
         expiryTimer = host.setTimer(expire, Math.min(remaining, MAX_TIMER_DELAY_MS));
       };
       expire();
+    },
+    markTargetCycle(marker): void {
+      if (!activation) return;
+      targetMarkers.push({ ...marker });
+      if (targetMarkers.length > 16) targetMarkers.splice(0, targetMarkers.length - 16);
+      for (const observation of pending) {
+        if (observation.marker === null) {
+          observation.marker = matchingMarker(observation.identity, observation.requestSentMonoMs);
+        }
+      }
     },
     deactivate,
   };

@@ -5,7 +5,7 @@ import { installProbeMessageBridge } from "../dist/main-world/probe-message-brid
 test("MAIN message bridge can be disposed and reinstalled without duplicate activation", () => {
   const windowObject = {};
   const listeners = new Set();
-  const calls = { activated: [], deactivated: 0 };
+  const calls = { activated: [], marked: [], deactivated: 0 };
   const host = {
     windowObject,
     addMessageListener: (listener) => listeners.add(listener),
@@ -13,6 +13,7 @@ test("MAIN message bridge can be disposed and reinstalled without duplicate acti
   };
   const probe = {
     activate: (activation) => calls.activated.push(activation),
+    markTargetCycle: (marker) => calls.marked.push(marker),
     deactivate: () => { calls.deactivated += 1; },
   };
   const dispatch = (data) => {
@@ -31,6 +32,18 @@ test("MAIN message bridge can be disposed and reinstalled without duplicate acti
   const disposeSecond = installProbeMessageBridge(host, probe);
   dispatch(activation);
   assert.equal(calls.activated.length, 1);
+  dispatch({
+    source: "ct-reserve-isolated",
+    type: "AVAILABILITY_SHADOW_TARGET_CYCLE",
+    schemaVersion: 1,
+    channelId: "channel-1",
+    cycle: 5,
+    targetDate: "2026-08-01",
+    personCount: 2,
+    targetClickMonoMs: 100,
+  });
+  assert.equal(calls.marked.length, 1);
+  assert.equal(calls.marked[0].cycle, 5);
   dispatch({ ...activation, type: "AVAILABILITY_SHADOW_DEACTIVATE" });
   assert.equal(calls.deactivated, 1);
   disposeSecond();

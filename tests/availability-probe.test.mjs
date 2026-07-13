@@ -62,6 +62,7 @@ test("XHR probe observes only time-slot requests and preserves original call res
   const originalSend = FakeXhr.prototype.send;
   const probe = createXhrAvailabilityProbe(host);
   probe.activate({ channelId: "run-channel", expiresAtEpochMs: 2_000 });
+  probe.markTargetCycle({ cycle: 4, targetDate: "2026-08-01", personCount: 2, targetClickMonoMs: 10 });
 
   const unrelated = new FakeXhr();
   unrelated.open("GET", "https://example.com/other");
@@ -80,12 +81,30 @@ test("XHR probe observes only time-slot requests and preserves original call res
   assert.equal(posted[0].requestDate, "260801");
   assert.equal(posted[0].personCount, 2);
   assert.equal(posted[0].responseStatus, 200);
+  assert.equal(posted[0].cycle, 4);
+  assert.equal(posted[0].targetClickMonoMs, 10);
   assert.equal(JSON.stringify(posted[0]).includes("encrypted-body"), false);
   assert.equal(JSON.stringify(posted[0]).includes("shopRef"), false);
 
   probe.deactivate();
   assert.equal(FakeXhr.prototype.open, originalOpen);
   assert.equal(FakeXhr.prototype.send, originalSend);
+});
+
+test("a marker arriving after send retroactively binds an in-flight request", () => {
+  const { host, posted } = harness();
+  const probe = createXhrAvailabilityProbe(host);
+  probe.activate({ channelId: "run-channel", expiresAtEpochMs: 2_000 });
+  const xhr = new FakeXhr();
+  xhr.open("POST", "https://ct-api.catchtable.co.kr/api/reservation/v1/dining/time-slots");
+  xhr.setRequestHeader("yymmdd", "260801");
+  xhr.setRequestHeader("personcount", "2");
+  xhr.send("opaque");
+  probe.markTargetCycle({ cycle: 9, targetDate: "2026-08-01", personCount: 2, targetClickMonoMs: 10 });
+  xhr.finish(JSON.stringify({ data: { inputDate: "260801", personCount: 2, timeSlotMap: {} } }));
+  assert.equal(posted[0].cycle, 9);
+  assert.equal(posted[0].targetClickMonoMs, 10);
+  probe.deactivate();
 });
 
 test("aborted or failed XHR is irrelevant rather than a malformed payload", () => {

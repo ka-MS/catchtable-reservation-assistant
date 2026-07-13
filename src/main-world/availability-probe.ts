@@ -7,7 +7,7 @@ interface ProbeRegistry {
   implementationVersion?: number;
 }
 
-const PROBE_IMPLEMENTATION_VERSION = 2;
+const PROBE_IMPLEMENTATION_VERSION = 3;
 
 function isProbeRegistry(value: XhrAvailabilityProbe | ProbeRegistry | undefined): value is ProbeRegistry {
   return value !== undefined && "probe" in value;

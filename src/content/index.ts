@@ -6,6 +6,7 @@ import { PersonAdapter } from "./adapter/person.js";
 import { SlotAdapter } from "./adapter/slots.js";
 import { PostSlotAdapter } from "./adapter/post-slot.js";
 import { createSlotRefreshWatch } from "./adapter/slot-refresh-watch.js";
+import { createSlotDomMutationWatch } from "./adapter/slot-dom-mutation-watch.js";
 import { captureStageSnapshot } from "./adapter/snapshot.js";
 import { createAvailabilityShadowBridge } from "./availability-shadow-bridge.js";
 import { createReferenceClockSampler } from "./reference-clock-sampler.js";
@@ -40,6 +41,7 @@ if (!window.__ctReserveInjected) {
     slots: new SlotAdapter(document),
     postSlot: new PostSlotAdapter(document),
     slotWatch: createSlotRefreshWatch(),
+    slotDomMutationWatch: createSlotDomMutationWatch(document),
     availabilityShadow,
     sleep: abortableSleep,
     emit: (event) => {

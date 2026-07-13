@@ -6,9 +6,11 @@ function validEvent(channelId = "channel-1") {
   return {
     source: "ct-reserve-main",
     type: "AVAILABILITY_SHADOW_EVENT",
-    schemaVersion: 1,
+    schemaVersion: 2,
     channelId,
     sequence: 1,
+    cycle: null,
+    targetClickMonoMs: null,
     requestDate: "260801",
     personCount: 2,
     classification: "EMPTY",
@@ -37,6 +39,8 @@ test("bridge validates source and channel, timestamps receipt, and deactivates",
   bridge.configure("channel-1");
   bridge.start(5_000, (event) => events.push(event));
   assert.equal(posted[0].type, "AVAILABILITY_SHADOW_ACTIVATE");
+  bridge.markTargetCycle({ cycle: 3, targetDate: "2026-08-01", personCount: 2, targetClickMonoMs: 50 });
+  assert.equal(posted[1].type, "AVAILABILITY_SHADOW_TARGET_CYCLE");
 
   listener({ source: {}, data: validEvent() });
   listener({ source: windowObject, data: validEvent("wrong") });

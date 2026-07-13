@@ -2,6 +2,8 @@ import {
   AVAILABILITY_SHADOW_ACTIVATE_TYPE,
   AVAILABILITY_SHADOW_DEACTIVATE_TYPE,
   AVAILABILITY_SHADOW_ISOLATED_SOURCE,
+  AVAILABILITY_SHADOW_TARGET_CYCLE_TYPE,
+  isAvailabilityTargetCycleMarker,
 } from "../shared/availability-shadow.js";
 import type { XhrAvailabilityProbe } from "./xhr-probe.js";
 
@@ -30,6 +32,12 @@ export function installProbeMessageBridge(host: ProbeMessageHost, probe: XhrAvai
       && Number.isFinite(data.expiresAtEpochMs)) {
       activeChannel = data.channelId;
       probe.activate({ channelId: data.channelId, expiresAtEpochMs: data.expiresAtEpochMs });
+      return;
+    }
+    if (data.type === AVAILABILITY_SHADOW_TARGET_CYCLE_TYPE
+      && data.channelId === activeChannel
+      && isAvailabilityTargetCycleMarker(data)) {
+      probe.markTargetCycle(data);
       return;
     }
     if (data.type === AVAILABILITY_SHADOW_DEACTIVATE_TYPE && data.channelId === activeChannel) {
