@@ -2,6 +2,36 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { OpenRunOrchestrator } from "../dist/content/orchestrator.js";
 
+// Tier 1 fake for Dependencies.referenceClock. Defaults to a zero-uncertainty,
+// zero-RTT HIGH-confidence estimate so armLeadMs collapses to config.preOpenLeadMs
+// exactly (see 20-design.md §4) — this is what keeps pre-existing toggle-grid
+// timing assertions passing unmodified.
+function fakeReferenceClock({ estimate = {}, bootstrapFails = false } = {}) {
+  const build = (overrides) => ({
+    offsetLowerMs: 0, offsetCenterMs: 0, offsetUpperMs: 0,
+    uncertaintyMs: 0, confidence: "HIGH",
+    dominantClusterSupport: 1, competingClusterSupport: 0, clusterSeparationMs: -1,
+    medianRttMs: 0, p95RttMs: 0, sampleCount: 1, observationSpanMs: 0,
+    source: "APP_HEAD_HTTP_DATE", updatedAtMonoMs: 0,
+    ...overrides,
+  });
+  let latest = bootstrapFails ? null : build(estimate);
+  let onEstimate = null;
+  const calls = { started: 0, stopped: 0 };
+  const port = {
+    get latest() { return latest; },
+    sampleOnce: async () => (bootstrapFails ? null : { t0: 0, t1: 0, serverDateMs: 0, rttMs: 0, lowerMs: 0, upperMs: 0, fromCache: false }),
+    ingest: () => { latest = build(estimate); return latest; },
+    start: (cb) => { calls.started += 1; onEstimate = cb; return new Promise(() => {}); },
+    stop: () => { calls.stopped += 1; },
+  };
+  return {
+    port,
+    calls,
+    fire: (overrides) => { latest = build(overrides); onEstimate?.(latest); },
+  };
+}
+
 function config(overrides = {}) {
   return {
     targetUrl: "https://app.catchtable.co.kr/ct/shop/kea",
@@ -31,7 +61,8 @@ function harness({
   prepareTarget = () => ({ status: "ready", message: "목표 날짜가 준비됐습니다." }),
   postSlot = { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "unused" }) },
   onCalendarInspect = () => undefined,
-  syncEstimate = {},
+  referenceEstimate = {},
+  bootstrapFails = false,
   readSlots = null,
   captureSnapshot = () => ({
     urlKind: "shop", headings: [], buttons: ["확인"], disabledButtons: [false],
@@ -82,20 +113,11 @@ function harness({
       return clickResult;
     },
   };
+  const reference = fakeReferenceClock({ estimate: referenceEstimate, bootstrapFails });
   const orchestrator = new OpenRunOrchestrator({
     clock: { now: () => now },
     monotonicClock: { now: () => monotonicNow },
-    syncClock: async () => ({
-      offsetMs: 0,
-      sampleCount: 3,
-      spreadMs: 2,
-      fallback: false,
-      method: "boundary",
-      precisionMs: 20,
-      sampleDetail: null,
-      collectedSamples: 3,
-      ...syncEstimate,
-    }),
+    referenceClock: () => reference.port,
     calendar,
     entry,
     person,
@@ -122,36 +144,63 @@ function harness({
     traces,
     slotWatchCalls,
     fireArrival: () => arrivalCallback?.(),
+    referenceClockCalls: reference.calls,
+    fireReferenceEstimate: reference.fire,
     get slotClicks() { return slotClicks; },
     get now() { return now; },
     jumpWall(ms) { now += ms; },
   };
 }
 
-test("clock metrics report the raw collected sample count alongside the consensus count", async () => {
-  const h = harness({ syncEstimate: { sampleCount: 5, collectedSamples: 9 } });
-  await h.orchestrator.start(config());
-  const metric = h.events.find((event) => typeof event.data?.clockPhase === "string");
-  assert.equal(metric.data.clockSamples, 5);
-  assert.equal(metric.data.clockCollectedSamples, 9);
-});
-
-test("clock metrics forward the per-sample detail when the estimate provides one", async () => {
-  const h = harness({ syncEstimate: { sampleDetail: "o1490 l20 d0 | o2390 l20 d1000" } });
+test("clock metrics transition from bootstrap to armed and forward the offset via the legacy field", async () => {
+  const h = harness({ referenceEstimate: { offsetCenterMs: 42 } });
   await h.orchestrator.start(config());
   const metrics = h.events.filter((event) => typeof event.data?.clockPhase === "string");
-  assert.ok(metrics.length >= 1);
+  assert.deepEqual(metrics.map((m) => m.data.clockPhase), ["bootstrap", "armed"]);
   for (const metric of metrics) {
-    assert.equal(metric.data.clockSampleDetail, "o1490 l20 d0 | o2390 l20 d1000");
+    // clockOffsetMs is the legacy field name the sidepanel countdown/badge and
+    // event-format log line still read — kept for continuity, not renamed.
+    assert.equal(metric.data.clockOffsetMs, 42);
+    assert.equal(metric.data.clockOffsetCenterMs, 42);
   }
 });
 
-test("clock metrics omit the sample detail when the estimate has none", async () => {
-  const h = harness();
+test("clock metrics forward uncertainty, confidence, and cluster support", async () => {
+  const h = harness({
+    referenceEstimate: {
+      uncertaintyMs: 780, confidence: "LOW",
+      dominantClusterSupport: 3, competingClusterSupport: 2, clusterSeparationMs: 1000,
+      medianRttMs: 95, p95RttMs: 175, sampleCount: 5, observationSpanMs: 6200,
+    },
+  });
   await h.orchestrator.start(config());
   const metric = h.events.find((event) => typeof event.data?.clockPhase === "string");
-  assert.ok(metric);
-  assert.equal("clockSampleDetail" in metric.data, false);
+  assert.equal(metric.data.clockUncertaintyMs, 780);
+  assert.equal(metric.data.clockConfidence, "LOW");
+  assert.equal(metric.data.clockDominantSupport, 3);
+  assert.equal(metric.data.clockCompetingSupport, 2);
+  assert.equal(metric.data.clockClusterSeparationMs, 1000);
+  assert.equal(metric.data.clockMedianRttMs, 95);
+  assert.equal(metric.data.clockP95RttMs, 175);
+  assert.equal(metric.data.clockSampleCount, 5);
+  assert.equal(metric.data.clockObservationSpanMs, 6200);
+  assert.equal(metric.data.clockSource, "APP_HEAD_HTTP_DATE");
+});
+
+test("a failed bootstrap sample falls back honestly instead of pretending a clock reading exists", async () => {
+  const h = harness({ bootstrapFails: true });
+  await h.orchestrator.start(config());
+  const metric = h.events.find((event) => typeof event.data?.clockPhase === "string");
+  assert.equal(metric.data.clockPhase, "bootstrap");
+  assert.equal(metric.data.clockSource, "FALLBACK");
+  assert.match(metric.message, /측정 실패/);
+});
+
+test("the armed metric carries the computed armLead", async () => {
+  const h = harness({ referenceEstimate: { uncertaintyMs: 200, p95RttMs: 50 } });
+  await h.orchestrator.start(config({ preOpenLeadMs: 300 }));
+  const armed = h.events.find((event) => event.data?.clockPhase === "armed");
+  assert.equal(armed.data.clockArmLeadMs, 300 + 200 + 50);
 });
 
 test("slot watch is started once per run and stopped when the run finishes", async () => {
@@ -593,55 +642,31 @@ test("post-slot waiting actions are retried instead of handing off", async () =>
   assert.equal(h.events.some((event) => event.message === "확인 버튼 활성화 대기"), false);
 });
 
-test("long waits resynchronize the server clock shortly before opening", async () => {
-  let now = 0;
-  let syncCalls = 0;
-  const syncTimes = [];
-  let targetClicks = 0;
-  const orchestrator = new OpenRunOrchestrator({
-    clock: { now: () => now },
-    monotonicClock: { now: () => now },
-    syncClock: async () => {
-      syncCalls += 1;
-      syncTimes.push(now);
-      return {
-        offsetMs: syncCalls === 1 ? 25 : 40,
-        sampleCount: 9,
-        spreadMs: 10,
-        fallback: false,
-        method: "boundary",
-        precisionMs: 15,
-      };
+test("the reference clock sampler starts once after bootstrap and stops before the toggle loop", async () => {
+  const h = harness({ slotAfterCycles: 1 });
+  await h.orchestrator.start(config());
+  assert.equal(h.referenceClockCalls.started, 1);
+  assert.equal(h.referenceClockCalls.stopped, 1);
+});
+
+test("a rolling reference-clock update during the wait refreshes the anchor immediately", async () => {
+  // Simulates what the persistent sampler does: fire a fresh estimate mid-run
+  // (here, from the confirmPageReady calendar check, before WAITING_FOR_OPEN)
+  // and confirm the very next emitted event's serverAt reflects the new offset.
+  let fired = false;
+  const h = harness({
+    slotAfterCycles: 1,
+    onCalendarInspect: () => {
+      if (fired) return;
+      fired = true;
+      h.fireReferenceEstimate({ offsetCenterMs: 500 });
     },
-    calendar: {
-      inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: "2026-07-29" }),
-      clickDate: (date) => {
-        if (date === "2026-07-30") targetClicks += 1;
-        return true;
-      },
-    },
-    slots: {
-      readAvailableSlots: () => targetClicks > 0 ? [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }] : [],
-      clickSlot: () => true,
-    },
-    postSlot: { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "unused" }) },
-    sleep: async (ms) => {
-      now += ms;
-      return true;
-    },
-    emit: () => undefined,
-    runId: () => "run-final-sync",
   });
-
-  const result = await orchestrator.start(config({
-    openAtMs: 10_000,
-    stopAtMs: 12_000,
-    dryRun: true,
-  }));
-
+  const result = await h.orchestrator.start(config());
   assert.equal(result.state, "DRY_RUN_COMPLETED");
-  assert.equal(syncCalls, 2);
-  assert.deepEqual(syncTimes, [0, 4_975]);
+  const waiting = h.events.find((event) => event.data?.state === "WAITING_FOR_OPEN");
+  assert.ok(waiting);
+  assert.equal(waiting.serverAt - waiting.at, 500);
 });
 
 test("monitoring terminates at stop time without slot clicks", async () => {
@@ -660,14 +685,7 @@ test("deadline wins over a slot that appears during target-date settling", async
   const orchestrator = new OpenRunOrchestrator({
     clock: { now: () => now },
     monotonicClock: { now: () => now },
-    syncClock: async () => ({
-      offsetMs: 0,
-      sampleCount: 3,
-      spreadMs: 1,
-      fallback: false,
-      method: "boundary",
-      precisionMs: 20,
-    }),
+    referenceClock: () => fakeReferenceClock({}).port,
     calendar: {
       inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: "2026-07-29" }),
       clickDate: (date) => {
@@ -704,14 +722,7 @@ test("missing adjacent date hands control to the user", async () => {
   h.orchestrator = new OpenRunOrchestrator({
     clock: { now: () => 0 },
     monotonicClock: { now: () => 0 },
-    syncClock: async () => ({
-      offsetMs: 0,
-      sampleCount: 3,
-      spreadMs: 1,
-      fallback: false,
-      method: "boundary",
-      precisionMs: 20,
-    }),
+    referenceClock: () => fakeReferenceClock({}).port,
     calendar: { inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: null }), clickDate: () => false },
     slots: { readAvailableSlots: () => [], clickSlot: () => false },
     postSlot: { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "unused" }) },

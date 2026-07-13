@@ -7,7 +7,7 @@ import { SlotAdapter } from "./adapter/slots.js";
 import { PostSlotAdapter } from "./adapter/post-slot.js";
 import { createSlotRefreshWatch } from "./adapter/slot-refresh-watch.js";
 import { captureStageSnapshot } from "./adapter/snapshot.js";
-import { syncServerClock } from "./clock-sync.js";
+import { createReferenceClockSampler } from "./reference-clock-sampler.js";
 import { OpenRunOrchestrator } from "./orchestrator.js";
 import { BatchTraceProcessor } from "./telemetry/batch-processor.js";
 import { PortTraceTransport } from "./telemetry/port-transport.js";
@@ -30,12 +30,7 @@ if (!window.__ctReserveInjected) {
   const orchestrator = new OpenRunOrchestrator({
     clock,
     monotonicClock,
-    syncClock: (config, signal) => syncServerClock(config.targetUrl, config.clockSampleCount, {
-      clock,
-      monotonicClock,
-      signal,
-      sleep: abortableSleep,
-    }),
+    referenceClock: (config) => createReferenceClockSampler(config.targetUrl, { monotonicClock, sleep: abortableSleep }),
     entry: new EntryAdapter(document),
     calendar: new CalendarAdapter(document),
     person: new PersonAdapter(document),

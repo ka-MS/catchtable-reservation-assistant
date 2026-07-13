@@ -17,6 +17,16 @@ export interface ReferenceClockSamplerOptions {
   bufferSize?: number;
 }
 
+/** 오케스트레이터가 의존하는 narrow port — 런마다 새 인스턴스를 받아야 이전
+ * 런의 누적 표본이 새 런에 섞이지 않는다(Dependencies.referenceClock은 팩토리). */
+export interface ReferenceClockPort {
+  readonly latest: ReferenceClockEstimate | null;
+  sampleOnce(signal: AbortSignal): Promise<ReferenceClockSample | null>;
+  ingest(sample: ReferenceClockSample): ReferenceClockEstimate;
+  start(onEstimate: (estimate: ReferenceClockEstimate) => void): Promise<void>;
+  stop(): void;
+}
+
 const DEFAULT_PERIOD_MS = 1_750;
 const DEFAULT_BUFFER_SIZE = 64;
 
@@ -25,7 +35,7 @@ const DEFAULT_BUFFER_SIZE = 64;
  * estimate를 재계산하는 rolling 샘플러. 버스트(좁은 시간 창)와 달리 시간 분산
  * 표본이라 일시적 스큐 몰림에 덜 취약하다(우산 §1.3, Tier1 10-analysis).
  */
-export class ReferenceClockSampler {
+export class ReferenceClockSampler implements ReferenceClockPort {
   private readonly samples: ReferenceClockSample[] = [];
   private estimate: ReferenceClockEstimate | null = null;
   private controller: AbortController | null = null;
@@ -90,4 +100,16 @@ export class ReferenceClockSampler {
     this.controller?.abort();
     this.controller = null;
   }
+}
+
+/** Dependencies.referenceClock 배선용 팩토리 — 런마다 새 포트 인스턴스를 만든다. */
+export function createReferenceClockSampler(
+  targetUrl: string,
+  dependencies: { monotonicClock: Clock; sleep: Sleep },
+): ReferenceClockPort {
+  return new ReferenceClockSampler({
+    targetUrl,
+    monotonicClock: dependencies.monotonicClock,
+    sleep: dependencies.sleep,
+  });
 }
