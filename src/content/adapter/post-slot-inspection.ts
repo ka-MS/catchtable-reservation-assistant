@@ -1,5 +1,5 @@
 import { fnvHash, normalizedText, safeText, visibleAll } from "./dom.js";
-import { findActiveDialog, findPromoDismissButton, findRequestSheet } from "./dialog.js";
+import { findActiveDialog, findPromoDismissButton, findRequestSheet, findSeatingMenuSheet } from "./dialog.js";
 
 export type PostSlotCertainty = "exact" | "supported" | "unknown";
 
@@ -27,6 +27,7 @@ export type PostSlotInspection = (
   | { kind: "waiting" }
   | { kind: "table_type"; options: string[] }
   | { kind: "menu"; options: string[] }
+  | { kind: "seating_menu"; options: string[] }
   | { kind: "extras" }
   | { kind: "deposit_notice" }
   | { kind: "deposit" }
@@ -125,6 +126,19 @@ function optionLabels(dialog: Element, selector: string): string[] {
     .filter(Boolean);
 }
 
+function seatingMenuOptions(sheet: Element): string[] {
+  return visibleAll(sheet, '[role="checkbox"][aria-label]').map((choice) => {
+    let container = choice.parentElement;
+    while (container && container !== sheet) {
+      const choices = visibleAll(container, '[role="checkbox"][aria-label]');
+      const heading = visibleAll<HTMLElement>(container, 'h1, h2, h3, [role="heading"]').at(0);
+      if (choices.length === 1 && heading) return safeText(heading.textContent);
+      container = container.parentElement;
+    }
+    return safeText(choice.getAttribute("aria-label"));
+  }).filter(Boolean);
+}
+
 function exactInspection(dialog: HTMLElement, value: DialogSnapshot): PostSlotInspection | null {
   const label = normalizedText(value.diagnostics.label);
   const exact = meta(value, "exact", "aria-label-v1", ["exact aria-label"]);
@@ -215,6 +229,15 @@ export function inspectPostSlot(document: Document, hasFormNotice: boolean): Pos
       return {
         kind: "request_notice",
         ...meta(value, "supported", "request-sheet-v1", ["presentation drawer", "request heading", "apply button"]),
+      };
+    }
+    const seatingMenuSheet = findSeatingMenuSheet(document);
+    if (seatingMenuSheet) {
+      const value = snapshot(document, seatingMenuSheet);
+      return {
+        kind: "seating_menu",
+        options: seatingMenuOptions(seatingMenuSheet),
+        ...meta(value, "supported", "seating-menu-sheet-v1", ["presentation drawer", "menu choices", "required menu notice", "confirm button"]),
       };
     }
     if (findPromoDismissButton(document)) return promoInspection(document);

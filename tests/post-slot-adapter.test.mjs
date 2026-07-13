@@ -607,3 +607,61 @@ test("an aria-disabled progress button is never clicked", () => {
   assert.equal(result.status, "waiting");
   assert.equal(nextClicks, 0);
 });
+
+test("seating-menu sheet selects the configured counter card then confirms", () => {
+  const document = documentFor(fixture("post-slot-seating-menu-sheet.html"));
+  const controls = [...document.querySelectorAll('[role="checkbox"]')];
+  controls.forEach((control) => control.addEventListener("click", () => {
+    controls.forEach((item) => item.setAttribute("aria-checked", String(item === control)));
+  }));
+  let confirmClicks = 0;
+  document.querySelector("[data-confirm]").addEventListener("click", () => { confirmClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+
+  let inspection = adapter.inspect();
+  assert.equal(inspection.kind, "seating_menu");
+  assert.equal(inspection.certainty, "supported");
+  assert.equal(inspection.strategy, "seating-menu-sheet-v1");
+  assert.equal(adapter.advance(inspection, { tablePreference: "bar", menuKeyword: "오마카세", personCount: 2 }).status, "acted");
+  assert.equal(controls[0].getAttribute("aria-checked"), "false");
+  assert.equal(controls[1].getAttribute("aria-checked"), "true");
+
+  inspection = adapter.inspect();
+  assert.equal(adapter.advance(inspection, { tablePreference: "bar", menuKeyword: "오마카세", personCount: 2 }).status, "acted");
+  assert.equal(confirmClicks, 1);
+});
+
+test("seating-menu sheet maps hall to table and blocks an unavailable room", () => {
+  const hallDocument = documentFor(fixture("post-slot-seating-menu-sheet.html"));
+  const hallChoice = hallDocument.querySelector('[role="checkbox"]');
+  hallChoice.addEventListener("click", () => hallChoice.setAttribute("aria-checked", "true"));
+  const hall = new PostSlotAdapter(hallDocument);
+  assert.equal(hall.advance(
+    hall.inspect(),
+    { tablePreference: "hall", menuKeyword: "", personCount: 2 },
+  ).status, "acted");
+  assert.equal(hallChoice.getAttribute("aria-checked"), "true");
+
+  const roomDocument = documentFor(fixture("post-slot-seating-menu-sheet.html"));
+  const room = new PostSlotAdapter(roomDocument);
+  assert.equal(room.advance(
+    room.inspect(),
+    { tablePreference: "room", menuKeyword: "", personCount: 2 },
+  ).status, "blocked");
+});
+
+test("generic presentation sheet with a checkbox and confirm is not a seating-menu stage", () => {
+  const document = documentFor(`
+    <div role="presentation">
+      <div>
+        <h3>디너 오마카세</h3>
+        <button role="checkbox" aria-label="디너 오마카세"></button>
+      </div>
+      <p>[필수] 메인 메뉴를 선택해주세요.</p>
+      <button>확인</button>
+    </div>
+  `);
+  const adapter = new PostSlotAdapter(document);
+
+  assert.equal(adapter.inspect().kind, "waiting");
+});

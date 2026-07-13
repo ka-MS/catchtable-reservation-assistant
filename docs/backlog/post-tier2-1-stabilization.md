@@ -298,7 +298,7 @@ URL의 `date=260731`과 사용자 보고 예약일 표현이 일치하지 않으
 | RT-04 | 40/60ms 실측과 선택 확인 개선 | 부분 수용 | Tier 2-2 | 없음 | PENDING | - |
 | RT-05 | XHR probe 운영·진단 격리 결정 | 부분 수용 | Tier 2-2 종료 판정 | Tier 2-2 종료 | PENDING | - |
 | RT-06 | 비스트로 꼬꼬뜨 예약금 안내 `다음` 지원 | 수용 | 정확성·호환성 안정화 | 없음 | DONE | `docs/specs/deposit-notice-next/`, `docs/worklog/2026-07-14-06-rt06-deposit-notice-next.md` |
-| RT-07 | 야키토리묵 신규 후속 단계 조사 | 조사 필요 | 정확성·호환성 안정화 | 없음 | INVESTIGATE | - |
+| RT-07 | 야키토리묵 신규 후속 단계 조사 | 수용 | 정확성·호환성 안정화 | 없음 | DONE | `docs/specs/seating-menu-sheet/`, `docs/worklog/2026-07-14-07-rt07-seating-menu-sheet.md` |
 | RT-08 | 일반 DOM strategy·fixture·drift 대응 | 부분 수용 | Tier 3 | 없음 | DEFERRED | `03-runtime-resilience` 예정 |
 | RT-09 | 장시간·고빈도 운영 안전장치 검토 | 부분 수용·보류 | Tier 3 | 없음 | DEFERRED | `03-runtime-resilience` 예정 |
 | RT-10 | cycle-correlated shadow timing 보강 | 수용 | 현재 기준선 판독과 RT-03 완료 후 | Tier 2-2 구현 진입 | DONE | `docs/specs/availability-cycle-correlation/`, `docs/worklog/2026-07-14-04-rt10-cycle-correlation.md` |
