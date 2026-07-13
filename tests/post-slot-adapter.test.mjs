@@ -300,6 +300,69 @@ test("deposit notice dialog advances with the confirm button", () => {
   assert.equal(prevClicks, 0);
 });
 
+test("exact deposit notice advances with next and never clicks previous", () => {
+  const document = documentFor(fixture("post-slot-deposit-notice-next-exact.html"));
+  let previousClicks = 0;
+  let nextClicks = 0;
+  document.querySelector("[data-previous]").addEventListener("click", () => { previousClicks += 1; });
+  document.querySelector("[data-next]").addEventListener("click", () => { nextClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+
+  const inspection = adapter.inspect();
+  assert.equal(inspection.kind, "deposit_notice");
+  assert.equal(inspection.certainty, "exact");
+  assert.equal(adapter.advance(inspection, { tablePreference: "any", menuKeyword: "" }).status, "acted");
+  assert.equal(nextClicks, 1);
+  assert.equal(previousClicks, 0);
+});
+
+test("supported deposit notice accepts a next progress button", () => {
+  const document = documentFor(fixture("post-slot-deposit-notice-next-supported.html"));
+  let nextClicks = 0;
+  document.querySelector("[data-next]").addEventListener("click", () => { nextClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+
+  const inspection = adapter.inspect();
+  assert.equal(inspection.kind, "deposit_notice");
+  assert.equal(inspection.certainty, "supported");
+  assert.equal(adapter.advance(inspection, { tablePreference: "any", menuKeyword: "" }).status, "acted");
+  assert.equal(nextClicks, 1);
+});
+
+test("an unknown dialog with next is not treated as a deposit notice", () => {
+  const document = documentFor(`
+    <div role="dialog" aria-label="고객 요청 확인">
+      <h2>고객 요청 확인</h2>
+      <button data-next>다음</button>
+    </div>
+  `);
+  let nextClicks = 0;
+  document.querySelector("[data-next]").addEventListener("click", () => { nextClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+
+  const inspection = adapter.inspect();
+  assert.equal(inspection.kind, "unknown");
+  assert.equal(adapter.advance(inspection, { tablePreference: "any", menuKeyword: "" }).status, "blocked");
+  assert.equal(nextClicks, 0);
+});
+
+test("deposit notice next is blocked when a payment choice is present", () => {
+  const document = documentFor(`
+    <div role="dialog" aria-label="예약금 안내">
+      <input type="radio" aria-label="예약금 결제" checked>
+      <button data-next>다음</button>
+    </div>
+  `);
+  let nextClicks = 0;
+  document.querySelector("[data-next]").addEventListener("click", () => { nextClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+
+  const inspection = adapter.inspect();
+  assert.equal(inspection.kind, "deposit_notice");
+  assert.equal(adapter.advance(inspection, { tablePreference: "any", menuKeyword: "" }).status, "blocked");
+  assert.equal(nextClicks, 0);
+});
+
 test("deposit-free flow advances but a paid-only dialog blocks", () => {
   // Live DOM measured 2026-07-10: native radio inputs with stable aria-label values.
   const document = documentFor(`

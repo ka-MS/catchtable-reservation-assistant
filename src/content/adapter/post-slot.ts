@@ -155,7 +155,13 @@ export class PostSlotAdapter {
   }
 
   private advanceDepositNotice(dialog: HTMLElement): PostSlotActionResult {
-    return this.clickProgress(dialog, ["확인"], "예약금 안내를 확인했습니다.");
+    const choices = visibleAll(dialog,
+      '[role="radio"], input[type="radio"], [role="checkbox"], input[type="checkbox"], input[type="number"]',
+    );
+    if (choices.length > 0) {
+      return { status: "blocked", message: "예약금 안내에 선택 항목이 있어 사용자에게 인계합니다." };
+    }
+    return this.clickProgress(dialog, ["확인", "다음"], "예약금 안내를 확인했습니다.");
   }
 
   private advanceDeposit(dialog: HTMLElement): PostSlotActionResult {
