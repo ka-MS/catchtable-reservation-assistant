@@ -4,6 +4,7 @@ const requiredFiles = [
   "dist/manifest.json",
   "dist/background/index.js",
   "dist/content/index.js",
+  "dist/main-world/availability-probe.js",
   "dist/sidepanel/index.js",
   "dist/sidepanel/sidepanel.html",
   "dist/sidepanel/sidepanel.css",
@@ -18,5 +19,7 @@ if ("content_scripts" in manifest) throw new Error("상시 Content Script 주입
 
 const content = await readFile("dist/content/index.js", "utf8");
 if (/^\s*import\s/m.test(content)) throw new Error("Content Script 번들에 import가 남았습니다.");
+const mainProbe = await readFile("dist/main-world/availability-probe.js", "utf8");
+if (/^\s*import\s/m.test(mainProbe)) throw new Error("MAIN world probe 번들에 import가 남았습니다.");
 
 console.log("dist validation passed");

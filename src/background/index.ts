@@ -66,6 +66,20 @@ async function ensureContent(tabId: number): Promise<void> {
   if (!response?.ok) throw new Error("예약 페이지에 실행 코드를 연결할 수 없습니다.");
 }
 
+async function ensureAvailabilityProbe(tabId: number): Promise<boolean> {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      files: ["main-world/availability-probe.js"],
+    });
+    return true;
+  } catch {
+    // Tier 2-1 probe는 관측 전용이다. 주입 실패로 기존 DOM 실행을 막지 않는다.
+    return false;
+  }
+}
+
 async function startRun(config: ReservationConfig): Promise<CommandResponse> {
   const runId = `run-${crypto.randomUUID()}`;
   const validationErrors = validateReservationConfig(config, Date.now());
@@ -133,6 +147,9 @@ async function runOnTab(
     }
     await assertPending();
     await ensureContent(tab.id);
+    const shadowChannelId = await ensureAvailabilityProbe(tab.id)
+      ? `shadow-${crypto.randomUUID()}`
+      : undefined;
     await assertPending();
     await chrome.storage.local.set({
       activeRun: { ...pendingRun, state: "CONFIGURED", updatedAt: Date.now() },
@@ -142,6 +159,7 @@ async function runOnTab(
       type: "START",
       runId: pendingRunId,
       config,
+      ...(shadowChannelId === undefined ? {} : { shadowChannelId }),
       ...(scheduledJobId === undefined ? {} : { scheduledJobId }),
     } satisfies ContentCommand);
     if (response?.ok) return { ok: true };

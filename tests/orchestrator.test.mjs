@@ -64,6 +64,7 @@ function harness({
   referenceEstimate = {},
   bootstrapFails = false,
   readSlots = null,
+  availabilityShadow = null,
   captureSnapshot = () => ({
     urlKind: "shop", headings: [], buttons: ["확인"], disabledButtons: [false],
     disabledButtonCount: 0, dialogLabel: "", dialogTitle: "", textSnippet: "", fingerprint: "ss-test",
@@ -124,6 +125,7 @@ function harness({
     slots,
     postSlot,
     slotWatch,
+    ...(availabilityShadow ? { availabilityShadow } : {}),
     sleep: async (ms, signal) => {
       if (signal.aborted) return false;
       now += ms;
@@ -165,6 +167,49 @@ test("clock metrics transition from bootstrap to armed and forward the offset vi
     assert.equal(metric.data.clockOffsetMs, 42);
     assert.equal(metric.data.clockOffsetCenterMs, 42);
   }
+});
+
+test("availability shadow records body/DOM agreement without changing the slot control result", async () => {
+  const calls = { started: 0, stopped: 0 };
+  const availabilityShadow = {
+    start: (_expiresAt, listener) => {
+      calls.started += 1;
+      listener({
+        source: "ct-reserve-main",
+        type: "AVAILABILITY_SHADOW_EVENT",
+        schemaVersion: 1,
+        channelId: "channel-1",
+        sequence: 2,
+        requestDate: "260730",
+        personCount: 2,
+        classification: "POPULATED",
+        availableMinutes: [1140],
+        responseStatus: 200,
+        requestSentMonoMs: 10,
+        responseCompletedMonoMs: 20,
+        bodyReadCompletedMonoMs: 21,
+        payloadClassifiedMonoMs: 22,
+        bridgeReceivedMonoMs: 23,
+      });
+    },
+    stop: () => { calls.stopped += 1; },
+  };
+  const observed = harness({ availabilityShadow });
+  const baseline = harness();
+
+  const [observedResult, baselineResult] = await Promise.all([
+    observed.orchestrator.start(config({ dryRun: false })),
+    baseline.orchestrator.start(config({ dryRun: false })),
+  ]);
+
+  assert.equal(observedResult.state, baselineResult.state);
+  assert.equal(observed.slotClicks, baseline.slotClicks);
+  assert.equal(calls.started, 1);
+  assert.equal(calls.stopped, 1);
+  const shadow = observed.traces.filter((trace) => trace.code === "AVAILABILITY_SHADOW");
+  assert.deepEqual(shadow.map((trace) => trace.options.attributes.phase), ["body", "dom_compare"]);
+  assert.equal(shadow[1].options.attributes.agreement, true);
+  assert.equal(shadow[1].options.attributes.claimSource, "body");
 });
 
 test("clockOffsetMs is the small wall-clock delta, not the epoch-scale monotonic offset", async () => {

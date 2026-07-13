@@ -98,7 +98,7 @@ export interface ActiveRun {
 
 export type ContentCommand =
   | { type: "PING" }
-  | { type: "START"; runId: string; scheduledJobId?: string; config: ReservationConfig }
+  | { type: "START"; runId: string; scheduledJobId?: string; shadowChannelId?: string; config: ReservationConfig }
   | { type: "STOP" };
 
 export type PanelCommand =
