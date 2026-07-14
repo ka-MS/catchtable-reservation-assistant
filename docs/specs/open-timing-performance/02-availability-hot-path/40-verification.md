@@ -88,3 +88,18 @@ Catchtable 페이지 콘솔에는 error/warn/issue가 없었다. extension page�
 - Tier 2-2 최종 종료
 
 현재 판정은 **fallback 보존형 구현 완료, RT-10M 재측정 대기**다. RT-05는 최종 종료 gate로 유지한다.
+
+## 7. RT-10M 실제 오픈 음성 표본
+
+2026-07-14 양주르 실제 오픈 실행 `run-866b9478-ff60-4429-977b-0ea012eefdaa`에서 target body가 `EMPTY -> POPULATED`로 전환되고 cycle 6, requestSequence 12, `EXACT`로 상관됐다.
+
+| 항목 | 결과 |
+|---|---|
+| 예약 조건 | `2026-09-05`, 2명, 18:30-21:00 |
+| 열린 슬롯 | 11:00, 15:00, 15:30, 17:30 |
+| 후보 일치 | 없음 |
+| 슬롯 클릭 | 0회, 정상 |
+| `NONE/IRRELEVANT` shadow | target wake와 무관한 cycle 없는 응답으로 분류, 제어 미사용 |
+| 최종 달력 상태 변경 | 측정 중 사용자 클릭으로 발생, 판정에서 제외 |
+
+이 표본은 실제 오픈에서 `EXACT POPULATED` 분류와 조건 불일치 시 미클릭 안전성을 확인한다. 다만 설정과 일치하는 슬롯이 없으므로 wake accepted부터 DOM candidate, dispatch, click까지의 지연을 측정할 수 없다. 따라서 RT-10M 성능 게이트와 RT-05 종료 gate는 계속 열어 둔다.
