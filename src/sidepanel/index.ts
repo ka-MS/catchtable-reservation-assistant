@@ -11,6 +11,7 @@ import { jobCardModel } from "./job-card.js";
 import { jobListModel, miniLogModel } from "./job-list-model.js";
 import { SavedConfigsView } from "./saved-configs-view.js";
 import type { TraceEvent, TraceLiveBatch, TraceRunRecord } from "../shared/telemetry/types.js";
+import { traceCsv, traceCsvFilename } from "./telemetry/trace-csv.js";
 import { TraceHistoryView } from "./telemetry/trace-view.js";
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -580,10 +581,33 @@ async function readTraceEvents(runId: string): Promise<TraceEvent[]> {
   return Array.isArray(response.data) ? response.data as TraceEvent[] : [];
 }
 
+async function exportTraceEvents(runId: string): Promise<TraceEvent[]> {
+  const response = await send({ type: "EXPORT_RUN_TRACE", runId });
+  if (!response.ok) throw new Error(response.error ?? "실행 로그를 내보낼 수 없습니다.");
+  return Array.isArray(response.data) ? response.data as TraceEvent[] : [];
+}
+
+function downloadTraceCsv(run: TraceRunRecord, events: TraceEvent[]): void {
+  const url = URL.createObjectURL(new Blob([traceCsv(run, events)], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = traceCsvFilename(run);
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 const traceView = new TraceHistoryView(document, {
   select: (runId) => {
     void readTraceEvents(runId).then((events) => traceView.renderEvents(events)).catch((error) => {
       formError.textContent = error instanceof Error ? error.message : "실행 로그를 읽을 수 없습니다.";
+    });
+  },
+  download: (run) => {
+    void exportTraceEvents(run.runId).then((events) => downloadTraceCsv(run, events)).catch((error) => {
+      formError.textContent = error instanceof Error ? error.message : "실행 로그를 내보낼 수 없습니다.";
     });
   },
   remove: (runId) => {

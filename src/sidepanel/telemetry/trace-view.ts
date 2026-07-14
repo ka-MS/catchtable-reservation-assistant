@@ -2,6 +2,7 @@ import type { TraceEvent, TraceLiveBatch, TraceRunRecord } from "../../shared/te
 
 interface TraceViewActions {
   select(runId: string): void;
+  download(run: TraceRunRecord): void;
   remove(runId: string): void;
 }
 
@@ -114,6 +115,7 @@ function eventItem(document: Document, event: TraceEvent): HTMLLIElement {
 
 export class TraceHistoryView {
   private readonly select: HTMLSelectElement;
+  private readonly download: HTMLButtonElement;
   private readonly remove: HTMLButtonElement;
   private readonly list: HTMLOListElement;
   private readonly count: HTMLElement;
@@ -121,12 +123,17 @@ export class TraceHistoryView {
 
   constructor(private readonly document: Document, actions: TraceViewActions) {
     this.select = byId(document, "trace-run-select");
+    this.download = byId(document, "trace-run-export");
     this.remove = byId(document, "trace-run-delete");
     this.list = byId(document, "trace-event-list");
     this.count = byId(document, "trace-event-count");
     this.select.addEventListener("change", () => {
-      this.syncDeleteState();
+      this.syncActionState();
       if (this.select.value) actions.select(this.select.value);
+    });
+    this.download.addEventListener("click", () => {
+      const selected = this.runs.find((run) => run.runId === this.select.value);
+      if (selected) actions.download(selected);
     });
     this.remove.addEventListener("click", () => {
       if (this.select.value) actions.remove(this.select.value);
@@ -150,7 +157,7 @@ export class TraceHistoryView {
     this.select.replaceChildren(fragment);
     this.select.value = runs.some((run) => run.runId === selected) ? selected : runs[0]?.runId ?? "";
     this.select.disabled = runs.length === 0;
-    this.syncDeleteState();
+    this.syncActionState();
   }
 
   upsertRun(run: TraceRunRecord): void {
@@ -178,7 +185,7 @@ export class TraceHistoryView {
     if (!followLiveRun && previousSelection !== null && previousSelection !== batch.run.runId) return;
     if (previousSelection !== null && previousSelection !== batch.run.runId) this.list.replaceChildren();
     this.select.value = batch.run.runId;
-    this.syncDeleteState();
+    this.syncActionState();
     if (this.list.querySelector(".event-empty")) this.list.replaceChildren();
     const fragment = this.document.createDocumentFragment();
     [...batch.events].reverse().forEach((event) => fragment.append(eventItem(this.document, event)));
@@ -187,8 +194,10 @@ export class TraceHistoryView {
     this.count.textContent = `${this.list.children.length}개`;
   }
 
-  private syncDeleteState(): void {
+  private syncActionState(): void {
     const selected = this.runs.find((run) => run.runId === this.select.value);
-    this.remove.disabled = !selected || selected.finishedAt === null;
+    const disabled = !selected || selected.finishedAt === null;
+    this.download.disabled = disabled;
+    this.remove.disabled = disabled;
   }
 }

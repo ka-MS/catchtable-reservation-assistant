@@ -79,3 +79,19 @@ test("repository prunes old runs and their events", async () => {
   assert.equal(terminalEvents.at(-1).state, "STOPPED");
   assert.equal(published.at(-1).events[0].component, "background");
 });
+
+test("repository can read every event from runs larger than the UI limits", async () => {
+  const repository = new IndexedDbTraceRepository(indexedDB);
+  const events = Array.from({ length: 501 }, (_, index) => event("run-large", index + 1));
+  await repository.append(descriptor("run-large", 10), events, "0.2.0");
+
+  const all = await repository.readEvents("run-large", Number.MAX_SAFE_INTEGER);
+  assert.equal(all.length, 501);
+  assert.equal(all[0].seq, 1);
+  assert.equal(all.at(-1).seq, 501);
+
+  const visible = await repository.readEvents("run-large", 100);
+  assert.equal(visible.length, 100);
+  assert.equal(visible[0].seq, 402);
+  assert.equal(visible.at(-1).seq, 501);
+});

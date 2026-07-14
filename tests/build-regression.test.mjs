@@ -49,6 +49,7 @@ test("sidepanel includes history and favorites controls", async () => {
 test("sidepanel includes persistent run trace controls", async () => {
   const html = await readFile("dist/sidepanel/sidepanel.html", "utf8");
   assert.match(html, /id="trace-run-select"/);
+  assert.match(html, /id="trace-run-export"/);
   assert.match(html, /id="trace-run-delete"/);
   assert.match(html, /id="trace-event-list"/);
 });

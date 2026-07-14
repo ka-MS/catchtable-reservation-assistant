@@ -5,6 +5,7 @@
 **최신 보조 작업 로그:** `docs/worklog/2026-07-14-10-payment-policy-ux-shortcut.md`
 **핵심 hot-path 작업 로그:** `docs/worklog/2026-07-14-09-tier2-2-availability-hot-path.md`
 **최신 RT-10M 실측:** `docs/worklog/2026-07-14-11-rt10m-yangjour-negative-control.md`
+**최신 short-cut:** `docs/specs/run-telemetry/60-csv-export-shortcut.md`
 
 ## 현재 상태
 
@@ -27,6 +28,10 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 
 - 예약 drawer가 `main` 밖 portal에 렌더되는 live 구조를 fixture로 고정하고 SlotAdapter 범위를 보완했다.
 - 양주르 실제 오픈에서 target body가 `EMPTY -> POPULATED`로 바뀌고 `EXACT`로 상관되는 것을 확인했다.
 - 해당 실행은 설정 시간 18:30-21:00과 열린 슬롯 11:00·15:00·15:30·17:30이 불일치해 미클릭이 정상인 음성 표본이다.
+- 종료된 실행의 상세 추적에서 `[CSV] [삭제]` 순서로 전체 Trace CSV를 내보낼 수 있다.
+- CSV는 원본 epoch ms와 KST 시각을 함께 보존하고 동적 trace attributes를 열로 펼친다.
+- 화면은 최신 100개만 유지하지만 CSV는 IndexedDB의 해당 run 전체 이벤트를 읽는다.
+- CSV short-cut은 예약 오케스트레이터, 날짜 토글, XHR probe, wake, SlotAdapter를 변경하지 않았다.
 
 상태 표현:
 
@@ -37,7 +42,9 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 
 ## 검증 근거
 
 - 결제 정책 UX 대상 테스트: 73/73 통과
-- 전체 `npm run check`: 275/275 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
+- CSV short-cut 대상 테스트: 19/19 통과
+- 전체 `npm run check`: 278/278 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
+- CSV Chrome live 확인: 원격 디버깅 미연결로 대기
 - `git diff --check` 통과
 - extension: `olbclnjiehfelpfmgmdphfmenapmpaal`, version `0.2.0`
 - load path: `\\wsl.localhost\Ubuntu\home\developer\source\catchtable-reserve\dist`

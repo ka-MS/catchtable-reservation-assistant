@@ -115,6 +115,7 @@ export type PanelCommand =
   | { type: "DELETE_JOB"; id: string }
   | { type: "LIST_RUN_HISTORY" }
   | { type: "GET_RUN_TRACE"; runId: string; limit?: number }
+  | { type: "EXPORT_RUN_TRACE"; runId: string }
   | { type: "DELETE_RUN_TRACE"; runId: string };
 
 export interface RunEventMessage {

@@ -375,6 +375,14 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
     });
     return true;
   }
+  if (message.type === "EXPORT_RUN_TRACE") {
+    void traceWrites.enqueue(() => traceRepository.readEvents(message.runId, Number.MAX_SAFE_INTEGER)).then((events) => {
+      sendResponse({ ok: true, data: events });
+    }).catch((error) => {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : "실행 로그를 내보낼 수 없습니다." });
+    });
+    return true;
+  }
   if (message.type === "DELETE_RUN_TRACE") {
     void traceWrites.enqueue(() => traceRepository.deleteRun(message.runId)).then(() => sendResponse({ ok: true })).catch((error) => {
       sendResponse({ ok: false, error: error instanceof Error ? error.message : "실행 이력을 삭제할 수 없습니다." });
