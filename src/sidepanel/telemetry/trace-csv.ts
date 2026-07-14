@@ -7,6 +7,10 @@ function kst(epochMs: number | null): string {
   return new Date(epochMs + KST_OFFSET_MS).toISOString().slice(0, 23).replace("T", " ");
 }
 
+function excelEpoch(epochMs: number | null): string {
+  return epochMs === null || !Number.isFinite(epochMs) ? "" : `="${epochMs}"`;
+}
+
 function cell(value: unknown): string {
   if (value === null || value === undefined) return "";
   const text = String(value);
@@ -39,9 +43,9 @@ export function traceCsv(run: TraceRunRecord, events: TraceEvent[]): string {
   const rows = events.map((event) => [
     run.runId,
     run.extensionVersion,
-    run.startedAt,
+    excelEpoch(run.startedAt),
     kst(run.startedAt),
-    run.finishedAt,
+    excelEpoch(run.finishedAt),
     kst(run.finishedAt),
     run.finalState,
     run.eventCount,
@@ -49,9 +53,9 @@ export function traceCsv(run: TraceRunRecord, events: TraceEvent[]): string {
     run.config.targetUrl,
     run.config.reservationDate,
     run.config.personCount,
-    run.config.openAtMs,
+    excelEpoch(run.config.openAtMs),
     kst(run.config.openAtMs),
-    run.config.stopAtMs,
+    excelEpoch(run.config.stopAtMs),
     kst(run.config.stopAtMs),
     run.config.timeRange.startMinutes,
     run.config.timeRange.endMinutes,
@@ -60,9 +64,9 @@ export function traceCsv(run: TraceRunRecord, events: TraceEvent[]): string {
     event.code,
     event.severity,
     event.component,
-    event.localAt,
+    excelEpoch(event.localAt),
     kst(event.localAt),
-    event.serverAt,
+    excelEpoch(event.serverAt),
     kst(event.serverAt),
     event.state,
     event.message,

@@ -29,7 +29,7 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 
 - 양주르 실제 오픈에서 target body가 `EMPTY -> POPULATED`로 바뀌고 `EXACT`로 상관되는 것을 확인했다.
 - 해당 실행은 설정 시간 18:30-21:00과 열린 슬롯 11:00·15:00·15:30·17:30이 불일치해 미클릭이 정상인 음성 표본이다.
 - 종료된 실행의 상세 추적에서 `[CSV] [삭제]` 순서로 전체 Trace CSV를 내보낼 수 있다.
-- CSV는 원본 epoch ms와 KST 시각을 함께 보존하고 동적 trace attributes를 열로 펼친다.
+- CSV는 Excel-safe 원본 epoch ms와 KST 시각을 함께 보존하고 동적 trace attributes를 열로 펼친다.
 - 화면은 최신 100개만 유지하지만 CSV는 IndexedDB의 해당 run 전체 이벤트를 읽는다.
 - CSV short-cut은 예약 오케스트레이터, 날짜 토글, XHR probe, wake, SlotAdapter를 변경하지 않았다.
 

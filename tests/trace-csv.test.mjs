@@ -46,7 +46,8 @@ test("trace CSV keeps raw epochs, adds KST timestamps, and escapes dynamic attri
   assert.equal(csv.charCodeAt(0), 0xfeff);
   assert.match(csv, /localAtMs,localAtKst,serverAtMs,serverAtKst/);
   assert.match(csv, /attr\.cycle,attr\.note,attr\.responseCompletedMonoMs/);
-  assert.match(csv, /1784007622072\.85,2026-07-14 14:40:22\.072/);
+  assert.match(csv, /"=""1784007622072\.85""",2026-07-14 14:40:22\.072/);
+  assert.doesNotMatch(csv, /,1784007622072\.85,/);
   assert.match(csv, /"쉼표, 따옴표 ""와\n개행"/);
   assert.match(csv, /"값,""인용"""/);
   assert.match(csv, /123\.45/);

@@ -23,6 +23,7 @@
 - run 정보와 event 기본 필드는 각 행에 포함한다.
 - `attributes`는 전체 이벤트의 key 합집합을 `attr.<key>` 열로 펼친다.
 - `localAt`, `serverAt`, `startedAt`, `finishedAt`, `openAtMs`, `stopAtMs`는 원본 epoch ms와 `Asia/Seoul` 사람이 읽을 수 있는 열을 함께 둔다.
+- 원본 epoch ms 열은 Excel이 지수 표기로 바꾸지 않도록 신뢰된 숫자 문자열 수식으로 기록한다.
 - `*MonoMs`와 구간 지연 값은 절대시각으로 변환하지 않고 원본 숫자를 유지한다.
 - 쉼표, 큰따옴표, 개행은 RFC 4180 방식으로 escape한다.
 - 파일명은 `catchtable_<shop>_<reservationDate>_<runId>.csv`로 생성하고 파일명에 부적합한 문자는 `_`로 치환한다.
@@ -50,3 +51,4 @@
 - `npm run check`: 278/278 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - 예약 오케스트레이터, 날짜 토글, XHR probe, wake, SlotAdapter 변경 없음
 - Chrome DevTools MCP는 `DevToolsActivePort`가 없어 연결되지 않았다. 확장 재로드 뒤 실제 CSV 다운로드 확인은 남아 있다.
+- 양주르 실제 CSV 125행을 검산해 여섯 epoch/KST 쌍의 불일치가 0건임을 확인했다. Excel의 `General` 표시가 epoch를 지수 표기로 보이게 하므로 원본 epoch 열을 Excel-safe text로 보완했다.
