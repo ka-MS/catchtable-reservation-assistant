@@ -3,7 +3,7 @@ import { MonotonicEpochClock } from "../shared/monotonic-clock.js";
 import { sanitizeSavedConfigs } from "../shared/saved-configs.js";
 import { sanitizeScheduledJobs } from "../shared/scheduled-jobs.js";
 import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
-import type { ActiveRun, CommandResponse, EntryMode, PanelCommand, ReservationConfig, RunEvent, RunState, ScheduledJob, TablePreference } from "../shared/types.js";
+import type { ActiveRun, CommandResponse, EntryMode, PanelCommand, PaymentMethodPolicy, ReservationConfig, RunEvent, RunState, ScheduledJob, TablePreference } from "../shared/types.js";
 import { countdownModel } from "./countdown.js";
 import { formatEventDetail, formatEventTime } from "./event-format.js";
 import { configFromFormValues, configSnapshotFromFormValues, type FormValues } from "./form-model.js";
@@ -69,6 +69,22 @@ const fields = {
   preOpenLeadMs: byId<HTMLInputElement>("pre-open-lead"),
   toggleIntervalMs: byId<HTMLInputElement>("toggle-interval"),
 };
+const paymentMethodPolicyFieldset = byId<HTMLFieldSetElement>("payment-method-policy-options");
+const paymentMethodPolicyOptions = Array.from(
+  document.querySelectorAll<HTMLInputElement>('input[name="payment-method-policy"]'),
+);
+
+function selectedPaymentMethodPolicy(): PaymentMethodPolicy {
+  const selected = paymentMethodPolicyOptions.find((option) => option.checked)?.value;
+  return selected === "zero_only" ? "zero_only" : "selected_allowed";
+}
+
+function selectPaymentMethodPolicy(policy: PaymentMethodPolicy | undefined): void {
+  const normalized = policy === "zero_only" ? "zero_only" : "selected_allowed";
+  paymentMethodPolicyOptions.forEach((option) => {
+    option.checked = option.value === normalized;
+  });
+}
 
 const TERMINAL = new Set<RunState>([
   "DRY_RUN_COMPLETED",
@@ -201,6 +217,7 @@ function readValues(): FormValues {
     priorityTimes: [...priorityTimes],
     postSlotEnabled: fields.postSlotEnabled.checked,
     paymentMethodAutoAdvance: fields.paymentMethodAutoAdvance.checked,
+    paymentMethodPolicy: selectedPaymentMethodPolicy(),
     tablePreference: fields.tablePreference.value as TablePreference,
     menuKeyword: fields.menuKeyword.value,
     stopAt: fields.stopAt.value,
@@ -220,6 +237,7 @@ function applyValues(values: FormValues): void {
   fields.endTime.value = values.endTime;
   fields.postSlotEnabled.checked = values.postSlotEnabled ?? false;
   fields.paymentMethodAutoAdvance.checked = values.paymentMethodAutoAdvance ?? true;
+  selectPaymentMethodPolicy(values.paymentMethodPolicy);
   fields.tablePreference.value = values.tablePreference ?? "any";
   fields.menuKeyword.value = values.menuKeyword ?? "";
   fields.stopAt.value = values.stopAt;
@@ -250,6 +268,7 @@ function valuesFromConfig(config: ReservationConfig): FormValues {
     priorityTimes: config.priorityTimes.map(minutesToInput),
     postSlotEnabled: config.postSlotEnabled ?? false,
     paymentMethodAutoAdvance: config.paymentMethodAutoAdvance ?? true,
+    paymentMethodPolicy: config.paymentMethodPolicy ?? "selected_allowed",
     tablePreference: config.tablePreference ?? "any",
     menuKeyword: config.menuKeyword ?? "",
     stopAt: epochToLocalInput(config.stopAtMs),
@@ -267,6 +286,8 @@ function saveDraft(): void {
 function syncPostSlotFields(): void {
   const enabled = fields.postSlotEnabled.checked;
   fields.paymentMethodAutoAdvance.disabled = !enabled;
+  paymentMethodPolicyFieldset.hidden = !fields.paymentMethodAutoAdvance.checked;
+  paymentMethodPolicyFieldset.disabled = !enabled || !fields.paymentMethodAutoAdvance.checked;
   fields.tablePreference.disabled = !enabled;
   fields.menuKeyword.disabled = !enabled;
   postSlotOptions.dataset.enabled = String(enabled);
@@ -696,6 +717,7 @@ fields.postSlotEnabled.addEventListener("change", () => {
   syncPostSlotFields();
   saveDraft();
 });
+fields.paymentMethodAutoAdvance.addEventListener("change", syncPostSlotFields);
 form.addEventListener("input", (event) => {
   renderSummary();
   if (event.target !== fields.stopAt && event.target !== fields.openAt) saveDraft();

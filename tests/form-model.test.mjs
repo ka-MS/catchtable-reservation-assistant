@@ -13,6 +13,7 @@ function values(overrides = {}) {
     priorityTimes: ["19:00", "18:30"],
     postSlotEnabled: true,
     paymentMethodAutoAdvance: true,
+    paymentMethodPolicy: "selected_allowed",
     tablePreference: "bar",
     menuKeyword: "디너 오마카세",
     stopAt: "2026-07-10T13:10",
@@ -32,6 +33,7 @@ test("sidepanel values produce an epoch-based configuration", () => {
   assert.deepEqual(config.priorityTimes, [1140, 1110]);
   assert.equal(config.postSlotEnabled, true);
   assert.equal(config.paymentMethodAutoAdvance, true);
+  assert.equal(config.paymentMethodPolicy, "selected_allowed");
   assert.equal(config.tablePreference, "bar");
   assert.equal(config.menuKeyword, "디너 오마카세");
   assert.equal(config.entryMode, "auto");

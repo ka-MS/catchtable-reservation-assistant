@@ -10,6 +10,7 @@ export function normalizeReservationConfig(config: ReservationConfig): Reservati
   return {
     ...config,
     paymentMethodAutoAdvance: config.paymentMethodAutoAdvance ?? true,
+    paymentMethodPolicy: config.paymentMethodPolicy ?? "selected_allowed",
   };
 }
 
@@ -60,6 +61,10 @@ export function validateReservationConfig(config: ReservationConfig, nowMs: numb
   if (config.paymentMethodAutoAdvance !== undefined
     && typeof config.paymentMethodAutoAdvance !== "boolean") {
     errors.push("결제 방식 자동 진행 설정을 확인하세요.");
+  }
+  if (config.paymentMethodPolicy !== undefined
+    && !["zero_only", "selected_allowed"].includes(config.paymentMethodPolicy)) {
+    errors.push("결제 방식 정책을 확인하세요.");
   }
   if (!["any", "hall", "bar", "room"].includes(config.tablePreference)) {
     errors.push("테이블 타입 설정을 확인하세요.");

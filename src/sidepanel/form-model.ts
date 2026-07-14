@@ -1,6 +1,6 @@
 import { validateReservationConfig } from "../shared/config.js";
 import { localInputToEpoch, parseTimeInput } from "../shared/time.js";
-import type { EntryMode, ReservationConfig, TablePreference } from "../shared/types.js";
+import type { EntryMode, PaymentMethodPolicy, ReservationConfig, TablePreference } from "../shared/types.js";
 
 export interface FormValues {
   targetUrl: string;
@@ -12,6 +12,7 @@ export interface FormValues {
   priorityTimes: string[];
   postSlotEnabled: boolean;
   paymentMethodAutoAdvance: boolean;
+  paymentMethodPolicy?: PaymentMethodPolicy;
   tablePreference: TablePreference;
   menuKeyword: string;
   stopAt: string;
@@ -38,6 +39,7 @@ function parseConfig(values: FormValues): ReservationConfig {
     priorityTimes: priorityTimes as number[],
     postSlotEnabled: values.postSlotEnabled,
     paymentMethodAutoAdvance: values.paymentMethodAutoAdvance,
+    paymentMethodPolicy: values.paymentMethodPolicy ?? "selected_allowed",
     tablePreference: values.tablePreference,
     menuKeyword: values.menuKeyword.trim(),
     stopAtMs: localInputToEpoch(values.stopAt),

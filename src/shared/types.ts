@@ -24,6 +24,7 @@ export type RunState =
 
 export type TablePreference = "any" | "hall" | "bar" | "room";
 export type EntryMode = "auto" | "prepared";
+export type PaymentMethodPolicy = "zero_only" | "selected_allowed";
 
 export interface ReservationConfig {
   targetUrl: string;
@@ -34,6 +35,7 @@ export interface ReservationConfig {
   priorityTimes: number[];
   postSlotEnabled: boolean;
   paymentMethodAutoAdvance: boolean;
+  paymentMethodPolicy: PaymentMethodPolicy;
   tablePreference: TablePreference;
   menuKeyword: string;
   stopAtMs: number;

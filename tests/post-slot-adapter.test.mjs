@@ -392,8 +392,32 @@ test("deposit method prefers zero deposit and accepts an already selected active
     tablePreference: "any",
     menuKeyword: "",
     paymentMethodAutoAdvance: true,
+    paymentMethodPolicy: "selected_allowed",
   }).status, "acted");
   assert.equal(paidNextClicks, 1);
+});
+
+test("zero-only payment policy never advances an already selected paid method", () => {
+  const document = documentFor(`
+    <div role="dialog" aria-label="예약금 결제 방법 선택">
+      <input type="radio" aria-label="예약금 결제 20,000원" checked>
+      <button data-next>다음</button>
+    </div>
+  `);
+  let nextClicks = 0;
+  document.querySelector("[data-next]").addEventListener("click", () => { nextClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+
+  const result = adapter.advance(adapter.inspect(), {
+    tablePreference: "any",
+    menuKeyword: "",
+    paymentMethodAutoAdvance: true,
+    paymentMethodPolicy: "zero_only",
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.match(result.message, /예약금 0원/);
+  assert.equal(nextClicks, 0);
 });
 
 test("deposit method hands off when auto advance is off or no active method is selected", () => {

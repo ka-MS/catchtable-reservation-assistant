@@ -54,7 +54,9 @@ interface DialogSnapshot {
 
 export function isZeroDepositControl(element: Element): boolean {
   const label = normalizedText(element.getAttribute("aria-label"));
-  return label.includes("예약금") && label.includes("0원") && label.includes("결제");
+  return label.includes("예약금")
+    && /(?:^|[^\d,])0원(?:$|[^\d])/.test(label)
+    && label.includes("결제");
 }
 
 function urlKind(document: Document): PostSlotDiagnostics["urlKind"] {

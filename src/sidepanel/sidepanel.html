@@ -110,6 +110,17 @@
                 <input id="payment-method-auto-advance" type="checkbox" checked disabled />
                 <span>결제 방식까지 자동 진행</span>
               </label>
+              <fieldset id="payment-method-policy-options" class="payment-policy" disabled>
+                <legend>결제 방식 정책</legend>
+                <label class="payment-policy-option">
+                  <input type="radio" name="payment-method-policy" value="zero_only" />
+                  <span>예약금 0원 방식만</span>
+                </label>
+                <label class="payment-policy-option">
+                  <input type="radio" name="payment-method-policy" value="selected_allowed" checked />
+                  <span>사이트에서 선택된 방식 허용</span>
+                </label>
+              </fieldset>
               <label class="field">
                 <span>테이블 타입</span>
                 <select id="table-preference" disabled>

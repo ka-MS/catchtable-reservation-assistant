@@ -23,7 +23,7 @@ export interface PostSlotActionResult {
 
 type PostSlotConfig = Pick<
   ReservationConfig,
-  "tablePreference" | "menuKeyword" | "personCount" | "paymentMethodAutoAdvance"
+  "tablePreference" | "menuKeyword" | "personCount" | "paymentMethodAutoAdvance" | "paymentMethodPolicy"
 >;
 
 const TABLE_LABEL: Record<Exclude<TablePreference, "any">, string> = {
@@ -77,7 +77,7 @@ export class PostSlotAdapter {
         if (config.paymentMethodAutoAdvance === false) {
           return { status: "blocked", message: "결제 방식 자동 진행이 꺼져 있어 사용자에게 인계합니다." };
         }
-        return dialog ? this.advanceDeposit(dialog) : { status: "waiting", message: "다음 후속 화면을 기다립니다." };
+        return dialog ? this.advanceDeposit(dialog, config) : { status: "waiting", message: "다음 후속 화면을 기다립니다." };
       case "payment_method_notice": {
         if (config.paymentMethodAutoAdvance === false) {
           return { status: "blocked", message: "결제 방식 자동 진행이 꺼져 있어 사용자에게 인계합니다." };
@@ -252,7 +252,7 @@ export class PostSlotAdapter {
     return this.clickProgress(dialog, ["확인", "다음"], "예약금 안내를 확인했습니다.");
   }
 
-  private advanceDeposit(dialog: HTMLElement): PostSlotActionResult {
+  private advanceDeposit(dialog: HTMLElement, config: PostSlotConfig): PostSlotActionResult {
     const visibleMethods = visibleAll<HTMLInputElement>(dialog,
       '[role="radio"], input[type="radio"]',
     );
@@ -263,7 +263,11 @@ export class PostSlotAdapter {
     const methods = visibleMethods.filter((method) => !isDisabled(method));
     const depositFree = methods.find(isZeroDepositControl);
     const selected = methods.find(isChecked);
-    const target = depositFree ?? selected;
+    const allowSelected = config.paymentMethodPolicy !== "zero_only";
+    const target = depositFree ?? (allowSelected ? selected : undefined);
+    if (!target && !allowSelected) {
+      return { status: "blocked", message: "예약금 0원 방식이 없어 사용자에게 인계합니다." };
+    }
     if (!target) return { status: "blocked", message: "선택된 결제 방식이 없어 사용자에게 인계합니다." };
     if (!isChecked(target)) {
       (target as HTMLElement).click();

@@ -17,6 +17,7 @@ function config(overrides = {}) {
     priorityTimes: [1140, 1110],
     postSlotEnabled: true,
     paymentMethodAutoAdvance: true,
+    paymentMethodPolicy: "selected_allowed",
     tablePreference: "bar",
     menuKeyword: " 디너   오마카세 ",
     stopAtMs: 601_000,
@@ -76,8 +77,12 @@ test("sanitize drops corrupt snapshots, repairs fingerprints, and sorts newest f
   assert.equal(result[1].fingerprint, configFingerprint(valid));
 });
 
-test("sanitize accepts both legacy clock setting and the current config shape", () => {
-  const { paymentMethodAutoAdvance: _removed, ...legacy } = config({ clockSampleCount: 9 });
+test("sanitize accepts legacy payment settings and the current config shape", () => {
+  const {
+    paymentMethodAutoAdvance: _removedAutoAdvance,
+    paymentMethodPolicy: _removedPolicy,
+    ...legacy
+  } = config({ clockSampleCount: 9 });
   const current = config({ reservationDate: "2026-07-31" });
   const result = sanitizeSavedConfigs([
     { id: "legacy", savedAt: 10, fingerprint: "", config: legacy },
@@ -85,4 +90,5 @@ test("sanitize accepts both legacy clock setting and the current config shape", 
   ]);
   assert.deepEqual(result.map((item) => item.id), ["current", "legacy"]);
   assert.equal(result.find((item) => item.id === "legacy").config.paymentMethodAutoAdvance, true);
+  assert.equal(result.find((item) => item.id === "legacy").config.paymentMethodPolicy, "selected_allowed");
 });

@@ -25,3 +25,13 @@
 약관, 결제 승인, `자동결제로 예약하기` 버튼은 클릭하지 않았다.
 
 이번 실런에서는 `payment_method_notice` 단계가 상세 추적에 직접 나타나지 않았다. 해당 신형 인터스티셜은 측정 화면 기반 fixture로 검증했으며, 실제 관측 결과와 fixture 검증 결과를 구분한다.
+
+## 정책 UX 단축 패치 검증
+
+- `zero_only`에서 선택된 유료 방식 진행 금지
+- `selected_allowed`에서만 선택된 활성 방식 진행
+- `20,000원`을 0원 방식으로 오인하지 않음
+- 구버전 저장 정책을 `selected_allowed`로 복원
+- 관련 targeted test 73/73 통과
+
+- 전체 게이트: 275/275 통과. typecheck, dist validation, MAIN/ISOLATED independence, `git diff --check`도 통과했다.

@@ -2,11 +2,20 @@
 
 **갱신:** 2026-07-14
 **브랜치:** `main`
-**작업 로그:** `docs/worklog/2026-07-14-09-tier2-2-availability-hot-path.md`
+**최신 보조 작업 로그:** `docs/worklog/2026-07-14-10-payment-policy-ux-shortcut.md`
+**핵심 hot-path 작업 로그:** `docs/worklog/2026-07-14-09-tier2-2-availability-hot-path.md`
 
 ## 현재 상태
 
-Tier 2-2 availability hot-path의 fallback 보존형 구현과 비최종 안전 검증을 완료했다.
+예약 흐름 호환성 패키지의 달력, 결제 방식, 좌석·메뉴, 실제 폼 인계 검증을 완료했다. 이어 RT-10M 측정을 기다리는 동안 hot path와 독립적인 결제 정책 UX를 단축 절차로 보완했다.
+
+- `결제 방식까지 자동 진행`이 켜진 경우 `예약금 0원 방식만`과 `사이트에서 선택된 방식 허용` 중 하나를 고른다.
+- 기본값과 구버전 복원값은 기존 동작을 보존하는 `사이트에서 선택된 방식 허용`이다.
+- 어떤 정책에서도 선택되지 않은 유료 방식을 임의로 선택하지 않는다.
+- `20,000원`을 `0원` 방식으로 오인하던 부분 문자열 판별을 금액 경계 판별로 수정했다.
+- 슬롯 탐색, 날짜 토글, 서버 시계, XHR probe와 wake 경로는 이번 단축 패치에서 변경하지 않았다.
+
+Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 검증을 완료한 상태다.
 
 - 검증된 현재 cycle `EXACT/STRONG` body만 DOM scan wake-up 후보로 사용한다.
 - body는 슬롯을 선택하거나 클릭하지 않는다.
@@ -24,7 +33,9 @@ Tier 2-2 availability hot-path의 fallback 보존형 구현과 비최종 안전 
 
 ## 검증 근거
 
-- `npm run check`: 263/263 tests, dist validation, MAIN/ISOLATED independence 통과
+- 결제 정책 UX 대상 테스트: 73/73 통과
+- 전체 `npm run check`: 275/275 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
+- `git diff --check` 통과
 - extension: `olbclnjiehfelpfmgmdphfmenapmpaal`, version `0.2.0`
 - load path: `\\wsl.localhost\Ubuntu\home\developer\source\catchtable-reserve\dist`
 - live dry-run: `run-9e67fd6e-29a4-4def-87f8-244f0960e84f`

@@ -337,6 +337,37 @@ select:focus {
   grid-column: 1 / -1;
 }
 
+.payment-policy {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 7px;
+}
+
+.payment-policy[hidden] {
+  display: none;
+}
+
+.payment-policy legend {
+  margin-bottom: 2px;
+  color: #526058;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.payment-policy-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  color: #35443c;
+  font-size: 12px;
+}
+
+.payment-policy-option input {
+  width: 16px;
+  height: 16px;
+}
+
 .dependent-options[data-enabled="false"] {
   opacity: 0.55;
 }

@@ -4,9 +4,9 @@
 
 ## 설정 모델
 
-`ReservationConfig.paymentMethodAutoAdvance: boolean`을 추가한다. 새 폼 기본값은 `true`다. 저장된 구버전 설정에 필드가 없으면 정규화 시 `true`를 채워 기존 자동 진행 동작을 보존한다.
+`ReservationConfig.paymentMethodAutoAdvance: boolean`과 `paymentMethodPolicy: "zero_only" | "selected_allowed"`를 사용한다. 새 폼 기본값은 자동 진행 `true`, 정책 `selected_allowed`다. 저장된 구버전 설정에 정책이 없으면 `selected_allowed`를 채워 기존 자동 진행 동작을 보존한다.
 
-Side Panel에는 `post-slot-options` 내부에 체크박스를 둔다. 체크박스가 이진 정책을 가장 직접적으로 표현하고 기존 상위 체크박스와 상호작용이 일관되므로 별도 switch를 만들지 않는다.
+Side Panel에는 `post-slot-options` 내부에 자동 진행 체크박스를 두고, 체크된 동안에만 두 정책 radio를 표시한다. 상위 후속 진행이 꺼지면 전체를 비활성화하고 값은 보존한다.
 
 ## 상태별 동작
 
@@ -14,16 +14,18 @@ Side Panel에는 `post-slot-options` 내부에 체크박스를 둔다. 체크박
 |---|---|---|
 | 꺼짐 | 값 보존·UI 비활성 | 최초 후속 화면 확인 후 인계 |
 | 켜짐 | 꺼짐 | 테이블·메뉴 등 진행 후 결제 방식 화면에서 인계 |
-| 켜짐 | 켜짐 | 안전 정책에 맞는 결제 방식과 인터스티셜 진행 |
+| 켜짐 | 켜짐·0원만 | 활성 0원 방식만 진행, 없으면 인계 |
+| 켜짐 | 켜짐·사이트 선택 허용 | 0원 우선, 없으면 사이트에서 이미 선택된 활성 방식 진행 |
 
 ## 결제 방식 선택 정책
 
 1. 현재 화면을 클릭 직전에 다시 판독한다.
 2. 활성 예약금 0원 control이 있으면 선택한다.
 3. 0원 control이 이미 선택됐으면 `다음` 또는 `확인`을 클릭한다.
-4. 0원 control이 없으면 활성 control 중 이미 선택된 항목을 찾는다.
-5. 이미 선택된 항목이 있으면 선택을 바꾸지 않고 진행 버튼만 클릭한다.
-6. 활성 선택 항목이 없으면 `blocked`로 인계한다.
+4. 0원 control이 없고 정책이 `zero_only`면 `blocked`로 인계한다.
+5. 정책이 `selected_allowed`면 활성 control 중 이미 선택된 항목을 찾는다.
+6. 이미 선택된 항목이 있으면 선택을 바꾸지 않고 진행 버튼만 클릭한다.
+7. 활성 선택 항목이 없으면 `blocked`로 인계한다.
 
 ## 인터스티셜 판별
 

@@ -60,6 +60,8 @@ test("post-slot automation is opt-in in the sidepanel", async () => {
   assert.match(html, /id="table-preference" disabled/);
   assert.match(html, /id="menu-keyword"[^>]*disabled/);
   assert.match(html, /id="payment-method-auto-advance"[^>]*checked[^>]*disabled/);
+  assert.match(html, /name="payment-method-policy"[^>]*value="zero_only"/);
+  assert.match(html, /name="payment-method-policy"[^>]*value="selected_allowed"[^>]*checked/);
 });
 
 test("dry-run is disabled by default in the sidepanel", async () => {
