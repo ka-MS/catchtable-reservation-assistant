@@ -10,6 +10,19 @@ test("slot adapter removes ancestor-hidden duplicates and busy buttons", async (
   assert.deepEqual(adapter.readAvailableSlots().map((slot) => slot.minutes), [1080, 1140, 1170]);
 });
 
+test("slot adapter reads the active reservation drawer outside main", async () => {
+  const dom = await loadFixture("slots-portal.html");
+  const adapter = new SlotAdapter(dom.window.document);
+  const candidate = adapter.readAvailableSlots()[0];
+  let clicks = 0;
+  dom.window.document.querySelector("[data-active-slot]")?.addEventListener("click", () => clicks++);
+
+  assert.deepEqual(adapter.readAvailableSlots().map((slot) => slot.minutes), [1110]);
+  assert.ok(candidate);
+  assert.equal(adapter.clickSlot(candidate), true);
+  assert.equal(clicks, 1);
+});
+
 test("slot selection honors priority before earliest range match", async () => {
   const dom = await loadFixture("slots.html");
   const slots = new SlotAdapter(dom.window.document).readAvailableSlots();

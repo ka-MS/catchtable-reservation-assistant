@@ -21,6 +21,10 @@ import type { PersonInspection } from "./adapter/person.js";
 import type { PostSlotActionResult, PostSlotInspection } from "./adapter/post-slot.js";
 import type { StageSnapshot } from "./adapter/snapshot.js";
 import { AvailabilityCorrelationTracker, type DomCorrelation } from "./availability-correlation.js";
+import {
+  AvailabilityDomWake,
+  type AvailabilityWakeSignal,
+} from "./availability-dom-wake.js";
 
 interface CalendarPort {
   inspect(targetDate: string): CalendarInspection;
@@ -90,6 +94,7 @@ export interface RunResult {
 // 클릭 후 ~450ms 안. 700ms는 유실 판정 타임아웃, 250ms는 응답→렌더(56~182ms) 커버.
 const QUIESCE_TIMEOUT_MS = 700;
 const ARRIVAL_BURST_MS = 250;
+const BODY_WAKE_SCAN_INTERVAL_MS = 10;
 
 // 오픈 타이밍 성능 Tier1(20-design §4): 병리적 불확실성이 감시를 몇 분씩 당기지
 // 않도록 하는 안전 상한. 하한은 없음 — config.preOpenLeadMs 자체가 최소 리드타임.
@@ -161,6 +166,7 @@ class RunSession {
   private latestAppliedEstimate: ReferenceClockEstimate | null = null;
   private readonly runStartMonoMs: number;
   private readonly availabilityCorrelation = new AvailabilityCorrelationTracker();
+  private readonly availabilityWake = new AvailabilityDomWake();
 
   constructor(
     private readonly deps: Dependencies,
@@ -305,6 +311,7 @@ class RunSession {
       } catch {
         // Shadow 원복 실패도 terminal 결과를 바꾸지 않는다.
       }
+      this.availabilityWake.reset();
       this.deps.slotWatch?.stop();
       try {
         this.deps.slotDomMutationWatch?.stop();
@@ -326,6 +333,18 @@ class RunSession {
       const selected = selectPreferredSlot(candidates, this.config.timeRange, this.config.priorityTimes);
       const correlation = this.availabilityCorrelation.correlateBody(event, selected?.minutes ?? null);
       const acceptedCorrelation = correlation.quality === "EXACT" || correlation.quality === "STRONG";
+      const wakeAtMonoMs = this.deps.monotonicClock.now();
+      const wakeDecision = this.availabilityWake.offer({
+        cycle: correlation.cycle,
+        requestSequence: event.sequence,
+        quality: correlation.quality,
+        stale: correlation.stale,
+        selectedMinutes: selected?.minutes ?? null,
+        responseCompletedMonoMs: event.responseCompletedMonoMs,
+        payloadClassifiedMonoMs: event.payloadClassifiedMonoMs,
+        bridgeReceivedMonoMs: event.bridgeReceivedMonoMs,
+        wakeAtMonoMs,
+      });
       this.deps.trace?.("AVAILABILITY_SHADOW", event.classification === "UNPARSABLE" ? "warn" : "trace",
         `슬롯 응답 shadow를 ${event.classification}로 분류했습니다.`, {
           serverAt: this.serverClockReady ? this.serverClock.now() : null,
@@ -352,8 +371,12 @@ class RunSession {
             payloadClassifiedMonoMs: event.payloadClassifiedMonoMs,
             bridgeReceivedMonoMs: event.bridgeReceivedMonoMs,
             bridgeDelayMs: event.bridgeReceivedMonoMs - event.payloadClassifiedMonoMs,
-            claimSource: acceptedCorrelation && selected ? "body" : "none",
-            claimAgreement: acceptedCorrelation && selected ? true : null,
+            wakeAccepted: wakeDecision.accepted,
+            wakeDiscardReason: wakeDecision.discardReason,
+            wakeAtMonoMs,
+            bodyToWakeMs: wakeAtMonoMs - event.bridgeReceivedMonoMs,
+            claimSource: wakeDecision.accepted ? "body" : "none",
+            claimAgreement: wakeDecision.accepted ? true : null,
           },
         });
       if (correlation.lateDomCorrelation) {
@@ -412,6 +435,44 @@ class RunSession {
           claimSource: correlation.requestSequence === null ? "dom" : "body",
         },
       });
+  }
+
+  private traceAvailabilityWakeResult(
+    signal: AvailabilityWakeSignal,
+    candidateObservedMonoMs: number | null,
+    candidateFound: boolean,
+    fallbackUsed: boolean,
+    scanCount: number,
+  ): void {
+    try {
+      this.deps.trace?.("AVAILABILITY_SHADOW", "trace", "body wake-up 이후 DOM 후보를 확인했습니다.", {
+        serverAt: this.serverClockReady ? this.serverClock.now() : null,
+        state: this.machine.state,
+        attributes: {
+          phase: "wake_result",
+          wakeReason: "verified_target_body",
+          cycle: signal.cycle,
+          requestSequence: signal.requestSequence,
+          correlationQuality: signal.quality,
+          selectedMinutes: signal.selectedMinutes,
+          responseCompletedMonoMs: signal.responseCompletedMonoMs,
+          payloadClassifiedMonoMs: signal.payloadClassifiedMonoMs,
+          bridgeReceivedMonoMs: signal.bridgeReceivedMonoMs,
+          wakeAtMonoMs: signal.wakeAtMonoMs,
+          domCandidateMonoMs: candidateObservedMonoMs,
+          bodyToWakeMs: signal.wakeAtMonoMs - signal.bridgeReceivedMonoMs,
+          wakeToDomMs: candidateObservedMonoMs === null ? null : candidateObservedMonoMs - signal.wakeAtMonoMs,
+          responseToDomMs: candidateObservedMonoMs === null
+            ? null
+            : candidateObservedMonoMs - signal.responseCompletedMonoMs,
+          wakeCandidateFound: candidateFound,
+          wakeFallbackUsed: fallbackUsed,
+          wakeScanCount: scanCount,
+        },
+      });
+    } catch {
+      // Wake-up diagnostics cannot change the reservation result.
+    }
   }
 
   private validate(): RunResult | null {
@@ -628,6 +689,10 @@ class RunSession {
     let slotScanCount = 0;
     let availableSlotCount = 0;
     let matchedSlotCount = 0;
+    let wakeSignal: AvailabilityWakeSignal | null = null;
+    let wakeCandidateObservedMonoMs: number | null = null;
+    let wakeScanCount = 0;
+    let wakeFallbackUsed = true;
     let adjacentDateValue: string | null = this.adjacentDate;
     const traceCycle = (result: string) => this.deps.trace?.(
       "DATE_TOGGLE_CYCLE",
@@ -651,6 +716,10 @@ class RunSession {
           result,
           watch: this.watchLive ? "live" : "idle",
           arrivalAt: this.lastArrivalAt,
+          wakeUsed: wakeSignal !== null,
+          wakeRequestSequence: wakeSignal?.requestSequence ?? null,
+          wakeCorrelationQuality: wakeSignal?.quality ?? null,
+          wakeFallbackUsed,
         }),
       },
     );
@@ -701,6 +770,7 @@ class RunSession {
       targetClickMonoMs,
       mutationGenerationAtTargetClick: mutationAtTargetClick.generation,
     });
+    this.availabilityWake.beginCycle(cycle);
     try {
       this.deps.availabilityShadow?.markTargetCycle?.({
         cycle,
@@ -734,16 +804,19 @@ class RunSession {
       return { kind: "terminal", result: this.timedOut("감시 종료 시각에 도달했습니다.") };
     }
     const selectionDeadline = Math.min(plan.targetClickAtMs + 60, config.stopAtMs);
-    while (
-      !this.deps.calendar.inspect(config.reservationDate).targetSelected
-      && serverClock.now() < selectionDeadline
-    ) {
+    let targetSelected = this.deps.calendar.inspect(config.reservationDate).targetSelected;
+    while (!targetSelected && serverClock.now() < selectionDeadline) {
       if (!(await this.deps.sleep(Math.min(10, selectionDeadline - serverClock.now()), controller.signal))) {
         traceCycle("STOPPED_DURING_SELECTION");
         return { kind: "terminal", result: this.finishStopped() };
       }
+      targetSelected = this.deps.calendar.inspect(config.reservationDate).targetSelected;
     }
-    if (!this.deps.calendar.inspect(config.reservationDate).targetSelected) {
+    if (serverClock.now() >= config.stopAtMs) {
+      traceCycle("TIMED_OUT_DURING_SELECTION");
+      return { kind: "terminal", result: this.timedOut("감시 종료 시각에 도달했습니다.") };
+    }
+    if (!targetSelected) {
       traceCycle("SELECTION_UNCONFIRMED");
       return { kind: "terminal", result: this.diagnosticHandOff("목표 날짜 선택 상태를 확인할 수 없습니다.") };
     }
@@ -766,29 +839,70 @@ class RunSession {
       }
       return quiesceUntil;
     };
+    const remainingDetectionMs = () => {
+      const serverRemaining = detectDeadline() - serverClock.now();
+      const bodyRemaining = wakeSignal === null
+        ? 0
+        : wakeSignal.bridgeReceivedMonoMs + ARRIVAL_BURST_MS - this.deps.monotonicClock.now();
+      return Math.min(
+        config.stopAtMs - serverClock.now(),
+        Math.max(serverRemaining, bodyRemaining),
+      );
+    };
     let candidate: SlotCandidate | null = null;
     const inspectSlots = () => {
+      const observedMonoMs = this.deps.monotonicClock.now();
       const slots = this.deps.slots.readAvailableSlots();
       slotScanCount += 1;
+      if (wakeSignal !== null) wakeScanCount += 1;
       availableSlotCount = slots.length;
       matchedSlotCount = slots.filter((slot) => (
         slot.minutes >= config.timeRange.startMinutes && slot.minutes <= config.timeRange.endMinutes
       )).length;
-      return selectPreferredSlot(slots, config.timeRange, config.priorityTimes);
+      const selected = selectPreferredSlot(slots, config.timeRange, config.priorityTimes);
+      if (selected && wakeSignal !== null) wakeCandidateObservedMonoMs = observedMonoMs;
+      return selected;
     };
-    while (!controller.signal.aborted && serverClock.now() < detectDeadline()) {
+    wakeSignal = this.availabilityWake.consume(cycle);
+    while (!controller.signal.aborted && remainingDetectionMs() > 0) {
       candidate = inspectSlots();
       if (candidate) break;
-      const delay = Math.min(25, detectDeadline() - serverClock.now());
-      if (delay <= 0 || !(await this.deps.sleep(delay, controller.signal))) break;
+      const inBodyBurst = wakeSignal !== null
+        && this.deps.monotonicClock.now() < wakeSignal.bridgeReceivedMonoMs + ARRIVAL_BURST_MS;
+      const delay = Math.min(
+        inBodyBurst ? BODY_WAKE_SCAN_INTERVAL_MS : 25,
+        remainingDetectionMs(),
+      );
+      if (delay <= 0) break;
+      try {
+        const waited = await this.availabilityWake.wait(cycle, delay, this.deps.sleep, controller.signal);
+        if (waited.kind === "stopped") break;
+        if (waited.kind === "wake") wakeSignal = waited.signal;
+      } catch {
+        if (!(await this.deps.sleep(delay, controller.signal))) break;
+      }
     }
     candidate ??= inspectSlots();
+    if (wakeSignal !== null) {
+      wakeFallbackUsed = candidate === null
+        || wakeCandidateObservedMonoMs === null
+        || wakeCandidateObservedMonoMs > wakeSignal.bridgeReceivedMonoMs + ARRIVAL_BURST_MS;
+      this.traceAvailabilityWakeResult(
+        wakeSignal,
+        wakeCandidateObservedMonoMs,
+        candidate !== null,
+        wakeFallbackUsed,
+        wakeScanCount,
+      );
+    }
     if (!candidate) {
       traceCycle("NO_SLOT");
+      this.availabilityWake.endCycle(cycle);
       return { kind: "retry" };
     }
     this.observeAvailabilityDom(candidate, cycle);
     traceCycle("SLOT_FOUND");
+    this.availabilityWake.endCycle(cycle);
     return { kind: "slot", candidate };
   }
 
@@ -1037,6 +1151,10 @@ interface ToggleCycleTrace {
   result: string;
   watch: string;
   arrivalAt: number | null;
+  wakeUsed: boolean;
+  wakeRequestSequence: number | null;
+  wakeCorrelationQuality: string | null;
+  wakeFallbackUsed: boolean;
 }
 
 function toggleCycleAttributes(t: ToggleCycleTrace): TraceAttributes {
@@ -1057,6 +1175,10 @@ function toggleCycleAttributes(t: ToggleCycleTrace): TraceAttributes {
     result: t.result,
     watch: t.watch,
     arrivalAt: t.arrivalAt,
+    wakeUsed: t.wakeUsed,
+    wakeRequestSequence: t.wakeRequestSequence,
+    wakeCorrelationQuality: t.wakeCorrelationQuality,
+    wakeFallbackUsed: t.wakeFallbackUsed,
   };
 }
 

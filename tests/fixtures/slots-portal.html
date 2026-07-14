@@ -1,0 +1,8 @@
+<!-- 실측 출처: 2026-07-14 예약 drawer는 main 밖에 렌더되고 main은 aria-hidden 처리됨. -->
+<main aria-hidden="true">
+  <button data-busy="false"><span>오후 6:00</span></button>
+</main>
+<div class="drawer-box">
+  <button data-busy="false" data-active-slot="true"><span>오후 6:30</span></button>
+  <button data-busy="false" aria-hidden="true"><span>오후 7:00</span></button>
+</div>

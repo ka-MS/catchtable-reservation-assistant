@@ -1,76 +1,72 @@
 # HANDOFF
 
 **갱신:** 2026-07-14
-**브랜치:** `main` (Tier 2-2 진입 전 안정화 완료)
-**작업 로그:** `docs/worklog/2026-07-14-08-tier2-2-preentry-complete.md`
+**브랜치:** `main`
+**작업 로그:** `docs/worklog/2026-07-14-09-tier2-2-availability-hot-path.md`
 
-## 현재 상태 — Tier 1·Tier 2-1 실제 오픈 검증 완료
+## 현재 상태
 
-`docs/specs/open-timing-performance/01-reference-clock-reliability/` 6단계 전부 완료. Tier 2-1은 XHR shadow probe, strict classifier, ISOLATED bridge, body/DOM 비교 trace를 구현했고 **228 테스트 green**이다.
+Tier 2-2 availability hot-path의 fallback 보존형 구현과 비최종 안전 검증을 완료했다.
 
-- 버스트 시계동기화 → 상시 ReferenceClock(구간 최대피복 estimator + 히스테리시스 + rolling 샘플러 + uncertainty 기반 armLead + 3-프레임 텔레메트리).
-- **dry-run E2E 통과**(40-verification): 카운트다운 표시 버그("+20647일") 포함 총 4건의 버그를 검증 과정에서 잡아 수정.
-- **개선 2건 추가 반영**(이번 세션 마지막):
-  1. SLOT_DETECTED/SLOT_SELECTED에 감지 시점 시계 스냅샷(`clockUncertaintyMs`·`clockOffsetMs`) 추가 — armed metric이 표본 1개로 얼어붙는 문제 보완(`4666a60`).
-  2. `dispatch.ts`로 무효 컨텍스트 sendMessage 동기 throw 삼킴 — 콘솔 "Extension context invalidated" 제거(`f812a5d`).
-- Tier 2-1 live dry-run에서 body/DOM이 같은 18:30 슬롯을 골랐고 body가 79.4ms 선행했다. 종료 뒤 XHR 원복, trace seq 연속, dropped 0을 확인했다.
-- 2026-07-14 조광201 실제 오픈에서 `EMPTY → POPULATED`, body/DOM 20:00 일치와 body 47.7ms 선행을 확인했다. 슬롯 클릭은 +1011ms, 예약 폼 최초 도착은 +1835ms였다.
-- 실제 run `run-c5463a0b-ffe0-447b-a619-f9c545181ac0`은 34/34 events, seq 연속, dropped 0, 최종 `HANDED_OFF`다.
-- Tier 2-2 판정은 **REDUCE** 유지다. 안전한 pre-DOM actuator가 없어 응답 기반 직접 클릭으로 승격하지 않는다.
+- 검증된 현재 cycle `EXACT/STRONG` body만 DOM scan wake-up 후보로 사용한다.
+- body는 슬롯을 선택하거나 클릭하지 않는다.
+- 최종 후보와 클릭 직전 유효성은 기존 `SlotAdapter`가 DOM에서 다시 확인한다.
+- body 부재, WEAK/NONE, stale, malformed, probe·observer·trace 실패는 기존 bounded DOM 경로로 폴백한다.
+- body 이후 DOM이 늦게 렌더되면 현재 cycle만 최대 250ms 보존하고 `stopAt`은 넘지 않는다.
+- 20ms settling, 40ms switch lead, 60ms confirmation cap은 실제 p95 근거가 없어 유지했다.
+- 예약 drawer가 `main` 밖 portal에 렌더되는 live 구조를 fixture로 고정하고 SlotAdapter 범위를 보완했다.
 
-## 현재 체크포인트 — Tier 2-2 분석 착수 가능
+상태 표현:
 
-실오픈 기준선 판독은 완료했다. 날짜 불문 `lastArrivalAt`이 canceled 인접 요청에도 갱신될 수 있음을 확인했으므로 Tier 2-2는 target 날짜·인원이 검증된 body 이벤트만 상관 신호 후보로 사용해야 한다.
+> fallback 보존형 구현 완료, RT-10M 재측정 대기
 
-## 완료한 안정화 목표
+성능 향상 완료 또는 Tier 2-2 최종 종료를 선언하지 않는다.
 
-실오픈 기준선 판독 뒤 Tier 2-2 진입 전에 지정한 다음 항목을 모두 처리하고 검증했다.
+## 검증 근거
 
-- `RT-01`: 완료 — click dispatch와 후속 화면 확인 분리, legacy `SLOT_SELECTED`는 저장 호환 표시만 유지
-- `RT-10`: 완료 — cycle-correlated shadow timing, 순서 독립 body/DOM 결합, 관측 독립성 검증
-- `RT-02`: 완료 — dead `clockSampleCount` 사용자 설정 제거, legacy 저장 호환과 telemetry metric 유지
-- `RT-06`: 완료 — 예약금 안내의 `확인/다음` 변형 지원, 선택 control이 있으면 안전 인계
-- `RT-07`: 완료 — 야키토리묵 좌석·필수 메뉴 결합 바텀시트 판별·선택·안전 인계
+- `npm run check`: 263/263 tests, dist validation, MAIN/ISOLATED independence 통과
+- extension: `olbclnjiehfelpfmgmdphfmenapmpaal`, version `0.2.0`
+- load path: `\\wsl.localhost\Ubuntu\home\developer\source\catchtable-reserve\dist`
+- live dry-run: `run-9e67fd6e-29a4-4def-87f8-244f0960e84f`
+- 결과: `DRY_RUN_COMPLETED`, 24 events, seq `1..24`, dropped 0
+- wake: cycle 1 / request 4 / EXACT / candidate found / fallback false
+- wake-to-DOM 약 0.1ms, response-to-DOM 약 20.4ms
+- 슬롯·결제·약관·최종 예약 클릭 0회
 
-`RT-01`, `RT-03` 정확성 안정화는 완료했다. RT-01 전체 자동 게이트는 229개가 통과했고 live 확장 재로드·안전 인계·비최종 후속 화면 출현을 확인했다.
+상세 문서:
 
-사용자 승인 목표인 RT-01, RT-10, RT-02, RT-06, RT-07 구현과 개별 검증을 모두 완료했다. RT-07 전체 live 자동 흐름은 기존 날짜 준비 판정에서 먼저 인계됐으며, live 구조·수동 비최종 전환·fixture·전체 게이트로 범위를 분리해 검증했다.
+- `docs/specs/open-timing-performance/02-availability-hot-path/10-analysis.md`
+- `docs/specs/open-timing-performance/02-availability-hot-path/20-design.md`
+- `docs/specs/open-timing-performance/02-availability-hot-path/30-implementation.md`
+- `docs/specs/open-timing-performance/02-availability-hot-path/40-verification.md`
+- `docs/specs/open-timing-performance/02-availability-hot-path/50-adversarial-review.md`
 
-참조: `docs/backlog/post-tier2-1-stabilization.md`
+## 다음 작업 1 - RT-10M 실제 오픈 재측정
 
-RT-10 구현은 완료했다. 실제 오픈 `EXACT` 또는 `STRONG` 표본은 RT-10M으로 분리하며, 확보 전에는 Tier 2-2 성능 이득이나 body 기반 actuator 승격을 주장하지 않는다.
+실제 `EMPTY -> POPULATED` 오픈에서 다음 원시 시각을 같은 cycle·requestSequence로 보존한다.
 
-`Blocks`가 `없음`인 다른 backlog 항목은 남아 있어도 Tier 2-2 진입을 자동으로 막지 않는다.
+1. response completed
+2. payload classified
+3. bridge received
+4. wake accepted
+5. DOM candidate observed
+6. slot dispatch 및 click 결과
 
-## 다음 작업 1 — 정확성 안정화
+`EXACT` 또는 `STRONG` 유효 표본만 집계한다. 여러 실행에서 p50/p95를 계산하고 body wake가 기존 25ms polling 잔여를 실제로 줄이는지 판정한다. 그 전에는 20/40/60ms를 변경하거나 성능 이득을 주장하지 않는다.
 
-- RT-01: 완료 — `docs/specs/slot-transition-outcomes/`
-- RT-03: 완료 — `docs/specs/slot-ancestor-visibility/`
-- RT-02: 완료 — `docs/specs/clock-sample-setting-contract/`
-- RT-06: 완료 — `docs/specs/deposit-notice-next/`
-- RT-07: 완료 — `docs/specs/seating-menu-sheet/`
+## 다음 작업 2 - RT-05 종료 gate
 
-## 다음 작업 2 — Tier 2-1 관측 보강과 재측정
+RT-10M 판독 뒤 MAIN XHR probe를 다음 중 하나로 결정한다.
 
-- RT-10: 완료 — cycle-correlated shadow timing과 shadow 제어 독립성 검증
-- RT-10M: 다음 실제 오픈 가능 시점에 `EMPTY -> POPULATED`를 재측정해 `EXACT` 또는 `STRONG` 표본 확보
-- RT-10M 전에도 fallback을 보존한 분석·구현은 가능하지만 성능 결론과 actuator 승격은 금지한다.
+- 진단 모드 전용
+- 성능 이득이 없으면 제거
+- 제한된 관측 경로로 기본 비활성 유지
 
-## 다음 작업 3 — Tier 2-2 축소 설계 착수
+비활성 시 wrapper 미설치, 활성 시 원본 의미 보존·종료 원복·제어 독립성 회귀를 통과해야 Tier 2-2를 최종 종료할 수 있다.
 
-Tier 2-1의 `40-verification.md`와 `50-adversarial-review.md`를 먼저 읽는다.
-
-- 실제 오픈 근거는 `01-observation-safety/40-verification.md` §7과 최신 worklog를 사용한다.
-- 날짜·인원이 검증된 target body 이벤트로만 좁은 MutationObserver 또는 즉시 DOM 스캔을 깨운다.
-- body 신호만으로 직접 클릭하지 않고 기존 클릭 직전 DOM 재검증을 유지한다.
-- body 이벤트가 없으면 기존 bounded DOM 경로로 폴백한다.
-- 이후 Tier 3(`03-runtime-resilience`) — 개요 스텁만 있음.
-
-## 검증
+## 검증 명령
 
 ```bash
-npm run check   # WSL: wsl.exe -d ubuntu -e bash -lc "cd ~/source/catchtable-reserve && npm run check"
+npm run check
 git status --short --branch
 ```
-
-단위·fixture 테스트 245개와 전체 자동 게이트 통과. RT-10 live 양성 표본 제한과 RT-07 전체 live 자동 흐름 제한은 각 `40-verification.md`에 기록했다.
