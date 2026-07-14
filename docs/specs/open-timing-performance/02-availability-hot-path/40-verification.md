@@ -1,7 +1,7 @@
 # Tier 2-2 - Availability DOM wake-up 검증
 
 **검증일:** 2026-07-14
-**상태:** fallback 보존형 구현 완료, RT-10M 재측정 대기
+**상태:** 실제 오픈 기능 검증 완료, body wake 성능 이득 미입증
 
 ## 1. 자동 게이트
 
@@ -103,3 +103,30 @@ Catchtable 페이지 콘솔에는 error/warn/issue가 없었다. extension page�
 | 최종 달력 상태 변경 | 측정 중 사용자 클릭으로 발생, 판정에서 제외 |
 
 이 표본은 실제 오픈에서 `EXACT POPULATED` 분류와 조건 불일치 시 미클릭 안전성을 확인한다. 다만 설정과 일치하는 슬롯이 없으므로 wake accepted부터 DOM candidate, dispatch, click까지의 지연을 측정할 수 없다. 따라서 RT-10M 성능 게이트와 RT-05 종료 gate는 계속 열어 둔다.
+
+## 8. 누와 실제 오픈 표본
+
+2026-07-15 누와 00:00 오픈에서 로컬 3개와 신규 PC 1개 CSV를 분석했다. CSV에 포함된 네 실행은 모두 dropped 0이고 seq gap이 없다. 신규 PC의 나머지 3개 실패는 CSV가 없어 사용자 관측으로만 보존한다.
+
+| 실행 | 환경 | 결과 | 핵심 판정 |
+|---|---|---|---|
+| `run-ec3acf59-2e31-48c5-a558-b7dd184d7a01` | 로컬, 전면 | 폼 인계, 사용자 최종 예약 성공 | body `inactive_cycle`, 기존 DOM 경로로 +893ms 클릭 |
+| `run-5881d898-a394-4244-a694-07e2d5ea0205` | 로컬, 최소화 | +1297ms 클릭, 후속 화면 timeout | wake accepted, wake-to-DOM 482ms, fallback |
+| `run-8984299b-a323-4278-a799-4da514d9c20a` | 로컬, 최소화 | 사용자 중지 | 2초 이상 cycle과 20~37초 공백, 일치 슬롯 없음 |
+| `run-b413a0d5-d2ed-4642-bee3-d4aea20d04ac` | 신규 PC, 4분할 | entry 인계 | 5초 동안 `aside#dock` 예약 CTA 미검출, viewport 원인 미확정 |
+
+전면 성공 실행의 서버 기준 주요 시각:
+
+| 단계 | 오픈 대비 |
+|---|---:|
+| target 날짜 클릭 | +690ms |
+| XHR resource arrival | +814ms |
+| DOM 후보 감지 | +884ms |
+| 슬롯 클릭 dispatch | +893ms |
+| 후속 dialog 확인 | +1560ms |
+| 예약 폼 최초 관측 | +1857ms |
+| 예약 폼 인계 이벤트 | +2253ms |
+
+성공 실행에서 response-to-DOM은 약 74ms였지만 bridge delay가 약 57ms라 bridge 이후 DOM까지 남은 시간은 약 16ms였다. 다른 일치 실행은 body wake를 수용했으나 wake-to-DOM 약 482ms로 fallback했다. 실제 오픈에서 body wake가 기존 DOM 경로보다 빠르게 후보를 반환한 표본은 0개다.
+
+표본 수와 환경 편향 때문에 p50/p95를 계산하지 않는다. 20/40/60ms 상수와 cycle 정책을 변경할 근거도 없다. 중요한 예약 전에는 현재 fallback 보존형 빌드를 유지하며, viewport·visibility 진단을 추가한 뒤 정상 크기 전면 실행 표본을 더 확보한다.

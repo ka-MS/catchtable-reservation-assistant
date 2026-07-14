@@ -1,10 +1,11 @@
 # HANDOFF
 
-**갱신:** 2026-07-14
+**갱신:** 2026-07-15
 **브랜치:** `main`
 **최신 보조 작업 로그:** `docs/worklog/2026-07-14-10-payment-policy-ux-shortcut.md`
 **핵심 hot-path 작업 로그:** `docs/worklog/2026-07-14-09-tier2-2-availability-hot-path.md`
 **최신 RT-10M 실측:** `docs/worklog/2026-07-14-11-rt10m-yangjour-negative-control.md`
+**최신 RT-10M 분석:** `docs/worklog/2026-07-15-01-rt10m-nuwa-measurement.md`
 **최신 short-cut:** `docs/specs/run-telemetry/60-csv-export-shortcut.md`
 
 ## 현재 상태
@@ -32,10 +33,15 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 
 - CSV는 Excel-safe 문자열인 원본 epoch ms와 전체 KST 시각을 함께 보존하고 동적 trace attributes를 열로 펼친다.
 - 화면은 최신 100개만 유지하지만 CSV는 IndexedDB의 해당 run 전체 이벤트를 읽는다.
 - CSV short-cut은 예약 오케스트레이터, 날짜 토글, XHR probe, wake, SlotAdapter를 변경하지 않았다.
+- 누와 실제 오픈에서 일치 슬롯까지 도달한 로컬 표본 2개를 확보했다. 두 실행 모두 dropped 0이었다.
+- 전면 표본은 서버 기준 오픈 약 +893ms에 슬롯 클릭, +1560ms에 후속 화면 확인, +1857ms에 예약 폼 최초 관측, +2253ms에 인계까지 도달했다. 최종 예약 성공은 사용자가 확인했다.
+- 전면 표본의 `EXACT POPULATED` body는 이전 cycle로 늦게 도착해 `inactive_cycle`로 거절됐고, 다음 cycle의 기존 DOM 경로가 슬롯을 찾았다.
+- 최소화 표본은 body wake를 수용했지만 wake-to-DOM 약 482ms로 250ms window를 넘겨 fallback했으며, 슬롯 클릭 뒤 화면 전환을 확인하지 못했다.
+- 다른 최소화 표본에는 수십 초의 cycle 간격이 나타났다. 작은 4분할 창의 신규 PC 표본은 예약 CTA를 찾지 못했지만 viewport·visibility 정보가 없어 원인은 아직 확정하지 않는다.
 
 상태 표현:
 
-> fallback 보존형 구현 완료, RT-10M 재측정 대기
+> 실제 오픈 기능 검증 완료, body wake 성능 이득 미입증, 환경 진단과 RT-05 판정 대기
 
 성능 향상 완료 또는 Tier 2-2 최종 종료를 선언하지 않는다.
 
@@ -62,7 +68,13 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 
 - `docs/specs/open-timing-performance/02-availability-hot-path/40-verification.md`
 - `docs/specs/open-timing-performance/02-availability-hot-path/50-adversarial-review.md`
 
-## 다음 작업 1 - RT-10M 실제 오픈 재측정
+## 다음 작업 1 - 실행 환경 진단
+
+중요 예약 전에는 hot path 상수나 cycle 정책을 변경하지 않는다. 최소화·작은 4분할 실행의 실패 원인을 분리하기 위해 다음 표본부터 run 시작과 종료 스냅샷에 `document.visibilityState`, `document.hasFocus()`, viewport 크기와 진입 CTA 구조를 남기는 설계를 먼저 검토한다. 좁은 화면의 대체 CTA는 실제 DOM을 확보하기 전까지 추측으로 지원하지 않는다.
+
+운영 시에는 예약 페이지를 정상 크기의 보이는 창으로 유지하고 최소화하지 않는다. 즉시 실행에서 사용자가 모달·날짜·인원을 준비할 수 있으면 `entryMode=prepared`로 자동 진입 단계를 생략할 수 있다.
+
+## 다음 작업 2 - RT-10M 추가 전면 표본
 
 실제 `EMPTY -> POPULATED` 오픈에서 다음 원시 시각을 같은 cycle·requestSequence로 보존한다.
 
@@ -75,11 +87,11 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 
 
 `EXACT` 또는 `STRONG` 유효 표본만 집계한다. 여러 실행에서 p50/p95를 계산하고 body wake가 기존 25ms polling 잔여를 실제로 줄이는지 판정한다. 그 전에는 20/40/60ms를 변경하거나 성능 이득을 주장하지 않는다.
 
-2026-07-14 양주르 실측은 `EXACT POPULATED` 분류와 조건 불일치 시 미클릭 안전성을 확인했지만, 설정과 일치하는 슬롯이 없어 wake-to-DOM·dispatch·click 성능 표본으로 사용할 수 없다. 마지막 `SETUP_INVALID` 종료는 측정 중 사용자 클릭으로 발생했으므로 제외한다. 다음 실측은 실제 열린 슬롯을 포함하는 시간 조건으로 수행해야 한다.
+2026-07-15 누와 실측은 일치 슬롯의 실제 오픈 기능 검증을 충족한다. 다만 유효한 전면 표본이 1개뿐이고 body wake가 클릭 경로를 단축한 표본은 0개라 p50/p95나 상수 조정 근거로는 부족하다. 추가 전면 표본이 생기기 전까지 현재 상수와 fallback을 유지한다.
 
-## 다음 작업 2 - RT-05 종료 gate
+## 다음 작업 3 - RT-05 종료 gate
 
-RT-10M 판독 뒤 MAIN XHR probe를 다음 중 하나로 결정한다.
+추가 전면 표본 또는 현재 제한을 명시한 판독 뒤 MAIN XHR probe를 다음 중 하나로 결정한다.
 
 - 진단 모드 전용
 - 성능 이득이 없으면 제거
