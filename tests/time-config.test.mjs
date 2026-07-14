@@ -37,6 +37,7 @@ function validConfig() {
     timeRange: { startMinutes: 1080, endMinutes: 1200 },
     priorityTimes: [1140, 1110],
     postSlotEnabled: false,
+    paymentMethodAutoAdvance: true,
     tablePreference: "any",
     menuKeyword: "",
     stopAtMs: 2_600_000,
@@ -67,10 +68,12 @@ test("invalid time relationships and unsafe settings are rejected", () => {
   config.toggleIntervalMs = 50;
   config.tablePreference = "window";
   config.postSlotEnabled = "yes";
+  config.paymentMethodAutoAdvance = "yes";
 
   const errors = validateReservationConfig(config, 1_000_000);
   assert.ok(errors.length >= 6);
   assert.ok(errors.some((error) => error.includes("URL")));
   assert.ok(errors.some((error) => error.includes("감시 종료")));
   assert.ok(errors.some((error) => error.includes("준비 방식")));
+  assert.ok(errors.some((error) => error.includes("결제 방식")));
 });

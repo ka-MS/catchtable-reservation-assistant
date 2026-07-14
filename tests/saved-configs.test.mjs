@@ -16,6 +16,7 @@ function config(overrides = {}) {
     timeRange: { startMinutes: 1080, endMinutes: 1200 },
     priorityTimes: [1140, 1110],
     postSlotEnabled: true,
+    paymentMethodAutoAdvance: true,
     tablePreference: "bar",
     menuKeyword: " 디너   오마카세 ",
     stopAtMs: 601_000,
@@ -76,11 +77,12 @@ test("sanitize drops corrupt snapshots, repairs fingerprints, and sorts newest f
 });
 
 test("sanitize accepts both legacy clock setting and the current config shape", () => {
-  const legacy = config({ clockSampleCount: 9 });
+  const { paymentMethodAutoAdvance: _removed, ...legacy } = config({ clockSampleCount: 9 });
   const current = config({ reservationDate: "2026-07-31" });
   const result = sanitizeSavedConfigs([
     { id: "legacy", savedAt: 10, fingerprint: "", config: legacy },
     { id: "current", savedAt: 20, fingerprint: "", config: current },
   ]);
   assert.deepEqual(result.map((item) => item.id), ["current", "legacy"]);
+  assert.equal(result.find((item) => item.id === "legacy").config.paymentMethodAutoAdvance, true);
 });

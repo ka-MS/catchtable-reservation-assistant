@@ -22,6 +22,7 @@ function config(overrides = {}) {
     timeRange: { startMinutes: 1080, endMinutes: 1200 },
     priorityTimes: [],
     postSlotEnabled: false,
+    paymentMethodAutoAdvance: true,
     tablePreference: "any",
     menuKeyword: "",
     stopAtMs: BASE_OPEN + 600_000,
@@ -131,10 +132,13 @@ test("sanitizeScheduledJobs drops malformed entries", () => {
 });
 
 test("sanitizeScheduledJobs accepts legacy and current clock setting shapes", () => {
-  const legacy = job({ id: "legacy", config: config({ clockSampleCount: 9 }) });
+  const { paymentMethodAutoAdvance: _removed, ...legacyConfig } = config({ clockSampleCount: 9 });
+  const legacy = job({ id: "legacy", config: legacyConfig });
   const currentConfig = config({ openAtMs: BASE_OPEN + 1_000_000, stopAtMs: BASE_OPEN + 1_600_000 });
   const current = job({ id: "current", config: currentConfig });
-  assert.deepEqual(sanitizeScheduledJobs([legacy, current]).map((item) => item.id), ["legacy", "current"]);
+  const sanitized = sanitizeScheduledJobs([legacy, current]);
+  assert.deepEqual(sanitized.map((item) => item.id), ["legacy", "current"]);
+  assert.equal(sanitized[0].config.paymentMethodAutoAdvance, true);
 });
 
 test("reconcileJobs reschedules future jobs and marks passed ones missed", () => {

@@ -1,4 +1,4 @@
-import { validateReservationConfig } from "./config.js";
+import { normalizeReservationConfig, validateReservationConfig } from "./config.js";
 import type { ReservationConfig, ScheduledJob, ScheduledJobResult, ScheduledJobStatus } from "./types.js";
 
 export const SCHEDULED_JOB_LIMIT = 10;
@@ -113,7 +113,7 @@ export function sanitizeScheduledJobs(value: unknown): ScheduledJob[] {
       return [];
     }
     try {
-      const config = candidate.config as ReservationConfig;
+      const config = normalizeReservationConfig(candidate.config as ReservationConfig);
       if (validateReservationConfig(config, Number.NEGATIVE_INFINITY).length > 0) return [];
       const result = candidate.result;
       const validResult = result && typeof result === "object"

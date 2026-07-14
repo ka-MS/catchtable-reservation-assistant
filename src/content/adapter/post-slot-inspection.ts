@@ -31,6 +31,7 @@ export type PostSlotInspection = (
   | { kind: "extras" }
   | { kind: "deposit_notice" }
   | { kind: "deposit" }
+  | { kind: "payment_method_notice" }
   | { kind: "request_notice" }
   | { kind: "promo_interstitial" }
   | { kind: "form" }
@@ -156,7 +157,20 @@ function exactInspection(dialog: HTMLElement, value: DialogSnapshot): PostSlotIn
 
 function supportedInspection(dialog: HTMLElement, value: DialogSnapshot): PostSlotInspection | null {
   const title = normalizedText(value.diagnostics.title);
+  const dialogText = normalizedText(dialog.textContent);
   const progress = value.hasNext || value.hasConfirm;
+  const paymentMethodNotice = visibleAll<HTMLButtonElement>(dialog, "button")
+    .some((button) => normalizedText(button.textContent) === "이 방식으로 예약");
+  if (paymentMethodNotice && dialogText.includes("예약금 0원") && dialogText.includes("자동결제")) {
+    return {
+      kind: "payment_method_notice",
+      ...meta(value, "supported", "zero-deposit-auto-payment-notice-v1", [
+        "zero-deposit text",
+        "auto-payment text",
+        "reserve-with-method button",
+      ]),
+    };
+  }
   if (title.includes("테이블") && title.includes("선택") && value.diagnostics.radioCount > 0 && progress) {
     return {
       kind: "table_type",

@@ -11,6 +11,7 @@ export interface FormValues {
   endTime: string;
   priorityTimes: string[];
   postSlotEnabled: boolean;
+  paymentMethodAutoAdvance: boolean;
   tablePreference: TablePreference;
   menuKeyword: string;
   stopAt: string;
@@ -36,6 +37,7 @@ function parseConfig(values: FormValues): ReservationConfig {
     timeRange: { startMinutes, endMinutes },
     priorityTimes: priorityTimes as number[],
     postSlotEnabled: values.postSlotEnabled,
+    paymentMethodAutoAdvance: values.paymentMethodAutoAdvance,
     tablePreference: values.tablePreference,
     menuKeyword: values.menuKeyword.trim(),
     stopAtMs: localInputToEpoch(values.stopAt),

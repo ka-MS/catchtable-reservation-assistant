@@ -6,6 +6,13 @@ export function defaultStopAt(openAtMs: number): number {
   return openAtMs + TEN_MINUTES_MS;
 }
 
+export function normalizeReservationConfig(config: ReservationConfig): ReservationConfig {
+  return {
+    ...config,
+    paymentMethodAutoAdvance: config.paymentMethodAutoAdvance ?? true,
+  };
+}
+
 function isValidDate(value: string): boolean {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return false;
@@ -49,6 +56,10 @@ export function validateReservationConfig(config: ReservationConfig, nowMs: numb
   }
   if (typeof config.postSlotEnabled !== "boolean") {
     errors.push("후속 선택 자동 진행 설정을 확인하세요.");
+  }
+  if (config.paymentMethodAutoAdvance !== undefined
+    && typeof config.paymentMethodAutoAdvance !== "boolean") {
+    errors.push("결제 방식 자동 진행 설정을 확인하세요.");
   }
   if (!["any", "hall", "bar", "room"].includes(config.tablePreference)) {
     errors.push("테이블 타입 설정을 확인하세요.");

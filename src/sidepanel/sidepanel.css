@@ -333,6 +333,10 @@ select:focus {
   margin-top: 12px;
 }
 
+.dependent-toggle {
+  grid-column: 1 / -1;
+}
+
 .dependent-options[data-enabled="false"] {
   opacity: 0.55;
 }

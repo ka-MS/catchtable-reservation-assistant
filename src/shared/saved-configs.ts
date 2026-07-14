@@ -1,5 +1,5 @@
 import type { ReservationConfig, SavedConfig } from "./types.js";
-import { validateReservationConfig } from "./config.js";
+import { normalizeReservationConfig, validateReservationConfig } from "./config.js";
 
 export const SAVED_CONFIG_LIMIT = 20;
 
@@ -57,7 +57,7 @@ export function sanitizeSavedConfigs(value: unknown): SavedConfig[] {
       return [];
     }
     try {
-      const config = candidate.config as ReservationConfig;
+      const config = normalizeReservationConfig(candidate.config as ReservationConfig);
       if (validateReservationConfig(config, Number.NEGATIVE_INFINITY).length > 0) return [];
       return [{
         id: candidate.id,

@@ -14,7 +14,10 @@ export interface PostSlotActionResult {
   message: string;
 }
 
-type PostSlotConfig = Pick<ReservationConfig, "tablePreference" | "menuKeyword" | "personCount">;
+type PostSlotConfig = Pick<
+  ReservationConfig,
+  "tablePreference" | "menuKeyword" | "personCount" | "paymentMethodAutoAdvance"
+>;
 
 const TABLE_LABEL: Record<Exclude<TablePreference, "any">, string> = {
   hall: "홀",
@@ -62,7 +65,17 @@ export class PostSlotAdapter {
           ? this.advanceDepositNotice(dialog)
           : { status: "waiting", message: "다음 후속 화면을 기다립니다." };
       case "deposit":
+        if (config.paymentMethodAutoAdvance === false) {
+          return { status: "blocked", message: "결제 방식 자동 진행이 꺼져 있어 사용자에게 인계합니다." };
+        }
         return dialog ? this.advanceDeposit(dialog) : { status: "waiting", message: "다음 후속 화면을 기다립니다." };
+      case "payment_method_notice":
+        if (config.paymentMethodAutoAdvance === false) {
+          return { status: "blocked", message: "결제 방식 자동 진행이 꺼져 있어 사용자에게 인계합니다." };
+        }
+        return dialog
+          ? this.clickProgress(dialog, ["이 방식으로 예약"], "선택한 결제 방식으로 예약 폼에 진행했습니다.")
+          : { status: "waiting", message: "다음 후속 화면을 기다립니다." };
       case "request_notice":
         return this.advanceRequestNotice();
       case "promo_interstitial":
@@ -220,15 +233,20 @@ export class PostSlotAdapter {
   }
 
   private advanceDeposit(dialog: HTMLElement): PostSlotActionResult {
-    const depositFree = visibleAll<HTMLInputElement>(dialog,
-      '[role="radio"][aria-label], input[type="radio"][aria-label]',
-    ).find(isZeroDepositControl);
-    if (!depositFree) {
-      return { status: "blocked", message: "예약금 0원 결제를 선택할 수 없어 사용자에게 인계합니다." };
+    const visibleMethods = visibleAll<HTMLInputElement>(dialog,
+      '[role="radio"], input[type="radio"]',
+    );
+    const transitionFree = visibleMethods.find(isZeroDepositControl);
+    if (transitionFree && isDisabled(transitionFree)) {
+      return { status: "waiting", message: "예약금 결제 방법 화면 전환을 기다립니다." };
     }
-    if (isDisabled(depositFree)) return { status: "waiting", message: "예약금 결제 방법 화면 전환을 기다립니다." };
-    if (!isChecked(depositFree)) {
-      (depositFree as HTMLElement).click();
+    const methods = visibleMethods.filter((method) => !isDisabled(method));
+    const depositFree = methods.find(isZeroDepositControl);
+    const selected = methods.find(isChecked);
+    const target = depositFree ?? selected;
+    if (!target) return { status: "blocked", message: "선택된 결제 방식이 없어 사용자에게 인계합니다." };
+    if (!isChecked(target)) {
+      (target as HTMLElement).click();
       return { status: "acted", message: "예약금 0원 결제를 선택했습니다." };
     }
     return this.clickProgress(dialog, ["다음", "확인"], "예약금 결제 방법을 확인했습니다.");

@@ -363,7 +363,7 @@ test("deposit notice next is blocked when a payment choice is present", () => {
   assert.equal(nextClicks, 0);
 });
 
-test("deposit-free flow advances but a paid-only dialog blocks", () => {
+test("deposit method prefers zero deposit and accepts an already selected active method", () => {
   // Live DOM measured 2026-07-10: native radio inputs with stable aria-label values.
   const document = documentFor(`
     <div role="dialog" aria-label="예약금 결제 방법 선택">
@@ -379,13 +379,72 @@ test("deposit-free flow advances but a paid-only dialog blocks", () => {
   assert.equal(adapter.advance(adapter.inspect(), { tablePreference: "any", menuKeyword: "" }).status, "acted");
   assert.equal(nextClicks, 1);
 
-  const paidOnly = new PostSlotAdapter(documentFor(`
+  const paidDocument = documentFor(`
     <div role="dialog" aria-label="예약금 결제 방법 선택">
-      <input type="radio" aria-label="예약금 결제" checked>
+      <input type="radio" checked>
+      <button data-paid-next>다음</button>
+    </div>
+  `);
+  let paidNextClicks = 0;
+  paidDocument.querySelector("[data-paid-next]").addEventListener("click", () => { paidNextClicks += 1; });
+  const paidOnly = new PostSlotAdapter(paidDocument);
+  assert.equal(paidOnly.advance(paidOnly.inspect(), {
+    tablePreference: "any",
+    menuKeyword: "",
+    paymentMethodAutoAdvance: true,
+  }).status, "acted");
+  assert.equal(paidNextClicks, 1);
+});
+
+test("deposit method hands off when auto advance is off or no active method is selected", () => {
+  const selectedDocument = documentFor(`
+    <div role="dialog" aria-label="예약금 결제 방법 선택">
+      <input type="radio" aria-label="예약금 0원 결제" checked>
       <button data-next>다음</button>
     </div>
+  `);
+  let nextClicks = 0;
+  selectedDocument.querySelector("[data-next]").addEventListener("click", () => { nextClicks += 1; });
+  const disabled = new PostSlotAdapter(selectedDocument);
+  const disabledResult = disabled.advance(disabled.inspect(), {
+    tablePreference: "any",
+    menuKeyword: "",
+    paymentMethodAutoAdvance: false,
+  });
+  assert.equal(disabledResult.status, "blocked");
+  assert.equal(nextClicks, 0);
+
+  const unselected = new PostSlotAdapter(documentFor(`
+    <div role="dialog" aria-label="예약금 결제 방법 선택">
+      <input type="radio" aria-label="예약금 결제">
+      <button>다음</button>
+    </div>
   `));
-  assert.equal(paidOnly.advance(paidOnly.inspect(), { tablePreference: "any", menuKeyword: "" }).status, "blocked");
+  assert.equal(unselected.advance(unselected.inspect(), {
+    tablePreference: "any",
+    menuKeyword: "",
+    paymentMethodAutoAdvance: true,
+  }).status, "blocked");
+});
+
+test("zero-deposit auto-payment notice advances only with the measured evidence", () => {
+  const document = documentFor(fixture("post-slot-payment-method-notice.html"));
+  let reserveClicks = 0;
+  document.querySelector("[data-reserve]").addEventListener("click", () => { reserveClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+  const inspection = adapter.inspect();
+  assert.equal(inspection.kind, "payment_method_notice");
+  assert.equal(adapter.advance(inspection, {
+    tablePreference: "any",
+    menuKeyword: "",
+    paymentMethodAutoAdvance: true,
+  }).status, "acted");
+  assert.equal(reserveClicks, 1);
+
+  const lookalike = new PostSlotAdapter(documentFor(`
+    <div role="dialog"><p>다른 프로모션입니다.</p><button>이 방식으로 예약</button></div>
+  `));
+  assert.equal(lookalike.inspect().kind, "unknown");
 });
 
 test("deposit-free flow tolerates a descriptive zero-deposit aria-label", () => {

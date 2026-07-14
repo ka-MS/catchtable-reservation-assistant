@@ -33,6 +33,7 @@ export interface ReservationConfig {
   timeRange: { startMinutes: number; endMinutes: number };
   priorityTimes: number[];
   postSlotEnabled: boolean;
+  paymentMethodAutoAdvance: boolean;
   tablePreference: TablePreference;
   menuKeyword: string;
   stopAtMs: number;

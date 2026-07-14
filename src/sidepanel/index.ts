@@ -60,6 +60,7 @@ const fields = {
   startTime: byId<HTMLInputElement>("start-time"),
   endTime: byId<HTMLInputElement>("end-time"),
   postSlotEnabled: byId<HTMLInputElement>("post-slot-enabled"),
+  paymentMethodAutoAdvance: byId<HTMLInputElement>("payment-method-auto-advance"),
   tablePreference: byId<HTMLSelectElement>("table-preference"),
   menuKeyword: byId<HTMLInputElement>("menu-keyword"),
   stopAt: byId<HTMLInputElement>("stop-at"),
@@ -199,6 +200,7 @@ function readValues(): FormValues {
     endTime: fields.endTime.value,
     priorityTimes: [...priorityTimes],
     postSlotEnabled: fields.postSlotEnabled.checked,
+    paymentMethodAutoAdvance: fields.paymentMethodAutoAdvance.checked,
     tablePreference: fields.tablePreference.value as TablePreference,
     menuKeyword: fields.menuKeyword.value,
     stopAt: fields.stopAt.value,
@@ -217,6 +219,7 @@ function applyValues(values: FormValues): void {
   fields.startTime.value = values.startTime;
   fields.endTime.value = values.endTime;
   fields.postSlotEnabled.checked = values.postSlotEnabled ?? false;
+  fields.paymentMethodAutoAdvance.checked = values.paymentMethodAutoAdvance ?? true;
   fields.tablePreference.value = values.tablePreference ?? "any";
   fields.menuKeyword.value = values.menuKeyword ?? "";
   fields.stopAt.value = values.stopAt;
@@ -246,6 +249,7 @@ function valuesFromConfig(config: ReservationConfig): FormValues {
     endTime: minutesToInput(config.timeRange.endMinutes),
     priorityTimes: config.priorityTimes.map(minutesToInput),
     postSlotEnabled: config.postSlotEnabled ?? false,
+    paymentMethodAutoAdvance: config.paymentMethodAutoAdvance ?? true,
     tablePreference: config.tablePreference ?? "any",
     menuKeyword: config.menuKeyword ?? "",
     stopAt: epochToLocalInput(config.stopAtMs),
@@ -262,6 +266,7 @@ function saveDraft(): void {
 
 function syncPostSlotFields(): void {
   const enabled = fields.postSlotEnabled.checked;
+  fields.paymentMethodAutoAdvance.disabled = !enabled;
   fields.tablePreference.disabled = !enabled;
   fields.menuKeyword.disabled = !enabled;
   postSlotOptions.dataset.enabled = String(enabled);

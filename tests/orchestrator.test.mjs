@@ -41,6 +41,7 @@ function config(overrides = {}) {
     timeRange: { startMinutes: 1080, endMinutes: 1200 },
     priorityTimes: [1140],
     postSlotEnabled: true,
+    paymentMethodAutoAdvance: true,
     tablePreference: "any",
     menuKeyword: "",
     stopAtMs: 3_000,
@@ -964,6 +965,37 @@ test("optional post-slot stages are advanced in observed order", async () => {
   assert.deepEqual(actions, ["table_type", "extras", "menu", "seating_menu", "deposit"]);
   assert.equal(h.events.some((event) => event.data?.postSlotStage === "menu" && "openDeltaMs" in event.data), false);
   assert.match(h.events.at(-1)?.message ?? "", /예약 폼/);
+});
+
+test("disabled payment automation advances earlier post-slot stages and hands off at payment", async () => {
+  const stages = [
+    { kind: "table_type", options: ["홀", "바"] },
+    { kind: "deposit" },
+  ];
+  const actions = [];
+  let index = 0;
+  const h = harness({
+    postSlot: {
+      inspect: () => stages[index],
+      advance: (stage, runConfig) => {
+        actions.push(stage.kind);
+        if (stage.kind === "deposit" && runConfig.paymentMethodAutoAdvance === false) {
+          return { status: "blocked", message: "결제 방식 선택 화면은 자동 진행하지 않습니다." };
+        }
+        index += 1;
+        return { status: "acted", message: `${stage.kind} 처리` };
+      },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({
+    dryRun: false,
+    paymentMethodAutoAdvance: false,
+  }));
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.deepEqual(actions, ["table_type", "deposit"]);
+  assert.match(h.events.at(-1)?.message ?? "", /결제 방식 선택/);
 });
 
 test("unknown post-slot screens hand off with safe structural diagnostics", async () => {
