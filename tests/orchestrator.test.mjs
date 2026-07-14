@@ -52,6 +52,51 @@ function config(overrides = {}) {
   };
 }
 
+function fakeAvailabilityShadow() {
+  let listener = null;
+  let marker = null;
+  const calls = { started: 0, marked: 0, stopped: 0 };
+  return {
+    calls,
+    port: {
+      start: (_expiresAt, nextListener) => {
+        calls.started += 1;
+        listener = nextListener;
+      },
+      markTargetCycle: (nextMarker) => {
+        calls.marked += 1;
+        marker = nextMarker;
+      },
+      stop: () => { calls.stopped += 1; },
+    },
+    emit(overrides = {}) {
+      assert.ok(listener, "shadow listener must be started");
+      assert.ok(marker, "target cycle must be marked");
+      const atMonoMs = overrides.atMonoMs ?? marker.targetClickMonoMs;
+      listener({
+        source: "ct-reserve-main",
+        type: "AVAILABILITY_SHADOW_EVENT",
+        schemaVersion: 2,
+        channelId: "channel-wake",
+        sequence: 1,
+        cycle: marker.cycle,
+        targetClickMonoMs: marker.targetClickMonoMs,
+        requestDate: "260730",
+        personCount: 2,
+        classification: "POPULATED",
+        availableMinutes: [1140],
+        responseStatus: 200,
+        requestSentMonoMs: marker.targetClickMonoMs,
+        responseCompletedMonoMs: atMonoMs,
+        bodyReadCompletedMonoMs: atMonoMs,
+        payloadClassifiedMonoMs: atMonoMs,
+        bridgeReceivedMonoMs: atMonoMs,
+        ...overrides,
+      });
+    },
+  };
+}
+
 function harness({
   slotAfterCycles = 1,
   clickResult = true,
@@ -65,6 +110,8 @@ function harness({
   readSlots = null,
   availabilityShadow = null,
   slotDomMutationWatch = null,
+  targetSelectionDelayMs = 0,
+  onTrace = null,
   captureSnapshot = () => ({
     urlKind: "shop", headings: [], buttons: ["확인"], disabledButtons: [false],
     disabledButtonCount: 0, dialogLabel: "", dialogTitle: "", textSnippet: "", fingerprint: "ss-test",
@@ -81,7 +128,12 @@ function harness({
   const calendar = {
     inspect: () => {
       onCalendarInspect();
-      return { targetAvailable: true, targetSelected: true, adjacentDate: "2026-07-29" };
+      const lastTargetClick = dateClickTimes.findLast((entry) => entry.date === "2026-07-30");
+      return {
+        targetAvailable: true,
+        targetSelected: lastTargetClick === undefined || now >= lastTargetClick.at + targetSelectionDelayMs,
+        adjacentDate: "2026-07-29",
+      };
     },
     prepareTarget,
     clickDate: (date) => {
@@ -134,7 +186,10 @@ function harness({
       return true;
     },
     emit: (event) => events.push(event),
-    trace: (code, severity, message, options) => traces.push({ code, severity, message, options }),
+    trace: (code, severity, message, options) => {
+      traces.push({ code, severity, message, options });
+      onTrace?.(code, severity, message, options);
+    },
     flushTrace: async () => undefined,
     captureSnapshot,
     runId: () => "run-1",
@@ -222,6 +277,254 @@ test("availability shadow records body/DOM agreement without changing the slot c
   assert.equal(shadow[1].options.attributes.correlationId, "cycle:1:request:2");
   assert.equal(typeof shadow[1].options.attributes.bridgeToDomMs, "number");
   assert.equal(shadow[1].options.attributes.claimSource, "body");
+});
+
+test("an EXACT matching body wakes an immediate same-cycle DOM rescan", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emittedAt = null;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    readSlots: (ctx) => {
+      if (emittedAt === null) {
+        emittedAt = ctx.now;
+        shadow.emit({ atMonoMs: ctx.now });
+        return [];
+      }
+      return [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }];
+    },
+  });
+
+  const result = await h.orchestrator.start(config());
+  const wake = h.traces.find((trace) => trace.options.attributes.phase === "wake_result");
+  const detected = h.events.find((event) => event.data?.state === "SLOT_DETECTED");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(wake?.options.attributes.correlationQuality, "EXACT");
+  assert.equal(wake?.options.attributes.wakeCandidateFound, true);
+  assert.equal(wake?.options.attributes.wakeToDomMs, 0);
+  assert.equal(detected?.data?.timingServerAtMs, emittedAt);
+});
+
+test("a unique STRONG body can wake the current cycle without an explicit marker", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emitted = false;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    readSlots: (ctx) => {
+      if (!emitted) {
+        emitted = true;
+        shadow.emit({ atMonoMs: ctx.now, cycle: null, targetClickMonoMs: null });
+        return [];
+      }
+      return [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }];
+    },
+  });
+
+  const result = await h.orchestrator.start(config());
+  const wake = h.traces.find((trace) => trace.options.attributes.phase === "wake_result");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(wake?.options.attributes.correlationQuality, "STRONG");
+  assert.equal(wake?.options.attributes.wakeCandidateFound, true);
+});
+
+test("a date-mismatched body is discarded and leaves the 25ms fallback cadence intact", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emittedAt = null;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    readSlots: (ctx) => {
+      if (emittedAt === null) {
+        emittedAt = ctx.now;
+        shadow.emit({ atMonoMs: ctx.now, requestDate: "260731" });
+        return [];
+      }
+      return [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }];
+    },
+  });
+
+  const result = await h.orchestrator.start(config());
+  const body = h.traces.find((trace) => trace.options.attributes.phase === "body");
+  const detected = h.events.find((event) => event.data?.state === "SLOT_DETECTED");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(body?.options.attributes.wakeAccepted, false);
+  assert.equal(body?.options.attributes.wakeDiscardReason, "untrusted_quality");
+  assert.equal(detected?.data?.timingServerAtMs - emittedAt, 25);
+});
+
+test("a person-mismatched body is discarded and leaves the 25ms fallback cadence intact", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emittedAt = null;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    readSlots: (ctx) => {
+      if (emittedAt === null) {
+        emittedAt = ctx.now;
+        shadow.emit({ atMonoMs: ctx.now, personCount: 3 });
+        return [];
+      }
+      return [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }];
+    },
+  });
+
+  const result = await h.orchestrator.start(config());
+  const body = h.traces.find((trace) => trace.options.attributes.phase === "body");
+  const detected = h.events.find((event) => event.data?.state === "SLOT_DETECTED");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(body?.options.attributes.wakeAccepted, false);
+  assert.equal(body?.options.attributes.wakeDiscardReason, "untrusted_quality");
+  assert.equal(detected?.data?.timingServerAtMs - emittedAt, 25);
+});
+
+test("a trusted wake without a DOM candidate falls back and continues the next toggle", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emitted = false;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    readSlots: (ctx) => {
+      if (!emitted) {
+        emitted = true;
+        shadow.emit({ atMonoMs: ctx.now });
+      }
+      return ctx.cycles >= 2
+        ? [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }]
+        : [];
+    },
+  });
+
+  const result = await h.orchestrator.start(config());
+  const wake = h.traces.find((trace) => trace.options.attributes.phase === "wake_result");
+  const cycles = h.traces.filter((trace) => trace.code === "DATE_TOGGLE_CYCLE");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(wake?.options.attributes.wakeCandidateFound, false);
+  assert.equal(wake?.options.attributes.wakeFallbackUsed, true);
+  assert.deepEqual(cycles.map((trace) => trace.options.attributes.result), ["NO_SLOT", "SLOT_FOUND"]);
+});
+
+test("a trusted body preserves its bounded render window before the next toggle", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let bodyAt = null;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    readSlots: (ctx) => {
+      if (bodyAt === null) {
+        bodyAt = ctx.now;
+        shadow.emit({ atMonoMs: ctx.now });
+        return [];
+      }
+      return ctx.now >= bodyAt + 150
+        ? [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }]
+        : [];
+    },
+  });
+
+  const result = await h.orchestrator.start(config());
+  const cycles = h.traces.filter((trace) => trace.code === "DATE_TOGGLE_CYCLE");
+  const targetClicks = h.dateClicks.filter((date) => date === "2026-07-30");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.deepEqual(cycles.map((trace) => trace.options.attributes.result), ["SLOT_FOUND"]);
+  assert.equal(targetClicks.length, 1);
+});
+
+test("a malformed body event cannot change the bounded DOM fallback result", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emittedAt = null;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    readSlots: (ctx) => {
+      if (emittedAt === null) {
+        emittedAt = ctx.now;
+        shadow.emit({ atMonoMs: ctx.now, availableMinutes: null });
+        return [];
+      }
+      return [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }];
+    },
+  });
+
+  const result = await h.orchestrator.start(config());
+  const detected = h.events.find((event) => event.data?.state === "SLOT_DETECTED");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(detected?.data?.timingServerAtMs - emittedAt, 25);
+  assert.equal(h.traces.some((trace) => trace.options.attributes.phase === "wake_result"), false);
+});
+
+test("a failing availability shadow port cannot change the fallback result", async () => {
+  const failingShadow = {
+    start: () => { throw new Error("probe start failed"); },
+    markTargetCycle: () => { throw new Error("marker failed"); },
+    stop: () => { throw new Error("probe stop failed"); },
+  };
+  const observed = harness({ availabilityShadow: failingShadow, slotAfterCycles: 2 });
+  const baseline = harness({ slotAfterCycles: 2 });
+
+  const [observedResult, baselineResult] = await Promise.all([
+    observed.orchestrator.start(config()),
+    baseline.orchestrator.start(config()),
+  ]);
+
+  assert.equal(observedResult.state, baselineResult.state);
+  assert.deepEqual(observed.dateClicks, baseline.dateClicks);
+  assert.equal(observed.slotClicks, baseline.slotClicks);
+});
+
+test("a failing wake-result trace cannot change the reservation result", async () => {
+  const observedShadow = fakeAvailabilityShadow();
+  const baselineShadow = fakeAvailabilityShadow();
+  const readSlots = (shadow) => {
+    let emitted = false;
+    return (ctx) => {
+      if (!emitted) {
+        emitted = true;
+        shadow.emit({ atMonoMs: ctx.now });
+        return [];
+      }
+      return [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }];
+    };
+  };
+  const observed = harness({
+    availabilityShadow: observedShadow.port,
+    readSlots: readSlots(observedShadow),
+    onTrace: (_code, _severity, _message, options) => {
+      if (options.attributes.phase === "wake_result") throw new Error("trace exporter failed");
+    },
+  });
+  const baseline = harness({
+    availabilityShadow: baselineShadow.port,
+    readSlots: readSlots(baselineShadow),
+  });
+
+  const [observedResult, baselineResult] = await Promise.all([
+    observed.orchestrator.start(config({ dryRun: false })),
+    baseline.orchestrator.start(config({ dryRun: false })),
+  ]);
+
+  assert.equal(observedResult.state, baselineResult.state);
+  assert.deepEqual(observed.dateClicks, baseline.dateClicks);
+  assert.equal(observed.slotClicks, baseline.slotClicks);
+});
+
+test("an already-selected target date keeps the 20ms stale-DOM settling guard", async () => {
+  const h = harness({ slotAfterCycles: 1 });
+  const result = await h.orchestrator.start(config());
+  const target = h.dateClickTimes.find((entry) => entry.date === "2026-07-30");
+  const detected = h.events.find((event) => event.data?.state === "SLOT_DETECTED");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(detected?.data?.timingServerAtMs, target.at + 20);
+});
+
+test("target selection still polls within the existing 60ms bound", async () => {
+  const h = harness({ slotAfterCycles: 1, targetSelectionDelayMs: 50 });
+  const result = await h.orchestrator.start(config());
+  const cycle = h.traces.find((trace) => trace.code === "DATE_TOGGLE_CYCLE");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(cycle?.options.attributes.targetSelectedAt - cycle?.options.attributes.targetClickedAt, 50);
 });
 
 test("a failing DOM mutation observer cannot change the reservation result", async () => {
@@ -883,7 +1186,7 @@ test("deadline wins over a slot that appears during target-date settling", async
     monotonicClock: { now: () => now },
     referenceClock: () => fakeReferenceClock({}).port,
     calendar: {
-      inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: "2026-07-29" }),
+      inspect: () => ({ targetAvailable: true, targetSelected: !targetClicked, adjacentDate: "2026-07-29" }),
       clickDate: (date) => {
         if (date === "2026-07-30") targetClicked = true;
         return true;
