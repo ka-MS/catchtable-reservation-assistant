@@ -51,3 +51,17 @@ test("entry adapter recognizes a waiting-only restaurant without clicking it", a
   assert.deepEqual(adapter.inspect(), { reservationOpen: false, ctaAvailable: false, waitingOnly: true });
   assert.equal(adapter.openReservation(), false);
 });
+
+test("entry adapter recognizes the measured Mobiscroll reservation calendar", async () => {
+  const dom = await loadFixture("calendar-mobiscroll.html");
+  const adapter = new EntryAdapter(dom.window.document);
+
+  assert.deepEqual(adapter.inspect(), { reservationOpen: true, ctaAvailable: false, waitingOnly: false });
+});
+
+test("entry adapter rejects an incomplete Mobiscroll calendar grid", async () => {
+  const dom = await loadFixture("calendar-mobiscroll.html");
+  dom.window.document.querySelector(".mbsc-calendar-table-active .mbsc-calendar-day")?.remove();
+
+  assert.equal(new EntryAdapter(dom.window.document).inspect().reservationOpen, false);
+});

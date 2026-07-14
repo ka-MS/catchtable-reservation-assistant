@@ -1,3 +1,4 @@
+import { readCalendarCells } from "./calendar-dom.js";
 import { isDisabled, isElementHidden, normalizedText, visibleAll } from "./dom.js";
 import { findPromoDismissButton } from "./dialog.js";
 
@@ -11,8 +12,7 @@ export class EntryAdapter {
   constructor(private readonly document: Document) {}
 
   inspect(): EntryInspection {
-    const reservationOpen = Array.from(this.document.querySelectorAll<HTMLElement>('div[role="button"][aria-label]'))
-      .some((element) => !isElementHidden(element) && /,\s*\d{1,2}월\s+\d{1,2},\s*\d{4}$/.test(element.getAttribute("aria-label") ?? ""));
+    const reservationOpen = readCalendarCells(this.document).length > 0;
     const buttons = this.dockButtons();
     return {
       reservationOpen,

@@ -60,3 +60,49 @@ test("calendar preparation selects a rendered target and blocks a disabled targe
   target.setAttribute("aria-disabled", "true");
   assert.equal(adapter.prepareTarget("2026-07-30").status, "blocked");
 });
+
+test("Mobiscroll calendar inspection uses only the active grid", async () => {
+  const dom = await loadFixture("calendar-mobiscroll.html");
+  const adapter = new CalendarAdapter(dom.window.document);
+
+  assert.deepEqual(adapter.inspect("2026-07-23"), {
+    targetAvailable: true,
+    targetSelected: true,
+    adjacentDate: "2026-07-22",
+  });
+});
+
+test("Mobiscroll calendar click re-resolves a measured date", async () => {
+  const dom = await loadFixture("calendar-mobiscroll.html");
+  const document = dom.window.document;
+  const adapter = new CalendarAdapter(document);
+  const active = document.querySelector(".mbsc-calendar-table-active");
+  const target = Array.from(active.querySelectorAll(".mbsc-calendar-day"))
+    .find((cell) => cell.textContent.trim() === "22");
+  let clicks = 0;
+  target.addEventListener("click", () => { clicks += 1; });
+
+  assert.equal(adapter.clickDate("2026-07-22"), true);
+  assert.equal(clicks, 1);
+});
+
+test("Mobiscroll calendar rejects a disabled target and a malformed grid", async () => {
+  const dom = await loadFixture("calendar-mobiscroll.html");
+  const adapter = new CalendarAdapter(dom.window.document);
+
+  assert.equal(adapter.prepareTarget("2026-07-13").status, "blocked");
+
+  dom.window.document.querySelector(".mbsc-calendar-table-active .mbsc-calendar-day")?.remove();
+  assert.deepEqual(adapter.inspect("2026-07-23"), {
+    targetAvailable: false,
+    targetSelected: false,
+    adjacentDate: null,
+  });
+});
+
+test("Mobiscroll calendar rejects an ambiguous displayed month", async () => {
+  const dom = await loadFixture("calendar-mobiscroll.html");
+  dom.window.document.querySelector("section")?.insertAdjacentHTML("afterbegin", "<button>2026년 8월</button>");
+
+  assert.equal(new CalendarAdapter(dom.window.document).inspect("2026-07-23").targetAvailable, false);
+});

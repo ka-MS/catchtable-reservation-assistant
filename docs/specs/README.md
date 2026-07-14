@@ -5,6 +5,7 @@
 - [Side Panel UI 요구사항](ui-requirements.md)
 - [자동화 경계와 사용자 인계](automation-boundary.md)
 - [자동 진입 파이프라인 패키지](nav-pipeline/10-analysis.md)
+- [예약 흐름 호환성 안정화 패키지](reservation-flow-compatibility/reservation-flow-compatibility.md)
 - [Side Panel UX 패키지](sidepanel-ux/20-design.md)
 - [스케줄러 패키지](scheduler/20-design.md)
 - [설정 히스토리·즐겨찾기 패키지](saved-configs/10-analysis.md)
