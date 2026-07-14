@@ -447,10 +447,10 @@ test("zero-deposit auto-payment notice advances only with the measured evidence"
   assert.equal(lookalike.inspect().kind, "unknown");
 });
 
-test("deposit-free flow tolerates a descriptive zero-deposit aria-label", () => {
+test("deposit-free flow accepts the measured payment-method title", () => {
   const document = documentFor(`
     <div role="dialog" aria-label="reservation step">
-      <h2>예약금 결제 방법 선택</h2>
+      <h2>결제 방식 선택</h2>
       <input type="radio" aria-label="예약금 0원 결제 혜택" checked>
       <input type="radio" aria-label="일반 예약금 결제">
       <button data-next>다음</button>
@@ -665,6 +665,47 @@ test("an aria-disabled progress button is never clicked", () => {
 
   assert.equal(result.status, "waiting");
   assert.equal(nextClicks, 0);
+});
+
+test("seating-menu sheet selects the first enabled card when no preference is configured", () => {
+  const document = documentFor(fixture("post-slot-seating-menu-sheet.html"));
+  const controls = [...document.querySelectorAll('[role="checkbox"]')];
+  controls.forEach((control) => control.addEventListener("click", () => {
+    controls.forEach((item) => item.setAttribute("aria-checked", String(item === control)));
+  }));
+  let confirmClicks = 0;
+  document.querySelector("[data-confirm]").addEventListener("click", () => { confirmClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+  const runConfig = { tablePreference: "any", menuKeyword: "", personCount: 2 };
+
+  assert.equal(adapter.advance(adapter.inspect(), runConfig).status, "acted");
+  assert.equal(controls[0].getAttribute("aria-checked"), "true");
+  assert.equal(controls[1].getAttribute("aria-checked"), "false");
+  assert.equal(confirmClicks, 0);
+
+  assert.equal(adapter.advance(adapter.inspect(), runConfig).status, "acted");
+  assert.equal(confirmClicks, 1);
+});
+
+test("seating-menu sheet remains detectable after selection replaces the required-menu notice", () => {
+  const document = documentFor(fixture("post-slot-seating-menu-selected-sheet.html"));
+  let confirmClicks = 0;
+  document.querySelector("[data-confirm]").addEventListener("click", () => { confirmClicks += 1; });
+  const adapter = new PostSlotAdapter(document);
+
+  const inspection = adapter.inspect();
+  assert.equal(inspection.kind, "seating_menu");
+  assert.equal(adapter.advance(
+    inspection,
+    { tablePreference: "any", menuKeyword: "", personCount: 2 },
+  ).status, "acted");
+  assert.equal(confirmClicks, 1);
+
+  assert.equal(adapter.advance(
+    adapter.inspect(),
+    { tablePreference: "any", menuKeyword: "", personCount: 2 },
+  ).status, "waiting");
+  assert.equal(confirmClicks, 1);
 });
 
 test("seating-menu sheet selects the configured counter card then confirms", () => {

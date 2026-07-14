@@ -1,5 +1,11 @@
 import { fnvHash, normalizedText, safeText, visibleAll } from "./dom.js";
-import { findActiveDialog, findPromoDismissButton, findRequestSheet, findSeatingMenuSheet } from "./dialog.js";
+import {
+  findActiveDialog,
+  findPaymentMethodNotice,
+  findPromoDismissButton,
+  findRequestSheet,
+  findSeatingMenuSheet,
+} from "./dialog.js";
 
 export type PostSlotCertainty = "exact" | "supported" | "unknown";
 
@@ -195,7 +201,9 @@ function supportedInspection(dialog: HTMLElement, value: DialogSnapshot): PostSl
       ...meta(value, "supported", "deposit-notice-title-structure-v1", ["deposit notice title", "progress button"]),
     };
   }
-  if (title.includes("예약금") && title.includes("결제") && value.diagnostics.radioCount > 0 && progress) {
+  const hasPaymentMethodTitle = title === "결제 방식 선택"
+    || (title.includes("예약금") && title.includes("결제"));
+  if (hasPaymentMethodTitle && value.diagnostics.radioCount > 0 && progress) {
     return {
       kind: "deposit",
       ...meta(value, "supported", "deposit-method-title-structure-v1", ["deposit method title", "radio controls", "progress button"]),
@@ -235,6 +243,18 @@ function promoInspection(document: Document): PostSlotInspection {
 
 export function inspectPostSlot(document: Document, hasFormNotice: boolean): PostSlotInspection {
   if (document.location.pathname === "/ct/reservation/form") return formInspection(document, hasFormNotice);
+  const paymentMethodNotice = findPaymentMethodNotice(document);
+  if (paymentMethodNotice) {
+    const value = snapshot(document, paymentMethodNotice);
+    return {
+      kind: "payment_method_notice",
+      ...meta(value, "supported", "zero-deposit-auto-payment-notice-v1", [
+        "zero-deposit text",
+        "auto-payment text",
+        "reserve-with-method button",
+      ]),
+    };
+  }
   const dialog = findActiveDialog(document);
   if (!dialog) {
     const requestSheet = findRequestSheet(document);

@@ -4,7 +4,14 @@ import {
   isZeroDepositControl,
   type PostSlotInspection,
 } from "./post-slot-inspection.js";
-import { findActiveDialog, findPromoDismissButton, findRequestSheet, findSeatingMenuSheet } from "./dialog.js";
+import {
+  findActiveDialog,
+  findPaymentMethodNotice,
+  findPaymentMethodNoticeButton,
+  findPromoDismissButton,
+  findRequestSheet,
+  findSeatingMenuSheet,
+} from "./dialog.js";
 import { isDisabled, normalizedText, safeText, visibleAll } from "./dom.js";
 
 export type { PostSlotCertainty, PostSlotDiagnostics, PostSlotInspection } from "./post-slot-inspection.js";
@@ -31,6 +38,8 @@ function isChecked(element: Element): boolean {
 }
 
 export class PostSlotAdapter {
+  private readonly progressedSeatingMenu = new WeakSet<Element>();
+
   constructor(private readonly document: Document) {}
 
   inspect(): PostSlotInspection {
@@ -69,13 +78,16 @@ export class PostSlotAdapter {
           return { status: "blocked", message: "결제 방식 자동 진행이 꺼져 있어 사용자에게 인계합니다." };
         }
         return dialog ? this.advanceDeposit(dialog) : { status: "waiting", message: "다음 후속 화면을 기다립니다." };
-      case "payment_method_notice":
+      case "payment_method_notice": {
         if (config.paymentMethodAutoAdvance === false) {
           return { status: "blocked", message: "결제 방식 자동 진행이 꺼져 있어 사용자에게 인계합니다." };
         }
-        return dialog
-          ? this.clickProgress(dialog, ["이 방식으로 예약"], "선택한 결제 방식으로 예약 폼에 진행했습니다.")
-          : { status: "waiting", message: "다음 후속 화면을 기다립니다." };
+        const notice = findPaymentMethodNotice(this.document);
+        const reserveButton = findPaymentMethodNoticeButton(this.document);
+        if (!notice || !reserveButton) return { status: "waiting", message: "다음 후속 화면을 기다립니다." };
+        reserveButton.click();
+        return { status: "acted", message: "선택한 결제 방식으로 예약 폼에 진행했습니다." };
+      }
       case "request_notice":
         return this.advanceRequestNotice();
       case "promo_interstitial":
@@ -208,7 +220,15 @@ export class PostSlotAdapter {
       (target.choice as HTMLElement).click();
       return { status: "acted", message: `${target.heading || target.menu}를 선택했습니다.` };
     }
-    return this.clickProgress(sheet, ["확인"], "좌석·메뉴 선택을 완료했습니다.");
+    const progress = visibleAll<HTMLButtonElement>(sheet, "button")
+      .find((button) => ["다음", "확인"].includes(normalizedText(button.textContent)) && !isDisabled(button));
+    if (!progress) return { status: "waiting", message: "좌석·메뉴 진행 버튼 활성화를 기다립니다." };
+    if (this.progressedSeatingMenu.has(progress)) {
+      return { status: "waiting", message: "좌석·메뉴 화면 전환을 기다립니다." };
+    }
+    this.progressedSeatingMenu.add(progress);
+    progress.click();
+    return { status: "acted", message: "좌석·메뉴 선택을 완료했습니다." };
   }
 
   private seatingMenuHeading(choice: Element, sheet: Element): string {

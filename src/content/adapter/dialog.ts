@@ -38,12 +38,15 @@ export function findSeatingMenuSheet(document: Document): HTMLElement | null {
       const text = normalizedText(sheet.textContent);
       const choices = visibleAll(sheet, '[role="checkbox"][aria-label]');
       const headings = choices.map((choice) => choiceCardHeading(choice, sheet));
-      const hasConfirm = visibleAll<HTMLButtonElement>(sheet, "button")
-        .some((button) => normalizedText(button.textContent) === "확인");
+      const hasProgress = visibleAll<HTMLButtonElement>(sheet, "button")
+        .some((button) => ["다음", "확인"].includes(normalizedText(button.textContent)));
       const hasSeatingHeading = headings.some((heading) => ["홀", "테이블", "바", "카운터", "룸"]
         .some((label) => heading.includes(label)));
+      const hasRequiredMenuNotice = text.includes("필수") && text.includes("메인 메뉴");
+      const hasSelectedSummary = choices.some((choice) => choice.getAttribute("aria-checked") === "true")
+        && text.includes("총 결제 금액");
       return choices.length > 0 && headings.every(Boolean) && hasSeatingHeading
-        && hasConfirm && text.includes("필수") && text.includes("메인 메뉴");
+        && hasProgress && (hasRequiredMenuNotice || hasSelectedSummary);
     })
     .at(-1) ?? null;
 }
@@ -53,4 +56,22 @@ export function findSeatingMenuSheet(document: Document): HTMLElement | null {
 export function findPromoDismissButton(document: Document): HTMLButtonElement | null {
   return visibleAll<HTMLButtonElement>(document, "button")
     .find((button) => normalizedText(button.textContent) === "다음에 볼게요" && !isDisabled(button)) ?? null;
+}
+
+export function findPaymentMethodNoticeButton(document: Document): HTMLButtonElement | null {
+  return visibleAll<HTMLButtonElement>(document, "button")
+    .find((button) => normalizedText(button.textContent).endsWith("이 방식으로 예약") && !isDisabled(button)) ?? null;
+}
+
+export function findPaymentMethodNotice(document: Document): HTMLElement | null {
+  const reserveButton = findPaymentMethodNoticeButton(document);
+  if (!reserveButton) return null;
+
+  let container = reserveButton.parentElement;
+  while (container && container !== document.body) {
+    const text = normalizedText(container.textContent);
+    if (text.includes("예약금 0원") && text.includes("자동결제")) return container;
+    container = container.parentElement;
+  }
+  return null;
 }
