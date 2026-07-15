@@ -533,12 +533,16 @@ class RunSession {
   private traceAvailabilityEmptyExit(
     signal: Extract<AvailabilityWakeSignal, { kind: "empty_exit" }>,
     targetStillSelected: boolean,
+    finalDomCandidateFound: boolean,
   ): void {
     try {
       const exitAtMonoMs = this.deps.monotonicClock.now();
-      const message = targetStillSelected
-        ? "EXACT EMPTY 응답으로 현재 날짜 토글 cycle을 종료했습니다."
-        : "EXACT EMPTY 응답을 받았지만 목표 날짜 선택이 풀려 조기 종료하지 않았습니다.";
+      const emptyEarlyExitApplied = targetStillSelected && !finalDomCandidateFound;
+      const message = finalDomCandidateFound
+        ? "EXACT EMPTY 응답 직후 슬롯 DOM 후보를 확인해 조기 종료하지 않았습니다."
+        : targetStillSelected
+          ? "EXACT EMPTY 응답으로 현재 날짜 토글 cycle을 종료했습니다."
+          : "EXACT EMPTY 응답을 받았지만 목표 날짜 선택이 풀려 조기 종료하지 않았습니다.";
       this.deps.trace?.("AVAILABILITY_SHADOW", "trace", message, {
         serverAt: this.serverClockReady ? this.serverClock.now() : null,
         state: this.machine.state,
@@ -555,8 +559,8 @@ class RunSession {
           exitAtMonoMs,
           bodyToExitMs: exitAtMonoMs - signal.bridgeReceivedMonoMs,
           targetStillSelected,
-          finalDomCandidateFound: false,
-          emptyEarlyExitApplied: targetStillSelected,
+          finalDomCandidateFound,
+          emptyEarlyExitApplied,
         },
       });
     } catch {
@@ -956,17 +960,23 @@ class RunSession {
       if (selected && wakeSignal !== null) wakeCandidateObservedMonoMs = observedMonoMs;
       return selected;
     };
-    const applyPendingEmptyExit = (): boolean => {
-      if (wakeSignal?.kind !== "empty_exit") return false;
+    const applyPendingEmptyExit = (): { applied: boolean; candidate: SlotCandidate | null } => {
+      if (wakeSignal?.kind !== "empty_exit") return { applied: false, candidate: null };
       const emptySignal = wakeSignal;
       const targetStillSelected = this.deps.calendar.inspect(config.reservationDate).targetSelected;
-      this.traceAvailabilityEmptyExit(emptySignal, targetStillSelected);
-      if (targetStillSelected) {
-        wakeFallbackUsed = false;
-        return true;
+      if (!targetStillSelected) {
+        this.traceAvailabilityEmptyExit(emptySignal, false, false);
+        wakeSignal = null;
+        return { applied: false, candidate: null };
       }
+      const finalCandidate = inspectSlots();
+      this.traceAvailabilityEmptyExit(emptySignal, true, finalCandidate !== null);
       wakeSignal = null;
-      return false;
+      if (finalCandidate === null) {
+        wakeFallbackUsed = false;
+        return { applied: true, candidate: null };
+      }
+      return { applied: false, candidate: finalCandidate };
     };
     wakeSignal = this.availabilityWake.consume(cycle);
     if (wakeSignal !== null) {
@@ -977,7 +987,12 @@ class RunSession {
     while (!controller.signal.aborted && remainingDetectionMs() > 0) {
       candidate = inspectSlots();
       if (candidate) break;
-      if (applyPendingEmptyExit()) {
+      const emptyExit = applyPendingEmptyExit();
+      if (emptyExit.candidate) {
+        candidate = emptyExit.candidate;
+        break;
+      }
+      if (emptyExit.applied) {
         traceCycle("EMPTY_EARLY_EXIT");
         this.availabilityWake.endCycle(cycle);
         return { kind: "retry" };
@@ -1004,10 +1019,14 @@ class RunSession {
     }
     if (candidate === null) {
       candidate = inspectSlots();
-      if (candidate === null && applyPendingEmptyExit()) {
-        traceCycle("EMPTY_EARLY_EXIT");
-        this.availabilityWake.endCycle(cycle);
-        return { kind: "retry" };
+      if (candidate === null) {
+        const emptyExit = applyPendingEmptyExit();
+        candidate = emptyExit.candidate;
+        if (emptyExit.applied) {
+          traceCycle("EMPTY_EARLY_EXIT");
+          this.availabilityWake.endCycle(cycle);
+          return { kind: "retry" };
+        }
       }
     }
     if (wakeSignal?.kind === "scan_wake") {

@@ -525,6 +525,38 @@ test("a DOM candidate from the same scan wins over a pending EXACT EMPTY", async
   assert.equal(h.traces.some((trace) => trace.options.attributes.phase === "empty_early_exit"), false);
 });
 
+test("a DOM candidate rendered during the EMPTY selection guard wins before cycle exit", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emitted = false;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    onCalendarInspect: (ctx) => {
+      if (shadow.marked && !emitted) {
+        emitted = true;
+        shadow.emit({
+          atMonoMs: ctx.monotonicNow,
+          classification: "EMPTY",
+          availableMinutes: [],
+        });
+      }
+    },
+    readSlots: (ctx) => {
+      return ctx.scans >= 2
+        ? [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }]
+        : [];
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ availabilityProbeMode: "empty_exit" }));
+  const cycles = h.traces.filter((trace) => trace.code === "DATE_TOGGLE_CYCLE");
+  const earlyExit = h.traces.find((trace) => trace.options.attributes.phase === "empty_early_exit");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.deepEqual(cycles.map((trace) => trace.options.attributes.result), ["SLOT_FOUND"]);
+  assert.equal(earlyExit?.options.attributes.finalDomCandidateFound, true);
+  assert.equal(earlyExit?.options.attributes.emptyEarlyExitApplied, false);
+});
+
 test("EXACT EMPTY keeps the fallback when the target date is no longer selected", async () => {
   const shadow = fakeAvailabilityShadow();
   let emitted = false;
