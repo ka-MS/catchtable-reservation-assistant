@@ -12,6 +12,8 @@ import { jobListModel, miniLogModel } from "./job-list-model.js";
 import { SavedConfigsView } from "./saved-configs-view.js";
 import type { TraceEvent, TraceLiveBatch, TraceRunRecord } from "../shared/telemetry/types.js";
 import { traceCsv, traceCsvFilename } from "./telemetry/trace-csv.js";
+import type { DiagnosticSnapshot } from "../shared/diagnostics/types.js";
+import { diagnosticBundle, diagnosticBundleFilename } from "./diagnostics/bundle.js";
 import { TraceHistoryView } from "./telemetry/trace-view.js";
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -587,11 +589,36 @@ async function exportTraceEvents(runId: string): Promise<TraceEvent[]> {
   return Array.isArray(response.data) ? response.data as TraceEvent[] : [];
 }
 
+async function exportRunDiagnostic(runId: string): Promise<{ events: TraceEvent[]; snapshots: DiagnosticSnapshot[] }> {
+  const response = await send({ type: "EXPORT_RUN_DIAGNOSTIC", runId });
+  if (!response.ok) throw new Error(response.error ?? "실행 진단을 내보낼 수 없습니다.");
+  const data = response.data as { events?: unknown; snapshots?: unknown } | undefined;
+  if (!Array.isArray(data?.events) || !Array.isArray(data?.snapshots)) {
+    throw new Error("실행 진단 응답이 올바르지 않습니다.");
+  }
+  return { events: data.events as TraceEvent[], snapshots: data.snapshots as DiagnosticSnapshot[] };
+}
+
 function downloadTraceCsv(run: TraceRunRecord, events: TraceEvent[]): void {
   const url = URL.createObjectURL(new Blob([traceCsv(run, events)], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
   link.download = traceCsvFilename(run);
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function downloadDiagnosticBundle(run: TraceRunRecord, events: TraceEvent[], snapshots: DiagnosticSnapshot[]): void {
+  const bytes = diagnosticBundle(run, events, snapshots);
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  const url = URL.createObjectURL(new Blob([buffer], { type: "application/zip" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = diagnosticBundleFilename(run.runId);
   link.hidden = true;
   document.body.append(link);
   link.click();
@@ -608,6 +635,13 @@ const traceView = new TraceHistoryView(document, {
   download: (run) => {
     void exportTraceEvents(run.runId).then((events) => downloadTraceCsv(run, events)).catch((error) => {
       formError.textContent = error instanceof Error ? error.message : "실행 로그를 내보낼 수 없습니다.";
+    });
+  },
+  diagnostic: (run) => {
+    void exportRunDiagnostic(run.runId).then(({ events, snapshots }) => {
+      downloadDiagnosticBundle(run, events, snapshots);
+    }).catch((error) => {
+      formError.textContent = error instanceof Error ? error.message : "실행 진단을 내보낼 수 없습니다.";
     });
   },
   remove: (runId) => {

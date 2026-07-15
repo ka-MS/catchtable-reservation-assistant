@@ -3,6 +3,7 @@ import type { TraceEvent, TraceLiveBatch, TraceRunRecord } from "../../shared/te
 interface TraceViewActions {
   select(runId: string): void;
   download(run: TraceRunRecord): void;
+  diagnostic(run: TraceRunRecord): void;
   remove(runId: string): void;
 }
 
@@ -116,6 +117,7 @@ function eventItem(document: Document, event: TraceEvent): HTMLLIElement {
 export class TraceHistoryView {
   private readonly select: HTMLSelectElement;
   private readonly download: HTMLButtonElement;
+  private readonly diagnostic: HTMLButtonElement;
   private readonly remove: HTMLButtonElement;
   private readonly list: HTMLOListElement;
   private readonly count: HTMLElement;
@@ -124,6 +126,7 @@ export class TraceHistoryView {
   constructor(private readonly document: Document, actions: TraceViewActions) {
     this.select = byId(document, "trace-run-select");
     this.download = byId(document, "trace-run-export");
+    this.diagnostic = byId(document, "trace-run-diagnostic");
     this.remove = byId(document, "trace-run-delete");
     this.list = byId(document, "trace-event-list");
     this.count = byId(document, "trace-event-count");
@@ -134,6 +137,10 @@ export class TraceHistoryView {
     this.download.addEventListener("click", () => {
       const selected = this.runs.find((run) => run.runId === this.select.value);
       if (selected) actions.download(selected);
+    });
+    this.diagnostic.addEventListener("click", () => {
+      const selected = this.runs.find((run) => run.runId === this.select.value);
+      if (selected) actions.diagnostic(selected);
     });
     this.remove.addEventListener("click", () => {
       if (this.select.value) actions.remove(this.select.value);
@@ -198,6 +205,7 @@ export class TraceHistoryView {
     const selected = this.runs.find((run) => run.runId === this.select.value);
     const disabled = !selected || selected.finishedAt === null;
     this.download.disabled = disabled;
+    this.diagnostic.disabled = disabled;
     this.remove.disabled = disabled;
   }
 }

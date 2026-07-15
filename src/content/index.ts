@@ -8,6 +8,9 @@ import { PostSlotAdapter } from "./adapter/post-slot.js";
 import { createSlotRefreshWatch } from "./adapter/slot-refresh-watch.js";
 import { createSlotDomMutationWatch } from "./adapter/slot-dom-mutation-watch.js";
 import { captureStageSnapshot } from "./adapter/snapshot.js";
+import { captureDiagnosticSnapshot } from "./diagnostics/dom-snapshot.js";
+import { DiagnosticRecorder } from "./diagnostics/recorder.js";
+import { RuntimeDiagnosticTransport } from "./diagnostics/runtime-transport.js";
 import { createAvailabilityShadowBridge } from "./availability-shadow-bridge.js";
 import { createReferenceClockSampler } from "./reference-clock-sampler.js";
 import { dispatchRunEvent } from "./dispatch.js";
@@ -29,6 +32,10 @@ if (!window.__ctReserveInjected) {
   const traceLogger = new TraceLogger(
     new BatchTraceProcessor(new PortTraceTransport(), () => crypto.randomUUID()),
     () => Date.now(),
+  );
+  const diagnosticRecorder = new DiagnosticRecorder(
+    (input) => captureDiagnosticSnapshot(document, input),
+    new RuntimeDiagnosticTransport(),
   );
   const availabilityShadow = createAvailabilityShadowBridge(window);
   const orchestrator = new OpenRunOrchestrator({
@@ -53,6 +60,7 @@ if (!window.__ctReserveInjected) {
     },
     trace: (code, severity, message, options) => traceLogger.record(code, severity, message, options),
     flushTrace: () => traceLogger.forceFlush(),
+    diagnostics: diagnosticRecorder,
     captureSnapshot: () => {
       try {
         return captureStageSnapshot(document);
@@ -77,9 +85,11 @@ if (!window.__ctReserveInjected) {
       }
       running = true;
       availabilityShadow.configure(message.shadowChannelId ?? null);
+      diagnosticRecorder.start(message.runId);
       traceLogger.start(message.runId, message.config, message.scheduledJobId);
       void orchestrator.start(message.config, message.runId).finally(() => {
         availabilityShadow.configure(null);
+        diagnosticRecorder.reset();
         running = false;
       });
       sendResponse({ ok: true });

@@ -113,6 +113,7 @@ function harness({
   slotDomMutationWatch = null,
   targetSelectionDelayMs = 0,
   onTrace = null,
+  diagnostics = null,
   captureSnapshot = () => ({
     urlKind: "shop", headings: [], buttons: ["확인"], disabledButtons: [false],
     disabledButtonCount: 0, dialogLabel: "", dialogTitle: "", textSnippet: "", fingerprint: "ss-test",
@@ -193,6 +194,7 @@ function harness({
     },
     flushTrace: async () => undefined,
     captureSnapshot,
+    ...(diagnostics ? { diagnostics } : {}),
     runId: () => "run-1",
   });
   return {
@@ -1295,4 +1297,44 @@ test("a throwing captureSnapshot does not mask the give-up", async () => {
   const handoff = h.events.find((e) => e.data?.state === "HANDED_OFF");
   assert.equal(handoff?.data?.snapshotFingerprint, undefined);
   assert.equal(handoff?.data?.snapshotRunState, "ENTERING_RESERVATION");
+});
+
+test("diagnostic failures persist breadcrumbs and link the terminal event", async () => {
+  const calls = { breadcrumbs: [], failures: [], flushed: 0 };
+  const diagnostics = {
+    breadcrumb: (...args) => calls.breadcrumbs.push(args),
+    failure: (...args) => { calls.failures.push(args); return "ds-final"; },
+    forceFlush: async () => { calls.flushed += 1; },
+  };
+  const h = harness({
+    diagnostics,
+    entry: { inspect: () => ({ reservationOpen: false, ctaAvailable: false, waitingOnly: true }), openReservation: () => false },
+  });
+  const result = await h.orchestrator.start(config({ entryMode: "auto" }));
+  const handoff = h.events.find((event) => event.data?.state === "HANDED_OFF");
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.ok(calls.breadcrumbs.some(([stage, trigger]) => stage === "ENTERING_RESERVATION" && trigger === "state"));
+  assert.equal(calls.failures.length, 1);
+  assert.equal(calls.failures[0][0], "ENTERING_RESERVATION");
+  assert.equal(handoff?.data?.diagnosticSnapshotId, "ds-final");
+  assert.equal(calls.flushed, 1);
+});
+
+test("normal form hand-off keeps breadcrumbs in memory and stores no failure snapshot", async () => {
+  const calls = { breadcrumbs: [], failures: 0, flushed: 0 };
+  const diagnostics = {
+    breadcrumb: (stage) => calls.breadcrumbs.push(stage),
+    failure: () => { calls.failures += 1; return "unexpected"; },
+    forceFlush: async () => { calls.flushed += 1; },
+  };
+  const h = harness({ diagnostics, slotAfterCycles: 1 });
+  const result = await h.orchestrator.start(config({ dryRun: false }));
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.equal(calls.failures, 0);
+  assert.equal(calls.flushed, 1);
+  assert.ok(calls.breadcrumbs.includes("SLOT_CLICK_DISPATCHED"));
+  assert.ok(!calls.breadcrumbs.includes("REFRESHING_SLOTS"));
+  assert.ok(!calls.breadcrumbs.includes("SLOT_DETECTED"));
 });

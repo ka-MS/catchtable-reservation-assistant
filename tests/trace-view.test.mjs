@@ -7,6 +7,7 @@ function documentFixture() {
   return new JSDOM(`
     <select id="trace-run-select"></select>
     <button id="trace-run-export"></button>
+    <button id="trace-run-diagnostic"></button>
     <button id="trace-run-delete"></button>
     <span id="trace-event-count"></span>
     <ol id="trace-event-list"><li class="event-empty"></li></ol>
@@ -47,22 +48,28 @@ test("trace view renders run history and dispatches selection and deletion", () 
   const document = documentFixture();
   const selected = [];
   const downloaded = [];
+  const diagnosed = [];
   const removed = [];
   const view = new TraceHistoryView(document, {
     select: (runId) => selected.push(runId),
     download: (selectedRun) => downloaded.push(selectedRun.runId),
+    diagnostic: (selectedRun) => diagnosed.push(selectedRun.runId),
     remove: (runId) => removed.push(runId),
   });
   view.renderRuns([run("run-2", 2), run("run-1", 1, 3)]);
   assert.equal(document.querySelectorAll("#trace-run-select option").length, 2);
   assert.equal(document.querySelector("#trace-run-export").disabled, true);
+  assert.equal(document.querySelector("#trace-run-diagnostic").disabled, true);
   document.querySelector("#trace-run-select").value = "run-1";
   document.querySelector("#trace-run-select").dispatchEvent(new document.defaultView.Event("change"));
   assert.equal(document.querySelector("#trace-run-export").disabled, false);
+  assert.equal(document.querySelector("#trace-run-diagnostic").disabled, false);
   document.querySelector("#trace-run-export").click();
+  document.querySelector("#trace-run-diagnostic").click();
   document.querySelector("#trace-run-delete").click();
   assert.deepEqual(selected, ["run-1"]);
   assert.deepEqual(downloaded, ["run-1"]);
+  assert.deepEqual(diagnosed, ["run-1"]);
   assert.deepEqual(removed, ["run-1"]);
 });
 

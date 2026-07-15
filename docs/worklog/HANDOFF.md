@@ -1,7 +1,8 @@
 # HANDOFF
 
 **갱신:** 2026-07-15
-**브랜치:** `main`
+**브랜치:** `codex/run-diagnostic-bundle`
+**최신 작업 로그:** `docs/worklog/2026-07-15-02-run-diagnostic-bundle.md`
 **최신 보조 작업 로그:** `docs/worklog/2026-07-14-10-payment-policy-ux-shortcut.md`
 **핵심 hot-path 작업 로그:** `docs/worklog/2026-07-14-09-tier2-2-availability-hot-path.md`
 **최신 RT-10M 실측:** `docs/worklog/2026-07-14-11-rt10m-yangjour-negative-control.md`
@@ -12,6 +13,14 @@
 ## 현재 상태
 
 예약 흐름 호환성 패키지의 달력, 결제 방식, 좌석·메뉴, 실제 폼 인계 검증을 완료했다. 이어 RT-10M 측정을 기다리는 동안 hot path와 독립적인 결제 정책 UX를 단축 절차로 보완했다.
+
+재현이 어려운 실패 분석을 위해 실행 진단 bundle을 추가했다.
+
+- 최근 3개 저빈도 breadcrumb는 Content 메모리에만 두고 정상 실행에서는 폐기한다.
+- 예기치 않은 `HANDED_OFF`, `TIMED_OUT`, `FAILED`에서 구조화 DOM snapshot과 정제 fragment를 저장한다.
+- IndexedDB는 v2이며 기존 `runs/events`를 보존하고 `snapshots` store만 추가한다.
+- 상세 추적의 `진단` 버튼은 CSV, events JSONL, DOM snapshots, 환경, fragment를 ZIP으로 내보낸다.
+- 슬롯 갱신·감지·클릭 전 hot path, XHR probe, mutation callback에는 DOM 진단 캡처를 넣지 않았다.
 
 - `결제 방식까지 자동 진행`이 켜진 경우 `예약금 0원 방식만`과 `사이트에서 선택된 방식 허용` 중 하나를 고른다.
 - 기본값과 구버전 복원값은 기존 동작을 보존하는 `사이트에서 선택된 방식 허용`이다.
@@ -51,7 +60,8 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 
 
 - 결제 정책 UX 대상 테스트: 73/73 통과
 - CSV short-cut 대상 테스트: 19/19 통과
-- 전체 `npm run check`: 282/282 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
+- 전체 `npm run check`: 296/296 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
+- 실행 진단 Chrome live: IndexedDB v2에서 기존 runs 20/events 740 보존, snapshots store 생성, 실제 ZIP 다운로드와 Windows 기본 압축 해제 통과
 - CSV Chrome live 확인: 원격 디버깅 미연결로 대기
 - `git diff --check` 통과
 - extension: `olbclnjiehfelpfmgmdphfmenapmpaal`, version `0.2.0`
@@ -64,6 +74,9 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 
 
 상세 문서:
 
+- `docs/specs/run-diagnostics/run-diagnostics.md`
+- `docs/specs/run-diagnostics/40-verification.md`
+- `docs/specs/run-diagnostics/50-adversarial-review.md`
 - `docs/specs/open-timing-performance/02-availability-hot-path/10-analysis.md`
 - `docs/specs/open-timing-performance/02-availability-hot-path/20-design.md`
 - `docs/specs/open-timing-performance/02-availability-hot-path/30-implementation.md`

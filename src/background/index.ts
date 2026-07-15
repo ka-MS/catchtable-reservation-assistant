@@ -16,6 +16,7 @@ import { SavedConfigRepository } from "./saved-config-repository.js";
 import { ScheduledJobRepository } from "./scheduled-job-repository.js";
 import { JobScheduler, type LaunchResult } from "./scheduler.js";
 import type { TraceBatch } from "../shared/telemetry/types.js";
+import type { DiagnosticSnapshotBatchMessage } from "../shared/diagnostics/types.js";
 import { IndexedDbTraceRepository } from "./telemetry/indexeddb-repository.js";
 import { LiveTraceHub } from "./telemetry/live-trace-hub.js";
 import { TraceIngestor } from "./telemetry/trace-ingestor.js";
@@ -336,12 +337,25 @@ async function recordEvent(event: RunEvent, tabId: number | undefined): Promise<
 }
 
 chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
-  const message = rawMessage as PanelCommand | RunEventMessage;
+  const message = rawMessage as PanelCommand | RunEventMessage | DiagnosticSnapshotBatchMessage;
   if (message.type === "RUN_EVENT") {
     void eventWrites.enqueue(() => recordEvent(message.event, sender.tab?.id)).catch((error) => {
       console.error("실행 이벤트를 저장하지 못했습니다.", error);
     });
     return;
+  }
+  if (message.type === "SAVE_DIAGNOSTIC_SNAPSHOTS") {
+    if (message.snapshots.length === 0 || message.snapshots.length > 4
+      || message.snapshots.some((snapshot) => snapshot.runId !== message.runId || snapshot.schemaVersion !== 1)) {
+      sendResponse({ ok: false, error: "진단 스냅샷 batch가 올바르지 않습니다." });
+      return;
+    }
+    void traceWrites.enqueue(() => traceRepository.saveSnapshots(message.snapshots)).then(() => {
+      sendResponse({ ok: true });
+    }).catch((error) => {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : "진단 스냅샷을 저장할 수 없습니다." });
+    });
+    return true;
   }
   if (message.type === "PANEL_START") {
     void startRun(message.config).then(sendResponse).catch((error) => {
@@ -380,6 +394,17 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
       sendResponse({ ok: true, data: events });
     }).catch((error) => {
       sendResponse({ ok: false, error: error instanceof Error ? error.message : "실행 로그를 내보낼 수 없습니다." });
+    });
+    return true;
+  }
+  if (message.type === "EXPORT_RUN_DIAGNOSTIC") {
+    void traceWrites.enqueue(async () => ({
+      events: await traceRepository.readEvents(message.runId, Number.MAX_SAFE_INTEGER),
+      snapshots: await traceRepository.readSnapshots(message.runId),
+    })).then((data) => {
+      sendResponse({ ok: true, data });
+    }).catch((error) => {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : "실행 진단을 내보낼 수 없습니다." });
     });
     return true;
   }

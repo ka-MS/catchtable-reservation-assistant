@@ -1,8 +1,9 @@
 import type { RunState } from "../../shared/types.js";
 import type { TraceEvent, TraceRepository, TraceRunDescriptor, TraceRunRecord } from "../../shared/telemetry/types.js";
+import type { DiagnosticSnapshot, DiagnosticSnapshotRepository } from "../../shared/diagnostics/types.js";
 
 const DB_NAME = "catchtable-reserve-telemetry";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const TERMINAL = new Set<RunState>(["DRY_RUN_COMPLETED", "HANDED_OFF", "COMPLETED", "STOPPED", "TIMED_OUT", "FAILED"]);
 
 function request<T>(value: IDBRequest<T>): Promise<T> {
@@ -20,7 +21,7 @@ function completed(transaction: IDBTransaction): Promise<void> {
   });
 }
 
-export class IndexedDbTraceRepository implements TraceRepository {
+export class IndexedDbTraceRepository implements TraceRepository, DiagnosticSnapshotRepository {
   private database: Promise<IDBDatabase> | null = null;
 
   constructor(private readonly factory: IDBFactory = indexedDB) {}
@@ -93,15 +94,45 @@ export class IndexedDbTraceRepository implements TraceRepository {
     return events.reverse();
   }
 
+  async saveSnapshots(snapshots: DiagnosticSnapshot[]): Promise<void> {
+    if (snapshots.length === 0) return;
+    const database = await this.open();
+    const transaction = database.transaction("snapshots", "readwrite");
+    const store = transaction.objectStore("snapshots");
+    snapshots.forEach((snapshot) => store.put(snapshot));
+    await completed(transaction);
+  }
+
+  async readSnapshots(runId: string): Promise<DiagnosticSnapshot[]> {
+    const database = await this.open();
+    const transaction = database.transaction("snapshots", "readonly");
+    const index = transaction.objectStore("snapshots").index("runId");
+    const snapshots = await request(index.getAll(IDBKeyRange.only(runId))) as DiagnosticSnapshot[];
+    return snapshots.sort((left, right) => left.capturedAt - right.capturedAt || left.snapshotId.localeCompare(right.snapshotId));
+  }
+
   async deleteRun(runId: string): Promise<void> {
     const database = await this.open();
-    const transaction = database.transaction(["runs", "events"], "readwrite");
+    const transaction = database.transaction(["runs", "events", "snapshots"], "readwrite");
     transaction.objectStore("runs").delete(runId);
     const events = transaction.objectStore("events");
     const range = IDBKeyRange.bound([runId, 0], [runId, Number.MAX_SAFE_INTEGER]);
     await new Promise<void>((resolve, reject) => {
       const cursor = events.openCursor(range);
       cursor.onerror = () => reject(cursor.error ?? new Error("실행 이벤트를 삭제할 수 없습니다."));
+      cursor.onsuccess = () => {
+        if (!cursor.result) {
+          resolve();
+          return;
+        }
+        cursor.result.delete();
+        cursor.result.continue();
+      };
+    });
+    const snapshots = transaction.objectStore("snapshots").index("runId");
+    await new Promise<void>((resolve, reject) => {
+      const cursor = snapshots.openCursor(IDBKeyRange.only(runId));
+      cursor.onerror = () => reject(cursor.error ?? new Error("실행 진단 스냅샷을 삭제할 수 없습니다."));
       cursor.onsuccess = () => {
         if (!cursor.result) {
           resolve();
@@ -133,8 +164,18 @@ export class IndexedDbTraceRepository implements TraceRepository {
           const events = database.createObjectStore("events", { keyPath: ["runId", "seq"] });
           events.createIndex("runId", "runId");
         }
+        if (!database.objectStoreNames.contains("snapshots")) {
+          const snapshots = database.createObjectStore("snapshots", { keyPath: "snapshotId" });
+          snapshots.createIndex("runId", "runId");
+        }
       };
-      open.onsuccess = () => resolve(open.result);
+      open.onsuccess = () => {
+        open.result.onversionchange = () => {
+          open.result.close();
+          this.database = null;
+        };
+        resolve(open.result);
+      };
       open.onerror = () => reject(open.error ?? new Error("실행 로그 데이터베이스를 열 수 없습니다."));
       open.onblocked = () => reject(new Error("실행 로그 데이터베이스 갱신이 차단됐습니다."));
     });

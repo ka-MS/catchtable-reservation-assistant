@@ -59,6 +59,12 @@ interface AvailabilityShadowPort {
   stop(): void;
 }
 
+interface DiagnosticsPort {
+  breadcrumb(stage: RunState, trigger: "state" | "action", reason: string, data?: RunEvent["data"]): void;
+  failure(stage: RunState, reason: string, data?: RunEvent["data"], error?: unknown): string | null;
+  forceFlush(): Promise<void>;
+}
+
 interface Dependencies {
   clock: Clock;
   monotonicClock: Clock;
@@ -79,6 +85,7 @@ interface Dependencies {
   }): void;
   flushTrace?(): Promise<void>;
   captureSnapshot?(): StageSnapshot | null;
+  diagnostics?: DiagnosticsPort;
   slotWatch?: SlotRefreshWatchPort;
   slotDomMutationWatch?: SlotDomMutationWatchPort;
   availabilityShadow?: AvailabilityShadowPort;
@@ -107,6 +114,17 @@ const TERMINAL = new Set<RunState>([
   "STOPPED",
   "TIMED_OUT",
   "FAILED",
+]);
+
+const DIAGNOSTIC_BREADCRUMB_STATES = new Set<RunState>([
+  "ENTERING_RESERVATION",
+  "SELECTING_DATE",
+  "SELECTING_PERSON",
+  "PREPARING_PAGE",
+  "WAITING_FOR_OPEN",
+  "SLOT_CLICK_DISPATCHED",
+  "SLOT_TRANSITION_CONFIRMED",
+  "ADVANCING_RESERVATION",
 ]);
 
 function postSlotEventData(inspection: PostSlotInspection): NonNullable<RunEvent["data"]> {
@@ -208,6 +226,13 @@ class RunSession {
   private emit(kind: RunEvent["kind"], message: string, data?: RunEvent["data"]): void {
     const at = this.deps.clock.now();
     this.deps.emit({ at, serverAt: this.serverClockReady ? this.serverClock.now() : null, runId: this.runId, kind, message, data });
+    if (kind === "action") {
+      try {
+        this.deps.diagnostics?.breadcrumb(this.machine.state, "action", message, data);
+      } catch {
+        // Diagnostics must not affect reservation control.
+      }
+    }
   }
 
   private transition(
@@ -217,6 +242,16 @@ class RunSession {
   ): void {
     this.machine.transition(state, reason, { error: extra.error, userStopped: extra.userStopped });
     this.emit("state", reason, { state, ...extra.data });
+    // REFRESHING_SLOTS and SLOT_DETECTED are the pre-click hot path. Early
+    // configuration states also add no useful DOM evidence, so only selected
+    // low-frequency reservation stages create breadcrumbs.
+    if (DIAGNOSTIC_BREADCRUMB_STATES.has(state)) {
+      try {
+        this.deps.diagnostics?.breadcrumb(state, "state", reason, extra.data);
+      } catch {
+        // Diagnostics must not affect reservation control.
+      }
+    }
   }
 
   private finish(): RunResult {
@@ -228,22 +263,29 @@ class RunSession {
     return this.finish();
   }
 
-  private failureData(extra?: RunEvent["data"]): RunEvent["data"] {
+  private failureData(reason: string, extra?: RunEvent["data"], error?: unknown): RunEvent["data"] {
     let snapshot: StageSnapshot | null = null;
+    let diagnosticSnapshotId: string | null = null;
     try {
       snapshot = this.deps.captureSnapshot?.() ?? null;
     } catch {
       snapshot = null;
     }
+    try {
+      diagnosticSnapshotId = this.deps.diagnostics?.failure(this.machine.state, reason, extra, error) ?? null;
+    } catch {
+      diagnosticSnapshotId = null;
+    }
     return {
       ...stageSnapshotData(snapshot),
       snapshotRunState: this.machine.state,
+      ...(diagnosticSnapshotId === null ? {} : { diagnosticSnapshotId }),
       ...extra,
     };
   }
 
   private diagnosticHandOff(reason: string, extra?: RunEvent["data"]): RunResult {
-    const data = this.failureData(extra);
+    const data = this.failureData(reason, extra);
     this.transition("HANDED_OFF", reason, { data });
     return this.finish();
   }
@@ -254,7 +296,7 @@ class RunSession {
   }
 
   private timedOut(reason: string): RunResult {
-    const data = this.failureData();
+    const data = this.failureData(reason);
     this.transition("TIMED_OUT", reason, { data });
     return this.finish();
   }
@@ -295,7 +337,7 @@ class RunSession {
     } catch (error) {
       if (!TERMINAL.has(this.machine.state)) {
         const message = error instanceof Error ? error.message : "알 수 없는 실행 오류";
-        const failure = this.failureData();
+        const failure = this.failureData(message, undefined, error);
         this.deps.trace?.("RUN_FAILED", "error", message, {
           serverAt: this.serverClockReady ? this.serverClock.now() : null,
           state: "FAILED",
@@ -319,7 +361,10 @@ class RunSession {
         // Mutation telemetry cleanup cannot change the terminal result.
       }
       this.stopReferenceClock(); // waitForOpen 도달 전 조기 종료 시 안전망(참조를 비워 정상 경로에서 중복 호출 없음)
-      await this.deps.flushTrace?.().catch(() => undefined);
+      await Promise.allSettled([
+        this.deps.diagnostics?.forceFlush() ?? Promise.resolve(),
+        this.deps.flushTrace?.() ?? Promise.resolve(),
+      ]);
     }
   }
 
