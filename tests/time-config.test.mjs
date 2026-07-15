@@ -6,7 +6,7 @@ import {
   parseKoreanTime,
   parseTimeInput,
 } from "../dist/shared/time.js";
-import { defaultStopAt, validateReservationConfig } from "../dist/shared/config.js";
+import { defaultStopAt, normalizeReservationConfig, validateReservationConfig } from "../dist/shared/config.js";
 
 test("Korean slot labels are parsed strictly", () => {
   assert.equal(parseKoreanTime("오전 12:00"), 0);
@@ -59,6 +59,10 @@ test("valid open-run configuration is accepted", () => {
     .some((error) => error.includes("50ms")));
 });
 
+test("legacy configurations keep the availability probe disabled", () => {
+  assert.equal(normalizeReservationConfig(validConfig()).availabilityProbeEnabled, false);
+});
+
 test("invalid time relationships and unsafe settings are rejected", () => {
   const config = validConfig();
   config.targetUrl = "https://example.com/ct/shop/kea";
@@ -71,6 +75,7 @@ test("invalid time relationships and unsafe settings are rejected", () => {
   config.postSlotEnabled = "yes";
   config.paymentMethodAutoAdvance = "yes";
   config.paymentMethodPolicy = "anything";
+  config.availabilityProbeEnabled = "yes";
 
   const errors = validateReservationConfig(config, 1_000_000);
   assert.ok(errors.length >= 6);
@@ -79,4 +84,5 @@ test("invalid time relationships and unsafe settings are rejected", () => {
   assert.ok(errors.some((error) => error.includes("준비 방식")));
   assert.ok(errors.some((error) => error.includes("결제 방식")));
   assert.ok(errors.some((error) => error.includes("결제 방식 정책")));
+  assert.ok(errors.some((error) => error.includes("XHR 응답 진단")));
 });

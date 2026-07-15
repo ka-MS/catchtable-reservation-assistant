@@ -1,7 +1,7 @@
 # Tier 2-2 - Availability DOM wake-up 검증
 
 **검증일:** 2026-07-14
-**상태:** 실제 오픈 기능 검증 완료, body wake 성능 이득 미입증
+**상태:** 실제 오픈 기능 검증 완료, probe 기본 비활성, body wake 성능 이득 미입증
 
 ## 1. 자동 게이트
 
@@ -130,3 +130,11 @@ Catchtable 페이지 콘솔에는 error/warn/issue가 없었다. extension page�
 성공 실행에서 response-to-DOM은 약 74ms였지만 bridge delay가 약 57ms라 bridge 이후 DOM까지 남은 시간은 약 16ms였다. 다른 일치 실행은 body wake를 수용했으나 wake-to-DOM 약 482ms로 fallback했다. 실제 오픈에서 body wake가 기존 DOM 경로보다 빠르게 후보를 반환한 표본은 0개다.
 
 표본 수와 환경 편향 때문에 p50/p95를 계산하지 않는다. 20/40/60ms 상수와 cycle 정책을 변경할 근거도 없다. 중요한 예약 전에는 현재 fallback 보존형 빌드를 유지하며, viewport·visibility 진단을 추가한 뒤 정상 크기 전면 실행 표본을 더 확보한다.
+
+## 9. 전체 actual-open 판독과 RT-05
+
+[26건 교차 분석](70-live-run-analysis.md)에서 모든 실행의 dropped 0과 seq 연속성, 19건의 설정 범위 슬롯 감지·클릭을 확인했다. 2026-07-15의 참고용 오픈→클릭 p50은 `+1127ms`, 감지→dispatch p50은 `14ms`다. n=17의 관측 p95는 최댓값이므로 공식 지표로 사용하지 않는다.
+
+[RT-05 결정](80-probe-final-decision.md)에 따라 probe는 기본 비활성이다. 자동 테스트는 비활성 실행에서 MAIN `executeScript` 0회, 활성 실행에서 지정 bundle 1회, 주입 실패 시 DOM fallback을 확인한다.
+
+최종 `npm run check`는 301/301 tests, typecheck, dist validation, MAIN/ISOLATED independence를 통과했다.

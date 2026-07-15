@@ -6,9 +6,9 @@
 
 **기준 코드:** `main@8ba22f5` (`Tier 2-1 availability shadow observation` 병합 완료)
 
-**현재 체크포인트:** Tier 2-2 fallback 보존형 구현 완료 → RT-10M 재측정 대기
+**현재 체크포인트:** Tier 2-2 fallback 보존형 구현·RT-05 운영 격리 완료
 
-**다음 성능 단계:** RT-10M 실제 오픈 재측정 후 RT-05 종료 판정
+**다음 성능 단계:** 공식 p95·wake counterfactual 측정은 후속 성능 backlog로 이관
 
 ## 1. 목적
 
@@ -37,7 +37,7 @@ Tier 2-1 완료 후 외부 정적 레드팀 리뷰와 실제 후속 예약 흐�
 현재 기준선을 보존하기 위해 다음 제약을 둔다.
 
 1. RT-10M 전에는 실제 성능 향상 또는 20/40/60ms 축소를 주장하지 않는다.
-2. RT-05 전에는 XHR probe의 최종 운영 정책이나 Tier 2-2 종료를 확정하지 않는다.
+2. XHR probe는 진단·실험 전용 기본 비활성 정책을 유지한다.
 3. body claim만으로 클릭하거나 날짜 토글을 중단하지 않는다.
 4. `SLOT_SELECTED`라는 기존 상태명이 서버 좌석 hold 완료를 증명한다고 간주하지 않는다.
 5. 증거가 부족한 신규 화면은 selector를 추측해 자동 진행하지 않는다.
@@ -297,13 +297,14 @@ URL의 `date=260731`과 사용자 보고 예약일 표현이 일치하지 않으
 | RT-02 | `clockSampleCount` 설정 계약 정리 | 수용 | 실오픈 시계 표본 판독 후 별도 정리 | 없음 | DONE | `docs/specs/clock-sample-setting-contract/`, `docs/worklog/2026-07-14-05-rt02-clock-setting-contract.md` |
 | RT-03 | SlotAdapter 조상 가시성 검사 | 수용 | 실오픈 기준선 판독 후 | Tier 2-2 진입 | DONE | `docs/specs/slot-ancestor-visibility/`, `docs/worklog/2026-07-14-02-rt03-slot-ancestor-visibility.md` |
 | RT-04 | 40/60ms 실측과 선택 확인 개선 | 부분 수용 | Tier 2-2 | 없음 | DONE | `docs/specs/open-timing-performance/02-availability-hot-path/`, `docs/worklog/2026-07-14-09-tier2-2-availability-hot-path.md` |
-| RT-05 | XHR probe 운영·진단 격리 결정 | 부분 수용 | Tier 2-2 종료 판정 | Tier 2-2 종료 | PENDING | - |
+| RT-05 | XHR probe 운영·진단 격리 결정 | 부분 수용 | Tier 2-2 종료 판정 | Tier 2-2 종료 | DONE | `docs/specs/open-timing-performance/02-availability-hot-path/80-probe-final-decision.md`, `docs/worklog/2026-07-15-05-live-run-analysis-probe-decision.md` |
 | RT-06 | 비스트로 꼬꼬뜨 예약금 안내 `다음` 지원 | 수용 | 정확성·호환성 안정화 | 없음 | DONE | `docs/specs/deposit-notice-next/`, `docs/worklog/2026-07-14-06-rt06-deposit-notice-next.md` |
 | RT-07 | 야키토리묵 신규 후속 단계 조사 | 수용 | 정확성·호환성 안정화 | 없음 | DONE | `docs/specs/seating-menu-sheet/`, `docs/worklog/2026-07-14-07-rt07-seating-menu-sheet.md` |
 | RT-08 | 일반 DOM strategy·fixture·drift 대응 | 부분 수용 | Tier 3 | 없음 | DEFERRED | `03-runtime-resilience` 예정 |
 | RT-09 | 장시간·고빈도 운영 안전장치 검토 | 부분 수용·보류 | Tier 3 | 없음 | DEFERRED | `03-runtime-resilience` 예정 |
 | RT-10 | cycle-correlated shadow timing 보강 | 수용 | 현재 기준선 판독과 RT-03 완료 후 | Tier 2-2 구현 진입 | DONE | `docs/specs/availability-cycle-correlation/`, `docs/worklog/2026-07-14-04-rt10-cycle-correlation.md` |
-| RT-10M | correlation 실제 오픈 재측정 | 후속 측정 | 다음 실제 오픈 가능 시점 | 성능 결론·actuator 승격 | DEFERRED | RT-10 `40-verification.md` |
+| RT-10M | correlation 실제 오픈 재측정 | 후속 측정 | 다음 실제 오픈 가능 시점 | 성능 결론·actuator 승격 | DONE | `docs/specs/open-timing-performance/02-availability-hot-path/70-live-run-analysis.md` |
+| RT-11 | 공식 p95와 wake counterfactual 측정 | 실측 보강 | 동질 actual-open 표본 확보 시 | 없음 | DEFERRED | `docs/specs/open-timing-performance/02-availability-hot-path/70-live-run-analysis.md` §10 |
 
 상태 값은 다음 의미로 사용한다.
 
@@ -323,7 +324,7 @@ URL의 `date=260731`과 사용자 보고 예약일 표현이 일치하지 않으
 | C. Tier 2-1 관측 보강 | RT-03으로 DOM 후보 정확성을 확보한 뒤 RT-10의 cycle correlation trace 구현 | RT-10 자동 게이트와 shadow 제어 독립성 검증 |
 | D. correlation 실오픈 재측정 | RT-10M에서 실제 오픈 `EMPTY -> POPULATED`를 다시 측정하고 `EXACT` 또는 `STRONG` 표본 확보 | 유효 상관 표본 없이 성능 이득 확정·actuator 승격 금지 |
 | E. Tier 2-2 분석·구현 | fallback을 보존하고 body 신호만으로 클릭하지 않으며 DOM 재검증 유지 | Tier 2-2 자체 성공 기준 통과; 성능 판정은 RT-10M 이후 |
-| F. Tier 2-2 종료 판정 | RT-05에서 XHR probe의 제거·진단 전용·기본 비활성 중 하나를 결정 | RT-05 결정과 회귀 검증 없이는 Tier 2-2 종료 처리 금지 |
+| F. Tier 2-2 종료 판정 | RT-05에서 XHR probe를 진단 전용·기본 비활성으로 결정 | 완료. 공식 p95와 counterfactual은 non-blocking 후속 측정 |
 | G. Tier 3 | RT-08, RT-09를 runtime resilience 범위에서 재분석 | 해당 Tier spec의 성공 기준에 따름 |
 
 RT-02, RT-06, RT-07은 중요하지만 현재 Tier 2-2 진입 blocking으로 지정하지 않는다. 다만 HANDOFF가 정확성·호환성 안정화를 현재 체크포인트로 선택하면 해당 세션의 실제 다음 작업이 될 수 있다.

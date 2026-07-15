@@ -145,6 +145,7 @@ test("sanitizeScheduledJobs accepts legacy payment settings and the current conf
   assert.deepEqual(sanitized.map((item) => item.id), ["legacy", "current"]);
   assert.equal(sanitized[0].config.paymentMethodAutoAdvance, true);
   assert.equal(sanitized[0].config.paymentMethodPolicy, "selected_allowed");
+  assert.equal(sanitized[0].config.availabilityProbeEnabled, false);
 });
 
 test("reconcileJobs reschedules future jobs and marks passed ones missed", () => {

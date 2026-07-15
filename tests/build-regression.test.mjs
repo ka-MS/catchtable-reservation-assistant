@@ -33,6 +33,9 @@ test("advanced settings expose only effective timing controls", async () => {
   assert.match(html, /id="pre-open-lead"[^>]*step="50"/);
   assert.match(html, /오픈 전에 날짜 갱신 루프/);
   assert.match(html, /목표 날짜 재클릭 주기/);
+  assert.match(html, /id="availability-probe-enabled" type="checkbox"/);
+  assert.doesNotMatch(html, /id="availability-probe-enabled"[^>]*checked/);
+  assert.match(html, /실오픈 성능 측정용 실험 기능/);
   assert.doesNotMatch(html, /id="clock-samples"/);
   assert.doesNotMatch(html, /서버 시계 측정 횟수/);
 });

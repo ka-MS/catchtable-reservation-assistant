@@ -1,8 +1,8 @@
 # HANDOFF
 
 **갱신:** 2026-07-15
-**브랜치:** `codex/run-diagnostic-bundle`
-**최신 작업 로그:** `docs/worklog/2026-07-15-04-live-run-sample-sufficiency.md`
+**브랜치:** `codex/live-run-analysis-probe-decision`
+**최신 작업 로그:** `docs/worklog/2026-07-15-05-live-run-analysis-probe-decision.md`
 **최신 증거 정리 작업 로그:** `docs/worklog/2026-07-15-03-live-run-evidence-package.md`
 **최신 실행 진단 작업 로그:** `docs/worklog/2026-07-15-02-run-diagnostic-bundle.md`
 **최신 보조 작업 로그:** `docs/worklog/2026-07-14-10-payment-policy-ux-shortcut.md`
@@ -14,7 +14,7 @@
 
 ## 현재 상태
 
-예약 흐름 호환성 패키지의 달력, 결제 방식, 좌석·메뉴, 실제 폼 인계 검증을 완료했다. 이어 RT-10M 측정을 기다리는 동안 hot path와 독립적인 결제 정책 UX를 단축 절차로 보완했다.
+예약 흐름 호환성 패키지와 Tier 2-2 availability hot path의 fallback 보존형 구현·실제 오픈 기능 검증·RT-05 운영 격리를 완료했다.
 
 재현이 어려운 실패 분석을 위해 실행 진단 bundle을 추가했다.
 
@@ -23,8 +23,7 @@
 - 2026-07-14 누와 RT-10M 4개 실행과 2026-07-15 다매장 22개 실행을 보관한다.
 - 실행별 `run.csv`를 단일 원본으로 두고 진단 bundle은 같은 실행의 `diagnostic/` 아래에 둔다.
 - 날짜별 README에서 모든 실행과 원본 메모를 찾을 수 있다.
-- 2026-07-15 신규 표본의 전체 실패 원인 분석은 아직 수행하지 않았다.
-- 표본 적합성 1차 집계에서 22개 중 `EXACT/STRONG POPULATED` 17개, 슬롯 감지·클릭 17개, response-to-DOM 완전 표본 6개를 확인했다.
+- 26건 교차 분석에서 `EXACT/STRONG POPULATED` 20건, 설정 범위 일치 body와 슬롯 감지·클릭 19건, response-to-DOM 완전 표본 7건을 확인했다.
 - 운영 오픈→클릭의 탐색적 p50은 계산할 수 있지만 공식 p95와 body wake p50/p95에는 부족하다.
 - 키이로의 명시적 테이블 선정 실패를 retry case 1, 윤주당의 일시적 재시도 toast 후 shop·슬롯 화면 유지를 retry case 2로 분리했다.
 - 사용자 확인 성공 표본인 키이로 `run-231096aa`와 윤주당 `run-c742db22`는 모두 cycle 3 `EXACT POPULATED` body를 관측했지만 `inactive_cycle`로 거절했고, cycle 4 DOM fallback으로 클릭했다.
@@ -42,7 +41,7 @@
 - 슬롯 탐색, 날짜 토글, 서버 시계, XHR probe와 wake 경로는 이번 단축 패치에서 변경하지 않았다.
 - 뽈뽀의 2개월 이상 장거리 날짜 준비에서 최초 월 이동 클릭이 유실되면 같은 월을 무기한 기다리던 문제를 수정했다. 750ms 간격 최대 3회 bounded retry이며 슬롯 탐색 hot path에는 영향이 없다.
 
-Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 검증을 완료한 상태다.
+Tier 2-2 availability hot-path는 fallback 보존형 구현과 RT-05 운영 격리를 완료했다.
 
 - 검증된 현재 cycle `EXACT/STRONG` body만 DOM scan wake-up 후보로 사용한다.
 - body는 슬롯을 선택하거나 클릭하지 않는다.
@@ -62,18 +61,20 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 
 - 전면 표본의 `EXACT POPULATED` body는 이전 cycle로 늦게 도착해 `inactive_cycle`로 거절됐고, 다음 cycle의 기존 DOM 경로가 슬롯을 찾았다.
 - 최소화 표본은 body wake를 수용했지만 wake-to-DOM 약 482ms로 250ms window를 넘겨 fallback했으며, 슬롯 클릭 뒤 화면 전환을 확인하지 못했다.
 - 다른 최소화 표본에는 수십 초의 cycle 간격이 나타났다. 작은 4분할 창의 신규 PC 표본은 예약 CTA를 찾지 못했지만 viewport·visibility 정보가 없어 원인은 아직 확정하지 않는다.
+- probe는 코드에 유지하되 고급 설정에서 명시적으로 켠 진단 실행에만 MAIN wrapper와 wake channel을 설치한다.
+- 기본값과 구버전 설정의 누락값은 `false`이며, 일반 실행은 기존 bounded DOM 경로만 사용한다.
 
 상태 표현:
 
-> 실제 오픈 기능 검증 완료, body wake 성능 이득 미입증, 환경 진단과 RT-05 판정 대기
+> Tier 2-2 종료, probe 진단 전용 기본 비활성, body wake 성능 이득·공식 p95 미입증
 
-성능 향상 완료 또는 Tier 2-2 최종 종료를 선언하지 않는다.
+공식 p95와 body wake 인과 이득은 후속 non-blocking 측정으로 남긴다. body actuator 승격은 승인하지 않는다.
 
 ## 검증 근거
 
 - 결제 정책 UX 대상 테스트: 73/73 통과
 - CSV short-cut 대상 테스트: 19/19 통과
-- 전체 `npm run check`: 296/296 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
+- 전체 `npm run check`: 301/301 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - 실행 진단 Chrome live: IndexedDB v2에서 기존 runs 20/events 740 보존, snapshots store 생성, 실제 ZIP 다운로드와 Windows 기본 압축 해제 통과
 - CSV Chrome live 확인: 원격 디버깅 미연결로 대기
 - `git diff --check` 통과
@@ -95,6 +96,8 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 
 - `docs/specs/open-timing-performance/02-availability-hot-path/30-implementation.md`
 - `docs/specs/open-timing-performance/02-availability-hot-path/40-verification.md`
 - `docs/specs/open-timing-performance/02-availability-hot-path/50-adversarial-review.md`
+- `docs/specs/open-timing-performance/02-availability-hot-path/70-live-run-analysis.md`
+- `docs/specs/open-timing-performance/02-availability-hot-path/80-probe-final-decision.md`
 
 ## 다음 작업 1 - 실행 환경 진단
 
@@ -102,7 +105,7 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 
 
 운영 시에는 예약 페이지를 정상 크기의 보이는 창으로 유지하고 최소화하지 않는다. 즉시 실행에서 사용자가 모달·날짜·인원을 준비할 수 있으면 `entryMode=prepared`로 자동 진입 단계를 생략할 수 있다.
 
-## 다음 작업 2 - RT-10M 추가 전면 표본
+## 다음 작업 2 - 공식 p95와 wake counterfactual
 
 실제 `EMPTY -> POPULATED` 오픈에서 다음 원시 시각을 같은 cycle·requestSequence로 보존한다.
 
@@ -113,19 +116,13 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 
 5. DOM candidate observed
 6. slot dispatch 및 click 결과
 
-`EXACT` 또는 `STRONG` 유효 표본만 집계한다. 여러 실행에서 p50/p95를 계산하고 body wake가 기존 25ms polling 잔여를 실제로 줄이는지 판정한다. 그 전에는 20/40/60ms를 변경하거나 성능 이득을 주장하지 않는다.
+`EXACT` 또는 `STRONG` 유효 표본만 집계한다. wake마다 기존 25ms loop의 다음 예정 scan 시각을 추가로 기록해 `wakeAdvanceMs`를 직접 계산해야 한다. 그 전에는 20/40/60ms를 변경하거나 성능 이득을 주장하지 않는다.
 
-2026-07-15 누와 실측은 일치 슬롯의 실제 오픈 기능 검증을 충족한다. 다만 유효한 전면 표본이 1개뿐이고 body wake가 클릭 경로를 단축한 표본은 0개라 p50/p95나 상수 조정 근거로는 부족하다. 추가 전면 표본이 생기기 전까지 현재 상수와 fallback을 유지한다.
+현재 26건은 기능·안전 판정과 탐색적 p50에는 사용할 수 있으나 동질 환경의 p95와 counterfactual에는 부족하다. 이 측정은 이후 성능 개선 근거이며 다음 제품 안정화 작업을 막지 않는다.
 
-## 다음 작업 3 - RT-05 종료 gate
+## 완료 작업 - RT-05 종료 gate
 
-추가 전면 표본 또는 현재 제한을 명시한 판독 뒤 MAIN XHR probe를 다음 중 하나로 결정한다.
-
-- 진단 모드 전용
-- 성능 이득이 없으면 제거
-- 제한된 관측 경로로 기본 비활성 유지
-
-비활성 시 wrapper 미설치, 활성 시 원본 의미 보존·종료 원복·제어 독립성 회귀를 통과해야 Tier 2-2를 최종 종료할 수 있다.
+MAIN XHR probe를 진단·성능 실험 전용 기본 비활성으로 결정했다. 비활성 wrapper 미설치와 활성 MAIN bundle 주입, 주입 실패 fallback을 자동 테스트로 고정했다.
 
 ## 검증 명령
 

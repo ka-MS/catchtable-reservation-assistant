@@ -1,6 +1,6 @@
 # 2026-07-15 Live Runs
 
-다수 매장의 실제 오픈 실행 자료다. 이 인덱스는 파일 정리와 사용자 메모 보존을 위한 것이며 원인 분석은 아직 반영하지 않는다.
+다수 매장의 실제 오픈 실행 자료다. 이 인덱스는 파일과 사용자 메모를 보존하며, 통합 원인·성능 판독은 [Actual-open cross-run analysis](../../../specs/open-timing-performance/02-availability-hot-path/70-live-run-analysis.md)를 기준으로 한다.
 
 ## 진단 bundle 포함
 
@@ -39,3 +39,4 @@
 - [Tier 2 Availability hot path](../../../specs/open-timing-performance/02-availability-hot-path/10-analysis.md)
 - [슬롯 전환 결과](../../../specs/slot-transition-outcomes/10-analysis.md)
 - [실행 진단 bundle](../../../specs/run-diagnostics/run-diagnostics.md)
+- [XHR probe 최종 결정](../../../specs/open-timing-performance/02-availability-hot-path/80-probe-final-decision.md)

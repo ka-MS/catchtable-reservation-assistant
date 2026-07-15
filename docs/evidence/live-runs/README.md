@@ -7,6 +7,8 @@
 - [2026-07-14](2026-07-14/README.md): 누와 RT-10M 최초 실제 오픈 표본
 - [2026-07-15](2026-07-15/README.md): 다매장 실제 오픈 및 경쟁 승패·후속 화면 표본
 
+통합 판독은 [Actual-open cross-run analysis](../../specs/open-timing-performance/02-availability-hot-path/70-live-run-analysis.md)를 기준으로 한다. 재집계는 저장소 루트에서 `node scripts/analyze-live-runs.mjs`로 수행한다.
+
 ## 구조
 
 ```text

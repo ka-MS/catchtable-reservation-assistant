@@ -49,8 +49,11 @@ interface ReservationConfig {
   dryRun: boolean;
   preOpenLeadMs: number;
   toggleIntervalMs: number;
+  availabilityProbeEnabled?: boolean;
 }
 ```
+
+`availabilityProbeEnabled`는 XHR 응답과 DOM wake timing을 측정하는 실험 설정이다. 기본값과 구버전 누락값은 `false`다. `true`인 실행만 MAIN-world probe를 주입하며, body는 DOM scan을 깨울 수만 있고 후보 선택과 클릭은 계속 `SlotAdapter`가 소유한다.
 
 ## 4. Clock 계층
 
@@ -99,6 +102,7 @@ interface ReservationSiteAdapter {
 - manifest에는 `content_scripts`가 없다.
 - `entryMode=auto`에서 Background는 다른 활성 탭을 목표 매장 URL로 이동하고 load complete를 확인한다.
 - Background는 START 전에 PING하고 응답이 없을 때만 `chrome.scripting.executeScript`를 호출한다.
+- MAIN-world availability probe는 진단 설정이 명시적으로 켜진 실행에만 별도로 주입한다.
 - Content Script 전역 가드로 동일 프레임의 중복 부트스트랩을 막는다.
 - Content Script는 esbuild IIFE 단일 번들로 만들며 정적 `import`가 남아 있으면 빌드 검증 실패다.
 - Background와 Side Panel은 MV3가 지원하는 ES module로 배포한다.

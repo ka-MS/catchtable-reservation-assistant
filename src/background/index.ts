@@ -20,6 +20,7 @@ import type { DiagnosticSnapshotBatchMessage } from "../shared/diagnostics/types
 import { IndexedDbTraceRepository } from "./telemetry/indexeddb-repository.js";
 import { LiveTraceHub } from "./telemetry/live-trace-hub.js";
 import { TraceIngestor } from "./telemetry/trace-ingestor.js";
+import { ensureAvailabilityProbe } from "./availability-probe.js";
 
 const TERMINAL_STATES = new Set<RunState>([
   "DRY_RUN_COMPLETED",
@@ -65,20 +66,6 @@ async function ensureContent(tabId: number): Promise<void> {
   await chrome.scripting.executeScript({ target: { tabId }, files: ["content/index.js"] });
   const response = await chrome.tabs.sendMessage(tabId, { type: "PING" } satisfies ContentCommand);
   if (!response?.ok) throw new Error("예약 페이지에 실행 코드를 연결할 수 없습니다.");
-}
-
-async function ensureAvailabilityProbe(tabId: number): Promise<boolean> {
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      world: "MAIN",
-      files: ["main-world/availability-probe.js"],
-    });
-    return true;
-  } catch {
-    // Tier 2-1 probe는 관측 전용이다. 주입 실패로 기존 DOM 실행을 막지 않는다.
-    return false;
-  }
 }
 
 async function startRun(config: ReservationConfig): Promise<CommandResponse> {
@@ -148,7 +135,11 @@ async function runOnTab(
     }
     await assertPending();
     await ensureContent(tab.id);
-    const shadowChannelId = await ensureAvailabilityProbe(tab.id)
+    const shadowChannelId = await ensureAvailabilityProbe(
+      tab.id,
+      config.availabilityProbeEnabled === true,
+      chrome.scripting,
+    )
       ? `shadow-${crypto.randomUUID()}`
       : undefined;
     await assertPending();

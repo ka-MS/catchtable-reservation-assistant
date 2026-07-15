@@ -1,6 +1,6 @@
 # Tier 2 - Availability 핫패스 분석
 
-**상태:** Tier 2-1 완료. Tier 2-2 REDUCE 구현 착수 가능.
+**상태:** Tier 2-2 종료. probe는 진단·실험 전용 기본 비활성.
 **기준일:** 2026-07-14
 
 ## 1. 결정
@@ -78,3 +78,7 @@ body는 scan 시점만 앞당긴다. 슬롯 선택, 상태 전이, 클릭 여부
 > fallback 보존형 구현 완료, RT-10M 재측정 대기
 
 RT-05는 Tier 2-2 최종 종료 전 별도 exit gate로 남긴다.
+
+## 8. 최종 실측과 RT-05
+
+26개 actual-open 실행의 최종 판독은 [70-live-run-analysis](70-live-run-analysis.md), probe 운영 결정은 [80-probe-final-decision](80-probe-final-decision.md)에 기록한다. 실제 오픈 기능과 fallback 안전성은 확인했지만 XHR wake 성능 이득과 공식 p95는 미입증이다.

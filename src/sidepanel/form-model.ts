@@ -21,6 +21,7 @@ export interface FormValues {
   dryRun: boolean;
   preOpenLeadMs: string;
   toggleIntervalMs: string;
+  availabilityProbeEnabled?: boolean;
 }
 
 function parseConfig(values: FormValues): ReservationConfig {
@@ -47,6 +48,7 @@ function parseConfig(values: FormValues): ReservationConfig {
     dryRun: values.dryRun,
     preOpenLeadMs: Number(values.preOpenLeadMs),
     toggleIntervalMs: Number(values.toggleIntervalMs),
+    availabilityProbeEnabled: values.availabilityProbeEnabled ?? false,
   };
   return config;
 }

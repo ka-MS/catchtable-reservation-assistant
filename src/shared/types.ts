@@ -43,6 +43,7 @@ export interface ReservationConfig {
   dryRun: boolean;
   preOpenLeadMs: number;
   toggleIntervalMs: number;
+  availabilityProbeEnabled?: boolean;
 }
 
 export type SavedConfigList = "history" | "favorites";

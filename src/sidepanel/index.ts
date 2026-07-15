@@ -71,6 +71,7 @@ const fields = {
   dryRun: byId<HTMLInputElement>("dry-run"),
   preOpenLeadMs: byId<HTMLInputElement>("pre-open-lead"),
   toggleIntervalMs: byId<HTMLInputElement>("toggle-interval"),
+  availabilityProbeEnabled: byId<HTMLInputElement>("availability-probe-enabled"),
 };
 const paymentMethodPolicyFieldset = byId<HTMLFieldSetElement>("payment-method-policy-options");
 const paymentMethodPolicyOptions = Array.from(
@@ -228,6 +229,7 @@ function readValues(): FormValues {
     dryRun: fields.dryRun.checked,
     preOpenLeadMs: fields.preOpenLeadMs.value,
     toggleIntervalMs: fields.toggleIntervalMs.value,
+    availabilityProbeEnabled: fields.availabilityProbeEnabled.checked,
   };
 }
 
@@ -248,6 +250,7 @@ function applyValues(values: FormValues): void {
   fields.dryRun.checked = values.dryRun;
   fields.preOpenLeadMs.value = values.preOpenLeadMs;
   fields.toggleIntervalMs.value = values.toggleIntervalMs;
+  fields.availabilityProbeEnabled.checked = values.availabilityProbeEnabled ?? false;
   priorityTimes = [...values.priorityTimes];
   syncPostSlotFields();
   renderPriorities();
@@ -279,6 +282,7 @@ function valuesFromConfig(config: ReservationConfig): FormValues {
     dryRun: config.dryRun,
     preOpenLeadMs: String(config.preOpenLeadMs),
     toggleIntervalMs: String(config.toggleIntervalMs),
+    availabilityProbeEnabled: config.availabilityProbeEnabled ?? false,
   };
 }
 

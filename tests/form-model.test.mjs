@@ -21,6 +21,7 @@ function values(overrides = {}) {
     dryRun: true,
     preOpenLeadMs: "3000",
     toggleIntervalMs: "400",
+    availabilityProbeEnabled: false,
     clockSampleCount: "5",
     ...overrides,
   };
@@ -37,7 +38,16 @@ test("sidepanel values produce an epoch-based configuration", () => {
   assert.equal(config.tablePreference, "bar");
   assert.equal(config.menuKeyword, "디너 오마카세");
   assert.equal(config.entryMode, "auto");
+  assert.equal(config.availabilityProbeEnabled, false);
   assert.equal("clockSampleCount" in config, false);
+});
+
+test("XHR response diagnostics are opt-in", () => {
+  const config = configFromFormValues(
+    values({ availabilityProbeEnabled: true }),
+    new Date("2026-07-10T12:00").getTime(),
+  );
+  assert.equal(config.availabilityProbeEnabled, true);
 });
 
 test("sidepanel model reports validation errors", () => {

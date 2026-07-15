@@ -11,6 +11,7 @@ export function normalizeReservationConfig(config: ReservationConfig): Reservati
     ...config,
     paymentMethodAutoAdvance: config.paymentMethodAutoAdvance ?? true,
     paymentMethodPolicy: config.paymentMethodPolicy ?? "selected_allowed",
+    availabilityProbeEnabled: config.availabilityProbeEnabled ?? false,
   };
 }
 
@@ -84,6 +85,10 @@ export function validateReservationConfig(config: ReservationConfig, nowMs: numb
   }
   if (!Number.isInteger(config.toggleIntervalMs) || config.toggleIntervalMs < 100 || config.toggleIntervalMs > 5_000) {
     errors.push("날짜 토글 간격은 100~5000ms여야 합니다.");
+  }
+  if (config.availabilityProbeEnabled !== undefined
+    && typeof config.availabilityProbeEnabled !== "boolean") {
+    errors.push("XHR 응답 진단 설정을 확인하세요.");
   }
   return errors;
 }
