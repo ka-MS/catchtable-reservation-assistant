@@ -1,4 +1,4 @@
-import { validateReservationConfig } from "../shared/config.js";
+import { resolveAvailabilityProbeMode, validateReservationConfig } from "../shared/config.js";
 import { estimateReferenceClock, type ReferenceClockEstimate } from "../shared/clock.js";
 import { waitUntil, type Clock, type Sleep } from "../shared/scheduler.js";
 import { MonotonicEpochClock } from "../shared/monotonic-clock.js";
@@ -384,6 +384,8 @@ class RunSession {
         requestSequence: event.sequence,
         quality: correlation.quality,
         stale: correlation.stale,
+        classification: event.classification,
+        allowEmptyExit: resolveAvailabilityProbeMode(this.config) === "empty_exit",
         selectedMinutes: selected?.minutes ?? null,
         responseCompletedMonoMs: event.responseCompletedMonoMs,
         payloadClassifiedMonoMs: event.payloadClassifiedMonoMs,
@@ -418,6 +420,7 @@ class RunSession {
             bridgeDelayMs: event.bridgeReceivedMonoMs - event.payloadClassifiedMonoMs,
             wakeAccepted: wakeDecision.accepted,
             wakeDiscardReason: wakeDecision.discardReason,
+            signalKind: wakeDecision.signal?.kind ?? null,
             wakeAtMonoMs,
             bodyToWakeMs: wakeAtMonoMs - event.bridgeReceivedMonoMs,
             claimSource: wakeDecision.accepted ? "body" : "none",
@@ -483,7 +486,7 @@ class RunSession {
   }
 
   private traceAvailabilityWakeResult(
-    signal: AvailabilityWakeSignal,
+    signal: Extract<AvailabilityWakeSignal, { kind: "scan_wake" }>,
     candidateObservedMonoMs: number | null,
     candidateFound: boolean,
     fallbackUsed: boolean,
@@ -524,6 +527,40 @@ class RunSession {
       });
     } catch {
       // Wake-up diagnostics cannot change the reservation result.
+    }
+  }
+
+  private traceAvailabilityEmptyExit(
+    signal: Extract<AvailabilityWakeSignal, { kind: "empty_exit" }>,
+    targetStillSelected: boolean,
+  ): void {
+    try {
+      const exitAtMonoMs = this.deps.monotonicClock.now();
+      const message = targetStillSelected
+        ? "EXACT EMPTY 응답으로 현재 날짜 토글 cycle을 종료했습니다."
+        : "EXACT EMPTY 응답을 받았지만 목표 날짜 선택이 풀려 조기 종료하지 않았습니다.";
+      this.deps.trace?.("AVAILABILITY_SHADOW", "trace", message, {
+        serverAt: this.serverClockReady ? this.serverClock.now() : null,
+        state: this.machine.state,
+        attributes: {
+          phase: "empty_early_exit",
+          signalKind: signal.kind,
+          cycle: signal.cycle,
+          requestSequence: signal.requestSequence,
+          correlationQuality: signal.quality,
+          responseCompletedMonoMs: signal.responseCompletedMonoMs,
+          payloadClassifiedMonoMs: signal.payloadClassifiedMonoMs,
+          bridgeReceivedMonoMs: signal.bridgeReceivedMonoMs,
+          wakeAtMonoMs: signal.wakeAtMonoMs,
+          exitAtMonoMs,
+          bodyToExitMs: exitAtMonoMs - signal.bridgeReceivedMonoMs,
+          targetStillSelected,
+          finalDomCandidateFound: false,
+          emptyEarlyExitApplied: targetStillSelected,
+        },
+      });
+    } catch {
+      // EMPTY diagnostics cannot change the reservation result.
     }
   }
 
@@ -752,7 +789,7 @@ class RunSession {
     let adjacentDateValue: string | null = this.adjacentDate;
     const traceCycle = (result: string) => this.deps.trace?.(
       "DATE_TOGGLE_CYCLE",
-      result === "NO_SLOT" || result === "SLOT_FOUND" ? "trace" : "warn",
+      result === "NO_SLOT" || result === "SLOT_FOUND" || result === "EMPTY_EARLY_EXIT" ? "trace" : "warn",
       `날짜 토글 #${cycle}: ${result}`,
       {
         serverAt: serverClock.now(),
@@ -919,6 +956,18 @@ class RunSession {
       if (selected && wakeSignal !== null) wakeCandidateObservedMonoMs = observedMonoMs;
       return selected;
     };
+    const applyPendingEmptyExit = (): boolean => {
+      if (wakeSignal?.kind !== "empty_exit") return false;
+      const emptySignal = wakeSignal;
+      const targetStillSelected = this.deps.calendar.inspect(config.reservationDate).targetSelected;
+      this.traceAvailabilityEmptyExit(emptySignal, targetStillSelected);
+      if (targetStillSelected) {
+        wakeFallbackUsed = false;
+        return true;
+      }
+      wakeSignal = null;
+      return false;
+    };
     wakeSignal = this.availabilityWake.consume(cycle);
     if (wakeSignal !== null) {
       // 첫 scan 전에 이미 도착한 wake는 scan 시점을 앞당기지 않는다(전진분 0).
@@ -928,7 +977,12 @@ class RunSession {
     while (!controller.signal.aborted && remainingDetectionMs() > 0) {
       candidate = inspectSlots();
       if (candidate) break;
-      const inBodyBurst = wakeSignal !== null
+      if (applyPendingEmptyExit()) {
+        traceCycle("EMPTY_EARLY_EXIT");
+        this.availabilityWake.endCycle(cycle);
+        return { kind: "retry" };
+      }
+      const inBodyBurst = wakeSignal?.kind === "scan_wake"
         && this.deps.monotonicClock.now() < wakeSignal.bridgeReceivedMonoMs + ARRIVAL_BURST_MS;
       const delay = Math.min(
         inBodyBurst ? BODY_WAKE_SCAN_INTERVAL_MS : 25,
@@ -948,8 +1002,15 @@ class RunSession {
         if (!(await this.deps.sleep(delay, controller.signal))) break;
       }
     }
-    candidate ??= inspectSlots();
-    if (wakeSignal !== null) {
+    if (candidate === null) {
+      candidate = inspectSlots();
+      if (candidate === null && applyPendingEmptyExit()) {
+        traceCycle("EMPTY_EARLY_EXIT");
+        this.availabilityWake.endCycle(cycle);
+        return { kind: "retry" };
+      }
+    }
+    if (wakeSignal?.kind === "scan_wake") {
       wakeFallbackUsed = candidate === null
         || wakeCandidateObservedMonoMs === null
         || wakeCandidateObservedMonoMs > wakeSignal.bridgeReceivedMonoMs + ARRIVAL_BURST_MS;
