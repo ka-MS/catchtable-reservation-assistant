@@ -10,6 +10,7 @@
     "test": "npm run build && node --test --test-concurrency=8 tests/*.test.mjs",
     "check:dist": "node scripts/check-dist.mjs",
     "check:independence": "node scripts/check-independence.mjs",
+    "analyze:rt14": "npm run build && node scripts/analyze-empty-early-exit.mjs",
     "check": "npm run typecheck && npm test && npm run check:dist && npm run check:independence"
   },
   "devDependencies": {
