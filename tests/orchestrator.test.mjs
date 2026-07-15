@@ -59,6 +59,7 @@ function fakeAvailabilityShadow() {
   const calls = { started: 0, marked: 0, stopped: 0 };
   return {
     calls,
+    get marked() { return marker !== null; },
     port: {
       start: (_expiresAt, nextListener) => {
         calls.started += 1;
@@ -306,6 +307,61 @@ test("an EXACT matching body wakes an immediate same-cycle DOM rescan", async ()
   assert.equal(wake?.options.attributes.wakeCandidateFound, true);
   assert.equal(wake?.options.attributes.wakeToDomMs, 0);
   assert.equal(detected?.data?.timingServerAtMs, emittedAt);
+});
+
+test("a wake that skips an in-flight sleep records the skipped baseline scan as wakeAdvanceMs", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emittedAt = null;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    readSlots: (ctx) => {
+      if (emittedAt === null) {
+        emittedAt = ctx.now;
+        shadow.emit({ atMonoMs: ctx.now });
+        return [];
+      }
+      return [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }];
+    },
+  });
+
+  const result = await h.orchestrator.start(config());
+  const wake = h.traces.find((trace) => trace.options.attributes.phase === "wake_result");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  // 첫 scan 도중 body가 도착해 pending으로 저장되고, 25ms sleep 대신 wait가
+  // 즉시 해제된다. baseline(= sleep 만료 시각)과의 차이가 계측된 전진분이다.
+  assert.equal(wake?.options.attributes.wakeAdvanceMs, 25);
+  assert.equal(
+    wake?.options.attributes.baselineNextScanAtMonoMs - wake?.options.attributes.wakeScanAtMonoMs,
+    25,
+  );
+});
+
+test("a wake consumed before the first scan records wakeAdvanceMs of zero", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emitted = false;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    onCalendarInspect: () => {
+      if (shadow.marked && !emitted) {
+        emitted = true;
+        shadow.emit();
+      }
+    },
+  });
+
+  const result = await h.orchestrator.start(config());
+  const wake = h.traces.find((trace) => trace.options.attributes.phase === "wake_result");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  // 목표 날짜 선택 확인 중 body가 도착하면 loop 시작 전에 소비된다. 첫 scan은
+  // wake와 무관하게 즉시 실행되므로 전진분은 0이어야 한다.
+  assert.equal(wake?.options.attributes.wakeCandidateFound, true);
+  assert.equal(wake?.options.attributes.wakeAdvanceMs, 0);
+  assert.equal(
+    wake?.options.attributes.baselineNextScanAtMonoMs,
+    wake?.options.attributes.wakeScanAtMonoMs,
+  );
 });
 
 test("a unique STRONG body can wake the current cycle without an explicit marker", async () => {

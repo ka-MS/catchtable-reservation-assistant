@@ -488,6 +488,8 @@ class RunSession {
     candidateFound: boolean,
     fallbackUsed: boolean,
     scanCount: number,
+    baselineNextScanAtMonoMs: number | null,
+    wakeScanAtMonoMs: number | null,
   ): void {
     try {
       this.deps.trace?.("AVAILABILITY_SHADOW", "trace", "body wake-up 이후 DOM 후보를 확인했습니다.", {
@@ -513,6 +515,11 @@ class RunSession {
           wakeCandidateFound: candidateFound,
           wakeFallbackUsed: fallbackUsed,
           wakeScanCount: scanCount,
+          baselineNextScanAtMonoMs,
+          wakeScanAtMonoMs,
+          wakeAdvanceMs: baselineNextScanAtMonoMs === null || wakeScanAtMonoMs === null
+            ? null
+            : Math.max(0, baselineNextScanAtMonoMs - wakeScanAtMonoMs),
         },
       });
     } catch {
@@ -738,6 +745,10 @@ class RunSession {
     let wakeCandidateObservedMonoMs: number | null = null;
     let wakeScanCount = 0;
     let wakeFallbackUsed = true;
+    // RT-11 counterfactual: wake가 없었다면 다음 scan이 언제 실행됐을지.
+    // (90-redteam-review F2) baseline − wakeScanAt = wakeAdvanceMs.
+    let wakeBaselineNextScanAtMonoMs: number | null = null;
+    let wakeScanAtMonoMs: number | null = null;
     let adjacentDateValue: string | null = this.adjacentDate;
     const traceCycle = (result: string) => this.deps.trace?.(
       "DATE_TOGGLE_CYCLE",
@@ -909,6 +920,11 @@ class RunSession {
       return selected;
     };
     wakeSignal = this.availabilityWake.consume(cycle);
+    if (wakeSignal !== null) {
+      // 첫 scan 전에 이미 도착한 wake는 scan 시점을 앞당기지 않는다(전진분 0).
+      wakeScanAtMonoMs = this.deps.monotonicClock.now();
+      wakeBaselineNextScanAtMonoMs = wakeScanAtMonoMs;
+    }
     while (!controller.signal.aborted && remainingDetectionMs() > 0) {
       candidate = inspectSlots();
       if (candidate) break;
@@ -920,9 +936,14 @@ class RunSession {
       );
       if (delay <= 0) break;
       try {
+        const waitStartMonoMs = this.deps.monotonicClock.now();
         const waited = await this.availabilityWake.wait(cycle, delay, this.deps.sleep, controller.signal);
         if (waited.kind === "stopped") break;
-        if (waited.kind === "wake") wakeSignal = waited.signal;
+        if (waited.kind === "wake") {
+          wakeSignal = waited.signal;
+          wakeScanAtMonoMs = this.deps.monotonicClock.now();
+          wakeBaselineNextScanAtMonoMs = waitStartMonoMs + delay;
+        }
       } catch {
         if (!(await this.deps.sleep(delay, controller.signal))) break;
       }
@@ -938,6 +959,8 @@ class RunSession {
         candidate !== null,
         wakeFallbackUsed,
         wakeScanCount,
+        wakeBaselineNextScanAtMonoMs,
+        wakeScanAtMonoMs,
       );
     }
     if (!candidate) {

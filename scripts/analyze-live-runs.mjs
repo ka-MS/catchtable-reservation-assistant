@@ -104,11 +104,17 @@ function counts(values, key) {
     .map((name) => [name, values.filter((value) => value[key] === name).length]));
 }
 
+const CLOCK_GATE_MAX_UNCERTAINTY_MS = 100;
+const CLOCK_GATE_CONFIDENCES = ["MEDIUM", "HIGH"];
+
 function aggregate(runs) {
   const matching = runs.filter((run) => run.matchingBodyCount > 0);
   const populated = runs.filter((run) => run.populatedBodyCount > 0);
   const accepted = runs.filter((run) => run.wakeAcceptedCount > 0);
   const clicked = runs.filter((run) => run.clickOpenDeltaMs !== null);
+  const clockGated = clicked.filter((run) => CLOCK_GATE_CONFIDENCES.includes(run.frozenClockConfidence)
+    && run.frozenClockUncertaintyMs !== null
+    && run.frozenClockUncertaintyMs <= CLOCK_GATE_MAX_UNCERTAINTY_MS);
   const wakeResults = runs.flatMap((run) => run.wakeResults);
   const timing = (scope) => ({
     openToDetectMs: distribution(scope.map((run) => run.detectOpenDeltaMs)),
@@ -139,6 +145,17 @@ function aggregate(runs) {
       responseToDomMs: distribution(wakeResults.map((result) => result.responseToDomMs)),
       bridgeToDomMs: distribution(wakeResults.map((result) => result.bridgeToDomMs)),
       wakeToDomMs: distribution(wakeResults.map((result) => result.wakeToDomMs)),
+      wakeAdvanceMs: distribution(wakeResults.map((result) => result.wakeAdvanceMs)),
+    },
+    clockGatedTiming: {
+      gate: {
+        confidence: CLOCK_GATE_CONFIDENCES.join("|"),
+        maxUncertaintyMs: CLOCK_GATE_MAX_UNCERTAINTY_MS,
+      },
+      runCount: clockGated.length,
+      excludedClickedRunCount: clicked.length - clockGated.length,
+      openToDetectMs: distribution(clockGated.map((run) => run.detectOpenDeltaMs)),
+      openToClickMs: distribution(clockGated.map((run) => run.clickOpenDeltaMs)),
     },
     byWakePath: {
       accepted: { runCount: accepted.length, timing: timing(accepted) },
@@ -175,6 +192,7 @@ async function analyze(file) {
       bodyToWakeMs: number(row["attr.bodyToWakeMs"]),
       responseToDomMs: number(row["attr.responseToDomMs"]),
       wakeToDomMs: number(row["attr.wakeToDomMs"]),
+      wakeAdvanceMs: number(row["attr.wakeAdvanceMs"]),
     }))
     .map((result) => ({
       ...result,
@@ -182,6 +200,8 @@ async function analyze(file) {
         ? null
         : result.bodyToWakeMs + result.wakeToDomMs,
     }));
+  // 정밀 토글 직전 동결된 ReferenceClock 상태 = clockConfidence를 실은 마지막 이벤트.
+  const frozenClock = last(rows.filter((row) => Boolean(row["attr.clockConfidence"])));
   const seq = rows.map((row) => number(row.seq)).filter((value) => value !== null);
   const seqComplete = seq.length === Number(first.eventCount)
     && seq.every((value, index) => value === index + 1);
@@ -211,6 +231,8 @@ async function analyze(file) {
     },
     traceOutcome: traceOutcome(terminal),
     terminalMessage: terminal?.message ?? null,
+    frozenClockConfidence: frozenClock?.["attr.clockConfidence"] ?? null,
+    frozenClockUncertaintyMs: number(frozenClock?.["attr.clockUncertaintyMs"]),
     populatedBodyCount: populatedBodies.length,
     matchingBodyCount: matchingBodies.length,
     wakeAcceptedCount: matchingBodies.filter((row) => row["attr.wakeAccepted"] === "true").length,
@@ -241,6 +263,9 @@ const result = {
     percentile: "nearest-rank",
     matchingBody: "EXACT|STRONG + POPULATED + selectedMinutes != null",
     warning: "attr.matchesTarget is intentionally not used because it only reflects correlation quality.",
+    clockGate: "clockGatedTiming includes only clicked runs whose frozen ReferenceClock is "
+      + `${CLOCK_GATE_CONFIDENCES.join("|")} with uncertainty <= ${CLOCK_GATE_MAX_UNCERTAINTY_MS}ms `
+      + "(90-redteam-review F3). Open-frame deltas outside this gate carry the run's clock error.",
   },
   all: aggregate(runs),
   byDate: Object.fromEntries([...new Set(runs.map((run) => run.date))].sort()
