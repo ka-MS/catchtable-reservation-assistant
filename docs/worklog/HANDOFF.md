@@ -26,7 +26,8 @@
 - 2026-07-15 신규 표본의 전체 실패 원인 분석은 아직 수행하지 않았다.
 - 표본 적합성 1차 집계에서 22개 중 `EXACT/STRONG POPULATED` 17개, 슬롯 감지·클릭 17개, response-to-DOM 완전 표본 6개를 확인했다.
 - 운영 오픈→클릭의 탐색적 p50은 계산할 수 있지만 공식 p95와 body wake p50/p95에는 부족하다.
-- 키이로의 명시적 테이블 선정 실패를 retry case 1, 윤주당의 무안내 shop·슬롯 화면 유지를 retry case 2로 분리했다.
+- 키이로의 명시적 테이블 선정 실패를 retry case 1, 윤주당의 일시적 재시도 toast 후 shop·슬롯 화면 유지를 retry case 2로 분리했다.
+- 사용자 확인 성공 표본인 키이로 `run-231096aa`와 윤주당 `run-c742db22`는 모두 cycle 3 `EXACT POPULATED` body를 관측했지만 `inactive_cycle`로 거절했고, cycle 4 DOM fallback으로 클릭했다.
 
 - 최근 3개 저빈도 breadcrumb는 Content 메모리에만 두고 정상 실행에서는 폐기한다.
 - 예기치 않은 `HANDED_OFF`, `TIMED_OUT`, `FAILED`에서 구조화 DOM snapshot과 정제 fragment를 저장한다.

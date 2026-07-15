@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | [kiro run-853ff5b6](kiro-run-853ff5b6-2b0e-4e41-b20c-39576a2062c0/run.csv) | 2026-08-15 | `HANDED_OFF` | 경쟁 패배 case 1: 명시적 테이블 선정 실패 안내 | [case](kiro-run-853ff5b6-2b0e-4e41-b20c-39576a2062c0/case.md), [manifest](kiro-run-853ff5b6-2b0e-4e41-b20c-39576a2062c0/diagnostic/manifest.json) |
 | [bistropolpo run-c78a9cea](bistropolpo-run-c78a9cea-7a8d-492d-a26f-25ae5e255bda/run.csv) | 2026-09-01 | `HANDED_OFF` | 예약 폼까지 이동했으나 timeout 종료 | [manifest](bistropolpo-run-c78a9cea-7a8d-492d-a26f-25ae5e255bda/diagnostic/manifest.json) |
-| [yunjudang run-f3aba3bd](yunjudang-run-f3aba3bd-0b9e-4b2d-9825-fa75707c31df/run.csv) | 2026-08-01 | `HANDED_OFF` | 경쟁 패배 case 2: 명시적 안내 없이 shop·슬롯 화면 유지 | [case](yunjudang-run-f3aba3bd-0b9e-4b2d-9825-fa75707c31df/case.md), [manifest](yunjudang-run-f3aba3bd-0b9e-4b2d-9825-fa75707c31df/diagnostic/manifest.json), [화면](yunjudang-run-f3aba3bd-0b9e-4b2d-9825-fa75707c31df/screenshot.png) |
+| [yunjudang run-f3aba3bd](yunjudang-run-f3aba3bd-0b9e-4b2d-9825-fa75707c31df/run.csv) | 2026-08-01 | `HANDED_OFF` | 경쟁 패배 case 2: 일시적 재시도 toast 후 shop·슬롯 화면 유지 | [case](yunjudang-run-f3aba3bd-0b9e-4b2d-9825-fa75707c31df/case.md), [manifest](yunjudang-run-f3aba3bd-0b9e-4b2d-9825-fa75707c31df/diagnostic/manifest.json), [화면](yunjudang-run-f3aba3bd-0b9e-4b2d-9825-fa75707c31df/screenshot.png) |
 
 ## Trace CSV
 

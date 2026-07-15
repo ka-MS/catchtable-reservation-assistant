@@ -10,7 +10,7 @@
 ## 재시도 증거 분리
 
 - Case 1, 키이로: 슬롯 클릭 후 명시적인 테이블 선정 실패 안내가 나타났지만 현재 Adapter가 이를 active dialog로 인식하지 못했다.
-- Case 2, 윤주당: 동일한 timeout 종료이나 명시적 실패 안내 없이 shop·슬롯 화면이 유지됐다.
+- Case 2, 윤주당: 일시적인 재시도 toast가 나타난 뒤 종료 snapshot 시점에는 shop·슬롯 화면만 유지됐다.
 
 두 케이스는 같은 `RUN_TERMINATED` 문구로 합치지 않는다. 향후 재시도 설계에서 명시적 실패 복구와 무응답·원상복귀 복구를 별도 전이로 다룬다.
 
@@ -32,6 +32,13 @@
 - Trace-only 실행에는 viewport, focus, visibility가 없어 환경별 층화도 불가능하다.
 
 참고용 2026-07-15 nearest-rank 집계는 슬롯 감지 p50 `+1108ms`, 슬롯 클릭 p50 `+1127ms`다. p95 값은 표본 부족으로 성능 계약에 사용하지 않는다.
+
+## 성공 표본의 body 경로
+
+- 키이로 `run-231096aa`: cycle 3 `EXACT POPULATED` body는 `inactive_cycle`로 거절됐고 cycle 4 DOM fallback이 슬롯을 찾아 `+1182ms`에 클릭했다.
+- 윤주당 `run-c742db22`: cycle 3 `EXACT POPULATED` body는 `inactive_cycle`로 거절됐고 cycle 4 DOM fallback이 슬롯을 찾아 `+1072ms`에 클릭했다.
+
+두 실행 모두 XHR body 관측 표본이지만 body wake가 클릭을 앞당긴 표본은 아니다.
 
 ## 다음 표본 기준
 
