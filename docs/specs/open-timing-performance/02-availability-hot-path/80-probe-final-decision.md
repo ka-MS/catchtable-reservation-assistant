@@ -55,6 +55,7 @@ availabilityProbeEnabled?: boolean
 - 중요한 실제 예약: 기본값 `off` 유지
 - 실제 오픈 성능 연구: 정상 크기 전면 창에서만 명시적으로 `on`
 - 최소화·작은 분할 창의 결과는 환경 진단 정보가 없으면 성능 표본에서 제외
+- 실행은 오픈 최소 60초 전에 시작하고 창을 최소화하지 않는다. 관측 20초 미만 실행들이 동결 clock uncertainty 상위를 차지한 실측 기반 권고이며 절대 조건은 아니다 ([90-redteam-review](90-redteam-review.md) F3)
 - probe가 꺼져도 날짜 토글, DOM polling, SlotAdapter와 후속 예약 흐름은 그대로 동작
 
 ## 6. 재평가 gate
@@ -66,10 +67,15 @@ availabilityProbeEnabled?: boolean
 - DOM fallback 또는 A/B 표본과 비교 가능한 counterfactual
 - 후보·클릭 정확성 100%, dropped 0, 사용자 개입 없음
 - 공식 p95를 주장할 수 있는 별도 tail 표본과 분석 방법 사전 고정
+- 성능 표본은 정밀 토글 직전 동결된 ReferenceClock confidence·uncertainty 조건을 함께 만족 ([90-redteam-review](90-redteam-review.md) F3)
 
 그 전에는 현재 20/40/60ms 상수를 변경하거나 XHR wake 성능 이득을 제품 설명에 사용하지 않는다.
 
-## 7. Tier 2-2 종료 판정
+## 7. 알려진 한계
+
+이 결정의 근거인 26건 actual-open은 전량 `availabilityProbeEnabled` 필드가 없는 RT-05 이전 빌드, 즉 **probe 상시 주입 상태**에서 수집됐다 ([90-redteam-review](90-redteam-review.md) F1). 운영 기본으로 채택한 wrapper 미설치 구성은 dry-run과 자동 테스트로만 검증됐고 actual-open 표본이 없다. fallback 코드 경로는 동일하므로 결정을 바꾸지 않지만, 다음 실제 오픈 1건을 probe off로 실행해 확인 표본을 남긴다.
+
+## 8. Tier 2-2 종료 판정
 
 RT-05 최소 완료 조건인 운영 정책 문서화, 설정 표현, 비활성 wrapper 미설치, 활성 회귀 보존을 충족한다. Tier 2-2는 **fallback 보존형 구현 및 실제 오픈 기능 검증 완료**로 종료한다.
 

@@ -27,6 +27,7 @@
   - [Tier 2 · Availability 핫패스](open-timing-performance/02-availability-hot-path/10-analysis.md)
     - [Tier 2-1 · Shadow 관찰·안전 기반](open-timing-performance/02-availability-hot-path/01-observation-safety/10-analysis.md)
     - [Tier 2-2 · 제어 경로 활성화](open-timing-performance/02-availability-hot-path/02-control-activation/10-analysis.md)
+    - [사후 레드팀 리뷰](open-timing-performance/02-availability-hot-path/90-redteam-review.md)
   - [Tier 3 · 런타임 견고성](open-timing-performance/03-runtime-resilience/10-analysis.md)
 
 스펙이 참조하는 실제 실행 원본은 [Evidence 패키지](../evidence/README.md)에 실행별로 보관합니다.

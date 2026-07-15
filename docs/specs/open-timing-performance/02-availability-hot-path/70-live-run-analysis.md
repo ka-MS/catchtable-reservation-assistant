@@ -11,7 +11,7 @@
 - 26건 모두 `droppedCount=0`이고 `seq=1..eventCount`가 연속이다.
 - `EXACT/STRONG POPULATED` body를 20건에서 관측했고, 그중 설정 범위와 일치하는 슬롯을 포함한 body는 19건이다.
 - 19건 모두 DOM 슬롯을 감지하고 클릭을 dispatch했다. 설정 범위 밖 슬롯 클릭은 0건이다.
-- wake는 7건에서 수락됐고 모두 DOM 후보를 찾았다. 1건은 250ms window를 넘겨 fallback했다.
+- wake는 7건에서 수락됐다. 6건은 wake 경로가 DOM 후보를 찾았고, 1건은 250ms window를 넘겨 fallback 경로가 후보를 찾았다.
 - 12건은 일치 body가 다음 cycle에 늦게 도착해 `inactive_cycle`로 거절됐지만 기존 DOM 경로가 슬롯을 찾았다.
 - 사용자 확인 최종 성공 3건인 누와, 키이로, 윤주당은 모두 body wake가 아니라 기존 DOM fallback으로 클릭했다.
 
@@ -84,6 +84,7 @@
 - 오픈→클릭 p50 `+1127ms`는 서로 다른 매장·설정·환경이 섞인 운영 관찰치다.
 - n=17 nearest-rank p95는 최댓값 한 건이다. 공식 p95나 20/40/60ms 상수 변경 근거로 사용하지 않는다.
 - Tier 2 착수 전 동일 조건 기준선이 없으므로 시작 전후 속도 차이도 수치로 주장하지 않는다.
+- 이 표는 실행별 동결 ReferenceClock uncertainty를 반영하지 않은 집계다(클릭 실행 기준 12~419ms 혼재). [사후 레드팀 리뷰](90-redteam-review.md) F3에 따라 시계 신뢰도 gating 집계를 스크립트에 추가했다.
 
 ## 6. XHR wake 경로
 
@@ -137,5 +138,6 @@
 4. `dropped=0`, seq gap 0, 잘못된 슬롯 클릭 0
 5. wake 시점과 기존 25ms loop의 다음 예정 scan 시점을 함께 기록한 counterfactual metric
 6. p95에는 tail을 표현할 수 있는 충분한 동질 표본을 별도 확보
+7. 정밀 토글 직전 동결된 ReferenceClock이 MEDIUM 이상 confidence와 사전 고정된 uncertainty 상한(집계 스크립트 기본 100ms)을 만족하는 실행만 오픈 대비 지연 집계에 포함
 
 이 측정은 후속 성능 개선의 근거이며 Tier 2-2 종료 blocking은 아니다.

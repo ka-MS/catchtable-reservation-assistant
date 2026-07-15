@@ -2,7 +2,8 @@
 
 **갱신:** 2026-07-15
 **브랜치:** `codex/live-run-analysis-probe-decision`
-**최신 작업 로그:** `docs/worklog/2026-07-15-05-live-run-analysis-probe-decision.md`
+**최신 작업 로그:** `docs/worklog/2026-07-15-06-redteam-review-counterfactual-instrumentation.md`
+**직전 작업 로그:** `docs/worklog/2026-07-15-05-live-run-analysis-probe-decision.md`
 **최신 증거 정리 작업 로그:** `docs/worklog/2026-07-15-03-live-run-evidence-package.md`
 **최신 실행 진단 작업 로그:** `docs/worklog/2026-07-15-02-run-diagnostic-bundle.md`
 **최신 보조 작업 로그:** `docs/worklog/2026-07-14-10-payment-policy-ux-shortcut.md`
@@ -70,11 +71,20 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 RT-05 운영 격�
 
 공식 p95와 body wake 인과 이득은 후속 non-blocking 측정으로 남긴다. body actuator 승격은 승인하지 않는다.
 
+사후 레드팀 리뷰(`docs/specs/open-timing-performance/02-availability-hot-path/90-redteam-review.md`)로 분석 근거를 재검증했다.
+
+- RT-05 결정은 유지한다. 70-doc의 모든 표는 스크립트 재실행으로 전량 재현 일치했다.
+- F2 counterfactual 계측을 구현했다. `wake_result`에 `baselineNextScanAtMonoMs`/`wakeScanAtMonoMs`/`wakeAdvanceMs`가 추가되어 다음 probe-on 진단 실오픈부터 RT-11 표본이 유효해진다.
+- F3 시계 gating을 집계 스크립트에 추가했다. MEDIUM|HIGH + uncertainty ≤ 100ms gate에서 클릭 19건 중 13건이 통과하고 gated 오픈→클릭 p50은 `+1042ms`다(ungated `+1127ms`). 두 값 모두 참고값이며 공식 성능값이 아니다. gate는 오픈 대비 통계에만 적용하고, 성능 판정은 시계 독립적인 monotonic 구간 지표를 우선한다.
+- 26건 actual-open은 전량 probe 상시 주입 빌드 표본이다. 운영 기본(probe off) 구성의 실오픈 확인 표본 1건이 필요하다(RT-12).
+- RT-13(inactive_cycle 기회비용), RT-14(EXACT EMPTY cycle 조기 종료 검토)를 backlog에 등재했다. 중요 예약 시즌에는 착수하지 않는다.
+- BOM/CRLF로 수정돼 있던 evidence `run.csv` 26건을 커밋 상태로 복원했다.
+
 ## 검증 근거
 
 - 결제 정책 UX 대상 테스트: 73/73 통과
 - CSV short-cut 대상 테스트: 19/19 통과
-- 전체 `npm run check`: 301/301 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
+- 전체 `npm run check`: 303/303 tests(wakeAdvanceMs 계측 2건 포함), typecheck, dist validation, MAIN/ISOLATED independence 통과
 - probe 정책 Chrome live: 확장 재로드 후 `XHR 응답 진단` 기본 꺼짐, 토글 동작, Side Panel 재로드 후 꺼짐 복원, 경고·오류 없음 확인
 - 실행 진단 Chrome live: IndexedDB v2에서 기존 runs 20/events 740 보존, snapshots store 생성, 실제 ZIP 다운로드와 Windows 기본 압축 해제 통과
 - CSV Chrome live 확인: 원격 디버깅 미연결로 대기
@@ -104,7 +114,7 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 RT-05 운영 격�
 
 중요 예약 전에는 hot path 상수나 cycle 정책을 변경하지 않는다. 최소화·작은 4분할 실행의 실패 원인을 분리하기 위해 다음 표본부터 run 시작과 종료 스냅샷에 `document.visibilityState`, `document.hasFocus()`, viewport 크기와 진입 CTA 구조를 남기는 설계를 먼저 검토한다. 좁은 화면의 대체 CTA는 실제 DOM을 확보하기 전까지 추측으로 지원하지 않는다.
 
-운영 시에는 예약 페이지를 정상 크기의 보이는 창으로 유지하고 최소화하지 않는다. 즉시 실행에서 사용자가 모달·날짜·인원을 준비할 수 있으면 `entryMode=prepared`로 자동 진입 단계를 생략할 수 있다.
+운영 시에는 예약 페이지를 정상 크기의 보이는 창으로 유지하고 최소화하지 않으며, 실행은 오픈 최소 60초 전에 시작한다(관측 20초 미만 실행들이 동결 clock uncertainty 상위였던 실측 기반 권고, 절대 조건 아님). 즉시 실행에서 사용자가 모달·날짜·인원을 준비할 수 있으면 `entryMode=prepared`로 자동 진입 단계를 생략할 수 있다.
 
 ## 다음 작업 2 - 공식 p95와 wake counterfactual
 
@@ -117,7 +127,11 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 RT-05 운영 격�
 5. DOM candidate observed
 6. slot dispatch 및 click 결과
 
-`EXACT` 또는 `STRONG` 유효 표본만 집계한다. wake마다 기존 25ms loop의 다음 예정 scan 시각을 추가로 기록해 `wakeAdvanceMs`를 직접 계산해야 한다. 그 전에는 20/40/60ms를 변경하거나 성능 이득을 주장하지 않는다.
+`EXACT` 또는 `STRONG` 유효 표본만 집계한다. wake마다 기존 25ms loop의 다음 예정 scan 시각을 기록하는 `wakeAdvanceMs` 계측은 2026-07-15에 구현했으므로 다음 probe-on 진단 실오픈부터 표본이 유효하다. 오픈 대비 지연 집계에는 동결 ReferenceClock MEDIUM 이상 + uncertainty ≤ 100ms gate를 적용한다. 충분한 표본 전에는 20/40/60ms를 변경하거나 성능 이득을 주장하지 않는다.
+
+## 다음 작업 3 - probe off 확인 표본 (RT-12)
+
+기존 26건은 전량 probe 상시 주입 빌드에서 수집됐다. 다음 실제 오픈 1건을 기본값 그대로(probe off) 실행해 운영 기본 구성의 actual-open 확인 표본을 남긴다. 코드 변경 없음.
 
 현재 26건은 기능·안전 판정과 탐색적 p50에는 사용할 수 있으나 동질 환경의 p95와 counterfactual에는 부족하다. 이 측정은 이후 성능 개선 근거이며 다음 제품 안정화 작업을 막지 않는다.
 

@@ -287,6 +287,26 @@ URL의 `date=260731`과 사용자 보고 예약일 표현이 일치하지 않으
 
 **보완 항목:** RT-07
 
+## 4.3 사후 레드팀 리뷰 발견 (2026-07-15)
+
+Tier 2-2 종료 후 [사후 레드팀 리뷰](../specs/open-timing-performance/02-availability-hot-path/90-redteam-review.md)가 분석·결정 근거를 재검증했다. RT-05 결정 자체는 유지하고 다음 세 항목을 신규 등재한다. F2(counterfactual 계측)와 F3(집계 스크립트 시계 gating)는 발견 당일 구현해 backlog로 넘기지 않는다.
+
+### 4.3.1 probe off 구성의 actual-open 확인 표본 (F1)
+
+26건 actual-open이 전량 probe 상시 주입 빌드에서 수집됐다. 운영 기본인 wrapper 미설치 구성의 실오픈 표본이 0건이다. **판정: 수용.** 다음 실제 오픈 1건을 probe off로 실행해 확인 표본을 남긴다. 코드 변경 없음. **보완 항목: RT-12**
+
+### 4.3.2 inactive_cycle 기회비용 분석 (F4)
+
+일치 body 19건 중 12건이 다음 cycle 도착으로 `inactive_cycle` 거절됐고(사용자 확인 성공 3건 전부 포함), 이 경우 F1 수정이 준 250ms render window 보존을 받지 못한다. 수락률이 7/19에 그친 원인(응답 지연 대 cycle 위상)과 "이전 cycle body + target 날짜 재확인 통과 시 window 보존만 허용" 완화의 비용·이득이 미분석이다. **판정: 조사 필요.** probe 진단 전용 결정과 별개이며 hot path 변경이므로 중요 예약 시즌에는 착수하지 않는다. **보완 항목: RT-13**
+
+### 4.3.3 EXACT EMPTY body 기반 cycle 조기 종료 검토 (F5)
+
+오픈→클릭 p50 1127ms의 지배 항은 서버 게시 지연 + cycle 양자화(~914ms)로, body wake가 건드릴 수 없는 구간이다. `EXACT EMPTY` body 확인 시 bounded 대기를 조기 종료해 cycle 주기를 줄이는 옵션은 검토된 적이 없다. 클릭 없는 경로라 오클릭 위험은 낮지만 재요청 빈도 증가 = 사이트 부하·운영정책 위험(RT-09와 동일 계열)이 있다. **판정: 조사 필요.** 채택하지 않더라도 우산 문서 §7 거부 대안 표 수준의 기각 근거를 남긴다. **보완 항목: RT-14**
+
+### 4.3.4 원시 시계 표본 trace 기록 (F3 후속)
+
+trace에는 `CLOCK_SYNCED` 요약 2건만 남고 개별 HEAD 표본(t0, t1, 서버 Date)이 없어 사후 재추정이 불가능하다. 원시 표본을 남기면 오픈 이후 표본까지 포함한 hindsight 재추정으로 일부 고불확실성 실행을 복원하고 estimator 오류를 분석할 수 있다. 단, 서버 풀 스큐가 실재하면 표본을 늘려도 하나의 정답으로 수렴하지 않으므로 모든 실행의 복원을 보장하지 않는다. **판정: 수용.** 설계 제약: 표본은 실시간 전송하지 않고 메모리 ring에 보관한 뒤 armed 또는 종료 시 한 번에 batch 기록해 정각 hot path의 메시지·로그 부담을 만들지 않는다. shadow 비교 측정(RT-11) 이후에 착수한다. **보완 항목: RT-15**
+
 ## 5. 보완 항목 원장
 
 `Blocks`는 해당 항목이 미완료일 때 실제로 진입하거나 종료할 수 없는 체크포인트만 표시한다. `없음`인 항목은 backlog에 남아 있어도 다른 Tier 진행을 자동으로 막지 않는다.
@@ -305,6 +325,10 @@ URL의 `date=260731`과 사용자 보고 예약일 표현이 일치하지 않으
 | RT-10 | cycle-correlated shadow timing 보강 | 수용 | 현재 기준선 판독과 RT-03 완료 후 | Tier 2-2 구현 진입 | DONE | `docs/specs/availability-cycle-correlation/`, `docs/worklog/2026-07-14-04-rt10-cycle-correlation.md` |
 | RT-10M | correlation 실제 오픈 재측정 | 후속 측정 | 다음 실제 오픈 가능 시점 | 성능 결론·actuator 승격 | DONE | `docs/specs/open-timing-performance/02-availability-hot-path/70-live-run-analysis.md` |
 | RT-11 | 공식 p95와 wake counterfactual 측정 | 실측 보강 | 동질 actual-open 표본 확보 시 | 없음 | DEFERRED | `docs/specs/open-timing-performance/02-availability-hot-path/70-live-run-analysis.md` §10 |
+| RT-12 | probe off 구성 actual-open 확인 표본 | 수용 | 다음 실제 오픈 | 없음 | PENDING | `docs/specs/open-timing-performance/02-availability-hot-path/90-redteam-review.md` F1 |
+| RT-13 | inactive_cycle 기회비용·수락 완화 분석 | 조사 필요 | 중요 예약 시즌 이후 | 없음 | INVESTIGATE | `docs/specs/open-timing-performance/02-availability-hot-path/90-redteam-review.md` F4 |
+| RT-14 | EXACT EMPTY body cycle 조기 종료 검토 | 조사 필요 | 중요 예약 시즌 이후 | 없음 | INVESTIGATE | `docs/specs/open-timing-performance/02-availability-hot-path/90-redteam-review.md` F5 |
+| RT-15 | 원시 시계 표본 ring buffer trace 기록 | 수용 | shadow 비교(RT-11) 이후 | 없음 | PENDING | 본 문서 §4.3.4 |
 
 상태 값은 다음 의미로 사용한다.
 
