@@ -1,9 +1,9 @@
-import { defaultStopAt } from "../shared/config.js";
+import { defaultStopAt, resolveAvailabilityProbeMode } from "../shared/config.js";
 import { MonotonicEpochClock } from "../shared/monotonic-clock.js";
 import { sanitizeSavedConfigs } from "../shared/saved-configs.js";
 import { sanitizeScheduledJobs } from "../shared/scheduled-jobs.js";
 import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
-import type { ActiveRun, CommandResponse, EntryMode, PanelCommand, PaymentMethodPolicy, ReservationConfig, RunEvent, RunState, ScheduledJob, TablePreference } from "../shared/types.js";
+import type { ActiveRun, AvailabilityProbeMode, CommandResponse, EntryMode, PanelCommand, PaymentMethodPolicy, ReservationConfig, RunEvent, RunState, ScheduledJob, TablePreference } from "../shared/types.js";
 import { countdownModel } from "./countdown.js";
 import { formatEventDetail, formatEventTime } from "./event-format.js";
 import { configFromFormValues, configSnapshotFromFormValues, type FormValues } from "./form-model.js";
@@ -71,11 +71,13 @@ const fields = {
   dryRun: byId<HTMLInputElement>("dry-run"),
   preOpenLeadMs: byId<HTMLInputElement>("pre-open-lead"),
   toggleIntervalMs: byId<HTMLInputElement>("toggle-interval"),
-  availabilityProbeEnabled: byId<HTMLInputElement>("availability-probe-enabled"),
 };
 const paymentMethodPolicyFieldset = byId<HTMLFieldSetElement>("payment-method-policy-options");
 const paymentMethodPolicyOptions = Array.from(
   document.querySelectorAll<HTMLInputElement>('input[name="payment-method-policy"]'),
+);
+const availabilityProbeModeOptions = Array.from(
+  document.querySelectorAll<HTMLInputElement>('input[name="availability-probe-mode"]'),
 );
 
 function selectedPaymentMethodPolicy(): PaymentMethodPolicy {
@@ -87,6 +89,19 @@ function selectPaymentMethodPolicy(policy: PaymentMethodPolicy | undefined): voi
   const normalized = policy === "zero_only" ? "zero_only" : "selected_allowed";
   paymentMethodPolicyOptions.forEach((option) => {
     option.checked = option.value === normalized;
+  });
+}
+
+function selectedAvailabilityProbeMode(): AvailabilityProbeMode {
+  const selected = availabilityProbeModeOptions.find((option) => option.checked)?.value;
+  if (selected === "observe" || selected === "empty_exit") return selected;
+  return "off";
+}
+
+function selectAvailabilityProbeMode(values: Pick<FormValues, "availabilityProbeMode" | "availabilityProbeEnabled">): void {
+  const mode = resolveAvailabilityProbeMode(values);
+  availabilityProbeModeOptions.forEach((option) => {
+    option.checked = option.value === mode;
   });
 }
 
@@ -229,7 +244,7 @@ function readValues(): FormValues {
     dryRun: fields.dryRun.checked,
     preOpenLeadMs: fields.preOpenLeadMs.value,
     toggleIntervalMs: fields.toggleIntervalMs.value,
-    availabilityProbeEnabled: fields.availabilityProbeEnabled.checked,
+    availabilityProbeMode: selectedAvailabilityProbeMode(),
   };
 }
 
@@ -250,7 +265,7 @@ function applyValues(values: FormValues): void {
   fields.dryRun.checked = values.dryRun;
   fields.preOpenLeadMs.value = values.preOpenLeadMs;
   fields.toggleIntervalMs.value = values.toggleIntervalMs;
-  fields.availabilityProbeEnabled.checked = values.availabilityProbeEnabled ?? false;
+  selectAvailabilityProbeMode(values);
   priorityTimes = [...values.priorityTimes];
   syncPostSlotFields();
   renderPriorities();
@@ -282,7 +297,7 @@ function valuesFromConfig(config: ReservationConfig): FormValues {
     dryRun: config.dryRun,
     preOpenLeadMs: String(config.preOpenLeadMs),
     toggleIntervalMs: String(config.toggleIntervalMs),
-    availabilityProbeEnabled: config.availabilityProbeEnabled ?? false,
+    availabilityProbeMode: resolveAvailabilityProbeMode(config),
   };
 }
 

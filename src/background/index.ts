@@ -9,7 +9,7 @@ import type {
   RunState,
   ScheduledJob,
 } from "../shared/types.js";
-import { validateReservationConfig } from "../shared/config.js";
+import { resolveAvailabilityProbeMode, validateReservationConfig } from "../shared/config.js";
 import { appendRunEvent, SerialTaskQueue } from "./storage.js";
 import { navigateTab, sameRestaurant, leftReservationFlow } from "./navigation.js";
 import { SavedConfigRepository } from "./saved-config-repository.js";
@@ -137,7 +137,7 @@ async function runOnTab(
     await ensureContent(tab.id);
     const shadowChannelId = await ensureAvailabilityProbe(
       tab.id,
-      config.availabilityProbeEnabled === true,
+      resolveAvailabilityProbeMode(config) !== "off",
       chrome.scripting,
     )
       ? `shadow-${crypto.randomUUID()}`

@@ -25,6 +25,7 @@ export type RunState =
 export type TablePreference = "any" | "hall" | "bar" | "room";
 export type EntryMode = "auto" | "prepared";
 export type PaymentMethodPolicy = "zero_only" | "selected_allowed";
+export type AvailabilityProbeMode = "off" | "observe" | "empty_exit";
 
 export interface ReservationConfig {
   targetUrl: string;
@@ -43,6 +44,8 @@ export interface ReservationConfig {
   dryRun: boolean;
   preOpenLeadMs: number;
   toggleIntervalMs: number;
+  availabilityProbeMode?: AvailabilityProbeMode;
+  /** @deprecated Legacy persisted setting. Normalize before use. */
   availabilityProbeEnabled?: boolean;
 }
 
