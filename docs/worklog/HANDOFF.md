@@ -2,7 +2,8 @@
 
 **갱신:** 2026-07-15
 **브랜치:** `codex/run-diagnostic-bundle`
-**최신 작업 로그:** `docs/worklog/2026-07-15-02-run-diagnostic-bundle.md`
+**최신 작업 로그:** `docs/worklog/2026-07-15-03-live-run-evidence-package.md`
+**최신 실행 진단 작업 로그:** `docs/worklog/2026-07-15-02-run-diagnostic-bundle.md`
 **최신 보조 작업 로그:** `docs/worklog/2026-07-14-10-payment-policy-ux-shortcut.md`
 **핵심 hot-path 작업 로그:** `docs/worklog/2026-07-14-09-tier2-2-availability-hot-path.md`
 **최신 RT-10M 실측:** `docs/worklog/2026-07-14-11-rt10m-yangjour-negative-control.md`
@@ -15,6 +16,13 @@
 예약 흐름 호환성 패키지의 달력, 결제 방식, 좌석·메뉴, 실제 폼 인계 검증을 완료했다. 이어 RT-10M 측정을 기다리는 동안 hot path와 독립적인 결제 정책 UX를 단축 절차로 보완했다.
 
 재현이 어려운 실패 분석을 위해 실행 진단 bundle을 추가했다.
+
+실측 원본은 `docs/evidence/live-runs`에 실행별로 정리했다.
+
+- 2026-07-14 누와 RT-10M 4개 실행과 2026-07-15 다매장 22개 실행을 보관한다.
+- 실행별 `run.csv`를 단일 원본으로 두고 진단 bundle은 같은 실행의 `diagnostic/` 아래에 둔다.
+- 날짜별 README에서 모든 실행과 원본 메모를 찾을 수 있다.
+- 2026-07-15 신규 표본의 성능·실패 원인 분석은 아직 수행하지 않았다.
 
 - 최근 3개 저빈도 breadcrumb는 Content 메모리에만 두고 정상 실행에서는 폐기한다.
 - 예기치 않은 `HANDED_OFF`, `TIMED_OUT`, `FAILED`에서 구조화 DOM snapshot과 정제 fragment를 저장한다.

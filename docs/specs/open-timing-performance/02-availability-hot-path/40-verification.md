@@ -110,10 +110,10 @@ Catchtable 페이지 콘솔에는 error/warn/issue가 없었다. extension page�
 
 | 실행 | 환경 | 결과 | 핵심 판정 |
 |---|---|---|---|
-| `run-ec3acf59-2e31-48c5-a558-b7dd184d7a01` | 로컬, 전면 | 폼 인계, 사용자 최종 예약 성공 | body `inactive_cycle`, 기존 DOM 경로로 +893ms 클릭 |
-| `run-5881d898-a394-4244-a694-07e2d5ea0205` | 로컬, 최소화 | +1297ms 클릭, 후속 화면 timeout | wake accepted, wake-to-DOM 482ms, fallback |
-| `run-8984299b-a323-4278-a799-4da514d9c20a` | 로컬, 최소화 | 사용자 중지 | 2초 이상 cycle과 20~37초 공백, 일치 슬롯 없음 |
-| `run-b413a0d5-d2ed-4642-bee3-d4aea20d04ac` | 신규 PC, 4분할 | entry 인계 | 5초 동안 `aside#dock` 예약 CTA 미검출, viewport 원인 미확정 |
+| [run-ec3acf59](../../../evidence/live-runs/2026-07-14/nuwa-run-ec3acf59-2e31-48c5-a558-b7dd184d7a01/run.csv) | 로컬, 전면 | 폼 인계, 사용자 최종 예약 성공 | body `inactive_cycle`, 기존 DOM 경로로 +893ms 클릭 |
+| [run-5881d898](../../../evidence/live-runs/2026-07-14/nuwa-run-5881d898-a394-4244-a694-07e2d5ea0205/run.csv) | 로컬, 최소화 | +1297ms 클릭, 후속 화면 timeout | wake accepted, wake-to-DOM 482ms, fallback |
+| [run-8984299b](../../../evidence/live-runs/2026-07-14/nuwa-run-8984299b-a323-4278-a799-4da514d9c20a/run.csv) | 로컬, 최소화 | 사용자 중지 | 2초 이상 cycle과 20~37초 공백, 일치 슬롯 없음 |
+| [run-b413a0d5](../../../evidence/live-runs/2026-07-14/nuwa-run-b413a0d5-d2ed-4642-bee3-d4aea20d04ac/run.csv) | 신규 PC, 4분할 | entry 인계 | 5초 동안 `aside#dock` 예약 CTA 미검출, viewport 원인 미확정 |
 
 전면 성공 실행의 서버 기준 주요 시각:
 

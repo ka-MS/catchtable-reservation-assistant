@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "runId": "run-853ff5b6-2b0e-4e41-b20c-39576a2062c0",
+  "extensionVersion": "0.2.0",
+  "snapshots": [
+    {
+      "snapshotId": "f963227e-48a5-451d-81d2-9cbf1506dd56",
+      "capturedAt": 1784105933843,
+      "stage": "PREPARING_PAGE",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/kiro",
+        "urlKind": "shop",
+        "title": "키이로 신사점",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": true,
+        "viewportWidth": 1067,
+        "viewportHeight": 727,
+        "visualViewportWidth": 1067.199951171875,
+        "visualViewportHeight": 727.2000122070312,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "div",
+          "role": "",
+          "text": "오늘2026년8월전체일월화수목금토2829307월###############월12345678일월화수목금토###18월###############월12345일월화수목금토30319월###############월###1명2명3명4명5명6명7명8명9명10명11명12명13명14명15명16명17명18",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "div",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 127.9,
+            "width": 1067.2,
+            "height": 599.3
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "3b3c5103-8212-4468-aece-4d33c0f8a26d",
+      "capturedAt": 1784105933869,
+      "stage": "WAITING_FOR_OPEN",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/kiro",
+        "urlKind": "shop",
+        "title": "키이로 신사점",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": true,
+        "viewportWidth": 1067,
+        "viewportHeight": 727,
+        "visualViewportWidth": 1067.199951171875,
+        "visualViewportHeight": 727.2000122070312,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "div",
+          "role": "",
+          "text": "오늘2026년8월전체일월화수목금토2829307월###############월12345678일월화수목금토###18월###############월12345일월화수목금토30319월###############월###1명2명3명4명5명6명7명8명9명10명11명12명13명14명15명16명17명18",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "div",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 127.9,
+            "width": 1067.2,
+            "height": 599.3
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "1139e6a6-918e-4cf8-b5bb-46ef32984642",
+      "capturedAt": 1784106000752,
+      "stage": "SLOT_CLICK_DISPATCHED",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/kiro",
+        "urlKind": "shop",
+        "title": "키이로 신사점",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": true,
+        "viewportWidth": 1067,
+        "viewportHeight": 727,
+        "visualViewportWidth": 1067.199951171875,
+        "visualViewportHeight": 727.2000122070312,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "div",
+          "role": "button",
+          "text": "15",
+          "ariaLabel": "토요일, 8월 15, 2026",
+          "ariaPressed": "true",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "div[role=\"button\"][aria-label=\"토요일, 8월 15, 2026\"]",
+          "attributes": {},
+          "rect": {
+            "x": 697.9,
+            "y": 323.2,
+            "width": 34.7,
+            "height": 34.7
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "94223f20-347f-4641-bb5b-13dbd25e5362",
+      "capturedAt": 1784106005820,
+      "stage": "SLOT_CLICK_DISPATCHED",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/kiro",
+        "urlKind": "shop",
+        "title": "키이로 신사점",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": true,
+        "viewportWidth": 1067,
+        "viewportHeight": 727,
+        "visualViewportWidth": 1067.199951171875,
+        "visualViewportHeight": 727.2000122070312,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "body",
+          "role": "",
+          "text": "You need to enable JavaScript to run this app.<br /> 자바스크립트를 활성화해주시기 바랍니다. !(function (f, b, e, v, n, t, s) { if (f.fbq) return; n = f.fbq = function () { n.cal",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "body",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 1067.2,
+            "height": 727.2
+          }
+        }
+      }
+    }
+  ]
+}

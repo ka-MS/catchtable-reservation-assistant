@@ -12,12 +12,13 @@
 - 신규 PC: 1개
 - 모든 CSV: dropped 0, seq 연속
 - 신규 PC 4분할 실패 4건 중 CSV가 제공된 것은 1건
+- 원본: [2026-07-14 Live Runs](../../../evidence/live-runs/2026-07-14/README.md)
 
 원본 CSV에는 예약 설정, 전체 Trace event, 동적 attributes가 포함돼 있다. Windows의 `Zone.Identifier` 파일은 측정 데이터가 아니다.
 
 ## 2. 전면 성공 실행
 
-실행 `run-ec3acf59-2e31-48c5-a558-b7dd184d7a01`은 18:00 일치 슬롯을 클릭하고 예약금 안내를 거쳐 예약 폼에 인계됐다. trace 종료 뒤 최종 예약 성공은 사용자가 확인했다.
+실행 [run-ec3acf59](../../../evidence/live-runs/2026-07-14/nuwa-run-ec3acf59-2e31-48c5-a558-b7dd184d7a01/run.csv)은 18:00 일치 슬롯을 클릭하고 예약금 안내를 거쳐 예약 폼에 인계됐다. trace 종료 뒤 최종 예약 성공은 사용자가 확인했다.
 
 | 단계 | 서버 오픈 대비 | 이전 주요 단계 대비 |
 |---|---:|---:|
@@ -35,7 +36,7 @@
 
 ## 3. 최소화 실행
 
-실행 `run-5881d898-a394-4244-a694-07e2d5ea0205`는 cycle 1의 `EXACT POPULATED` body wake를 수용했다.
+실행 [run-5881d898](../../../evidence/live-runs/2026-07-14/nuwa-run-5881d898-a394-4244-a694-07e2d5ea0205/run.csv)는 cycle 1의 `EXACT POPULATED` body wake를 수용했다.
 
 - bridge delay: 약 124ms
 - response-to-DOM: 약 606ms
@@ -45,13 +46,13 @@
 - 클릭 후 5초 안에 후속 화면 미확인
 - 종료 스냅샷: 슬롯 모달 유지
 
-실행 `run-8984299b-a323-4278-a799-4da514d9c20a`는 초기 cycle도 약 2초 간격이었고 이후 20~37초 공백이 발생했다. `POPULATED` body 1건은 설정 시간 범위와 일치하지 않아 `no_matching_slot`으로 정상 거절됐고 사용자가 실행을 중지했다.
+실행 [run-8984299b](../../../evidence/live-runs/2026-07-14/nuwa-run-8984299b-a323-4278-a799-4da514d9c20a/run.csv)는 초기 cycle도 약 2초 간격이었고 이후 20~37초 공백이 발생했다. `POPULATED` body 1건은 설정 시간 범위와 일치하지 않아 `no_matching_slot`으로 정상 거절됐고 사용자가 실행을 중지했다.
 
 두 실행은 사용자가 최소화 상태였다고 보고했다. 지연과 화면 상태의 연관성은 강하지만 trace에 `visibilityState`, focus, viewport가 없어 인과관계는 확정하지 않는다.
 
 ## 4. 신규 PC 4분할 실행
 
-실행 `run-b413a0d5-d2ed-4642-bee3-d4aea20d04ac`은 `ENTERING_RESERVATION`에서 5초 동안 예약 CTA를 찾지 못해 인계됐다.
+실행 [run-b413a0d5](../../../evidence/live-runs/2026-07-14/nuwa-run-b413a0d5-d2ed-4642-bee3-d4aea20d04ac/run.csv)은 `ENTERING_RESERVATION`에서 5초 동안 예약 CTA를 찾지 못해 인계됐다.
 
 - 이벤트 7개, dropped 0
 - URL kind: `shop`

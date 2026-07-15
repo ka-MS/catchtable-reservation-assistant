@@ -13,6 +13,7 @@
 - [단조 서버 시계 패키지](monotonic-server-clock/10-analysis.md)
 - [시계 표본 설정 계약 패키지](clock-sample-setting-contract/10-analysis.md)
 - [실행 텔레메트리·히스토리 패키지](run-telemetry/10-analysis.md)
+- [실행 진단 bundle 패키지](run-diagnostics/run-diagnostics.md)
 - [오케스트레이터 리팩터링 패키지](orchestrator-refactor/10-scope.md)
 - [후속 화면 복원력 패키지](post-slot-resilience/10-analysis.md)
 - [복합 좌석·메뉴 패키지](seating-menu-sheet/10-analysis.md)
@@ -27,5 +28,7 @@
     - [Tier 2-1 · Shadow 관찰·안전 기반](open-timing-performance/02-availability-hot-path/01-observation-safety/10-analysis.md)
     - [Tier 2-2 · 제어 경로 활성화](open-timing-performance/02-availability-hot-path/02-control-activation/10-analysis.md)
   - [Tier 3 · 런타임 견고성](open-timing-performance/03-runtime-resilience/10-analysis.md)
+
+스펙이 참조하는 실제 실행 원본은 [Evidence 패키지](../evidence/README.md)에 실행별로 보관합니다.
 
 과거 번호형 사양 파일은 폐기 안내문으로만 남아 있으며 위 문서가 현재 공식 기준입니다.

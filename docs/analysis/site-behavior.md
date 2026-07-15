@@ -260,9 +260,9 @@ t=193ms  테이블 dialog DOM 제거, 다음 dialog 활성
 
 **실제 오픈 조건 불일치 음성 표본 (2026-07-14, 양주르).** 목표 날짜 `2026-09-05`, 2명 조건에서 target body가 `EMPTY -> POPULATED`로 전환되고 cycle 6, requestSequence 12, `EXACT`로 상관됐다. 화면에 열린 슬롯은 11:00·15:00·15:30·17:30이었고 실행 설정 범위는 18:30-21:00이어서 선택 가능한 후보가 없었다. 따라서 슬롯을 클릭하지 않고 탐색을 계속한 것은 정상이다. 같은 구간의 cycle 없는 `NONE/IRRELEVANT` shadow는 target wake 증거가 아니며 제어에 사용되지 않았다. 마지막 달력 상태 변경 종료는 측정 중 사용자 클릭으로 발생해 자동화 결과에서 제외한다. 이 실행은 분류와 미클릭 안전성의 음성 표본이며, 일치 슬롯의 body wake 성능 표본은 아니다. `[실측: 양주르, run-866b9478-ff60-4429-977b-0ea012eefdaa]`
 
-**실제 오픈 일치 슬롯과 화면 상태 차이 (2026-07-15, 누와).** 정상 크기로 전면에 둔 실행에서 target 날짜 클릭 +690ms, 슬롯 XHR resource arrival +814ms, 18:00 DOM 후보 감지 +884ms, 클릭 +893ms, 예약금 안내 확인 +1560ms, 예약 폼 최초 관측 +1857ms, 인계 이벤트 +2253ms를 기록했다. 폼 관측 뒤 안내 처리 유예 때문에 인계 이벤트가 약 396ms 늦게 기록됐다. 시각은 최종 ReferenceClock 기준이고 감지 시 uncertainty는 29ms다. `EXACT POPULATED` body response는 DOM보다 약 74ms 빨랐지만 bridge 전달에 약 57ms가 걸려 bridge 이후 DOM 선행 여유는 약 16ms였다. body는 이전 cycle로 도착해 `inactive_cycle`로 거절됐고 다음 cycle의 기존 DOM 경로가 슬롯을 찾았다. 36/36 events, dropped 0이며 최종 예약 완료는 폼 인계 뒤 사용자가 확인했다. `[실측: 누와, run-ec3acf59-2e31-48c5-a558-b7dd184d7a01]`
+**실제 오픈 일치 슬롯과 화면 상태 차이 (2026-07-15, 누와).** 정상 크기로 전면에 둔 실행에서 target 날짜 클릭 +690ms, 슬롯 XHR resource arrival +814ms, 18:00 DOM 후보 감지 +884ms, 클릭 +893ms, 예약금 안내 확인 +1560ms, 예약 폼 최초 관측 +1857ms, 인계 이벤트 +2253ms를 기록했다. 폼 관측 뒤 안내 처리 유예 때문에 인계 이벤트가 약 396ms 늦게 기록됐다. 시각은 최종 ReferenceClock 기준이고 감지 시 uncertainty는 29ms다. `EXACT POPULATED` body response는 DOM보다 약 74ms 빨랐지만 bridge 전달에 약 57ms가 걸려 bridge 이후 DOM 선행 여유는 약 16ms였다. body는 이전 cycle로 도착해 `inactive_cycle`로 거절됐고 다음 cycle의 기존 DOM 경로가 슬롯을 찾았다. 36/36 events, dropped 0이며 최종 예약 완료는 폼 인계 뒤 사용자가 확인했다. [실측: 누와, run-ec3acf59](../evidence/live-runs/2026-07-14/nuwa-run-ec3acf59-2e31-48c5-a558-b7dd184d7a01/run.csv)
 
-같은 PC의 최소화 실행에서는 cycle 1 `EXACT POPULATED` body wake를 수용했지만 response-to-DOM 약 606ms, wake-to-DOM 약 482ms로 250ms body window를 넘겨 fallback했다. 슬롯 클릭은 서버 기준 약 +1297ms에 전달됐으나 5초 안에 후속 화면을 확인하지 못했고 종료 스냅샷에는 슬롯 모달이 남았다. 다른 최소화 실행에는 약 2초 이상의 cycle과 20~37초 공백이 나타났다. 화면 상태와 지연의 연관성은 강하지만 현재 trace에는 visibility·focus·viewport가 없어 인과관계로 확정하지 않는다. `[실측: 누와, run-5881d898-a394-4244-a694-07e2d5ea0205, run-8984299b-a323-4278-a799-4da514d9c20a]`
+같은 PC의 최소화 실행에서는 cycle 1 `EXACT POPULATED` body wake를 수용했지만 response-to-DOM 약 606ms, wake-to-DOM 약 482ms로 250ms body window를 넘겨 fallback했다. 슬롯 클릭은 서버 기준 약 +1297ms에 전달됐으나 5초 안에 후속 화면을 확인하지 못했고 종료 스냅샷에는 슬롯 모달이 남았다. 다른 최소화 실행에는 약 2초 이상의 cycle과 20~37초 공백이 나타났다. 화면 상태와 지연의 연관성은 강하지만 현재 trace에는 visibility·focus·viewport가 없어 인과관계로 확정하지 않는다. [실측: 누와, run-5881d898](../evidence/live-runs/2026-07-14/nuwa-run-5881d898-a394-4244-a694-07e2d5ea0205/run.csv), [run-8984299b](../evidence/live-runs/2026-07-14/nuwa-run-8984299b-a323-4278-a799-4da514d9c20a/run.csv)
 
 **resource arrival 상관관계 제한 (2026-07-14).** 위 실런의 cycle 2·3에는 날짜 불문 `PerformanceResourceTiming` arrival과 DOM `NO_SLOT`은 남았지만, 동일 목표 날짜·인원으로 검증된 body 이벤트가 없다. URL에 날짜가 없으므로 canceled 인접 요청의 resource 종료도 `lastArrivalAt`을 갱신할 수 있다. 따라서 resource arrival 단독 값은 target body 응답 증거가 아니며, 제어 경로에 사용할 때는 `yymmdd`·`personcount`가 검증된 body 이벤트와 구분해야 한다. `[실측: 조광201]`
 
@@ -276,7 +276,7 @@ t=193ms  테이블 dialog DOM 제거, 다음 dialog 활성
 
 뽈뽀의 예약 달력은 Mobiscroll 단일 달력이다. 기본 진입 시 2026년 7월을 표시했고, 보이는 월 제목 버튼과 `Previous page`/`Next page` 버튼은 각각 하나였다. `Next page` 정상 클릭 후 월 제목 DOM은 7월 -> 8월 약 24ms, 8월 -> 9월 약 44ms에 변경됐다. `[실측: 뽈뽀]`
 
-같은 매장의 목표 날짜 `2026-09-06` 실행 로그에서는 7월 화면에서 첫 `Next page` action 뒤 표시 월이 바뀌지 않았고, 추가 클릭 없이 10초 뒤 종료됐다. 따라서 장거리 이동 자체의 정상 지연이 아니라 클릭 한 번이 유실될 수 있는 실행 환경과 기존 무한 pending의 결합으로 분류한다. 월 전환은 표시 월 재확인을 기준으로 bounded retry해야 하며, 단순히 여러 번 연속 클릭해서는 안 된다. `[실측: run-188c11c0-5cb0-45ca-8fdf-1719782126ab]`
+같은 매장의 목표 날짜 `2026-09-06` 실행 로그에서는 7월 화면에서 첫 `Next page` action 뒤 표시 월이 바뀌지 않았고, 추가 클릭 없이 10초 뒤 종료됐다. 따라서 장거리 이동 자체의 정상 지연이 아니라 클릭 한 번이 유실될 수 있는 실행 환경과 기존 무한 pending의 결합으로 분류한다. 월 전환은 표시 월 재확인을 기준으로 bounded retry해야 하며, 단순히 여러 번 연속 클릭해서는 안 된다. [실측: run-188c11c0](../evidence/live-runs/2026-07-15/bistropolpo-run-188c11c0-5cb0-45ca-8fdf-1719782126ab/run.csv)
 
 ## 9. 미실측 영역
 
