@@ -7,6 +7,7 @@
 **최신 RT-10M 실측:** `docs/worklog/2026-07-14-11-rt10m-yangjour-negative-control.md`
 **최신 RT-10M 분석:** `docs/worklog/2026-07-15-01-rt10m-nuwa-measurement.md`
 **최신 short-cut:** `docs/specs/run-telemetry/60-csv-export-shortcut.md`
+**최신 호환성 수정:** `docs/specs/reservation-flow-compatibility/01-calendar-dom-compatibility/60-long-range-month-transition.md`
 
 ## 현재 상태
 
@@ -17,6 +18,7 @@
 - 어떤 정책에서도 선택되지 않은 유료 방식을 임의로 선택하지 않는다.
 - `20,000원`을 `0원` 방식으로 오인하던 부분 문자열 판별을 금액 경계 판별로 수정했다.
 - 슬롯 탐색, 날짜 토글, 서버 시계, XHR probe와 wake 경로는 이번 단축 패치에서 변경하지 않았다.
+- 뽈뽀의 2개월 이상 장거리 날짜 준비에서 최초 월 이동 클릭이 유실되면 같은 월을 무기한 기다리던 문제를 수정했다. 750ms 간격 최대 3회 bounded retry이며 슬롯 탐색 hot path에는 영향이 없다.
 
 Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 검증을 완료한 상태다.
 
@@ -49,7 +51,7 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 비최종 안전 
 
 - 결제 정책 UX 대상 테스트: 73/73 통과
 - CSV short-cut 대상 테스트: 19/19 통과
-- 전체 `npm run check`: 278/278 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
+- 전체 `npm run check`: 282/282 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - CSV Chrome live 확인: 원격 디버깅 미연결로 대기
 - `git diff --check` 통과
 - extension: `olbclnjiehfelpfmgmdphfmenapmpaal`, version `0.2.0`

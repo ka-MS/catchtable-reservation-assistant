@@ -12,12 +12,20 @@ export interface CalendarPreparationResult {
   message: string;
 }
 
+const MONTH_TRANSITION_RETRY_DELAY_MS = 750;
+const MONTH_TRANSITION_MAX_ATTEMPTS = 3;
+
 export class CalendarAdapter {
   private preparingTarget: string | null = null;
   private pendingMonth: string | null = null;
+  private pendingMonthRequestedAt: number | null = null;
+  private pendingMonthAttempts = 0;
   private pendingDate: string | null = null;
 
-  constructor(private readonly document: Document) {}
+  constructor(
+    private readonly document: Document,
+    private readonly monotonicNow: () => number = () => performance.now(),
+  ) {}
 
   inspect(targetDate: string): CalendarInspection {
     const cells = this.readCells();
@@ -44,14 +52,31 @@ export class CalendarAdapter {
     if (this.preparingTarget !== targetDate) {
       this.preparingTarget = targetDate;
       this.pendingMonth = null;
+      this.pendingMonthRequestedAt = null;
+      this.pendingMonthAttempts = 0;
       this.pendingDate = null;
     }
     const displayedMonth = readDisplayedCalendarMonth(this.document);
     if (this.pendingMonth !== null) {
-      if (displayedMonth === this.pendingMonth) {
-        return { status: "waiting", message: "달력 월 전환을 기다립니다." };
+      if (displayedMonth === null || displayedMonth === this.pendingMonth) {
+        const requestedAt = this.pendingMonthRequestedAt;
+        if (requestedAt === null) {
+          return { status: "blocked", message: "달력 월 전환 상태가 올바르지 않습니다." };
+        }
+        const elapsed = this.monotonicNow() - requestedAt;
+        if (elapsed < MONTH_TRANSITION_RETRY_DELAY_MS) {
+          return { status: "waiting", message: "달력 월 전환을 기다립니다." };
+        }
+        if (this.pendingMonthAttempts >= MONTH_TRANSITION_MAX_ATTEMPTS) {
+          return { status: "blocked", message: "달력 월 전환을 확인할 수 없습니다." };
+        }
+        this.pendingMonth = null;
+        this.pendingMonthRequestedAt = null;
+      } else {
+        this.pendingMonth = null;
+        this.pendingMonthRequestedAt = null;
+        this.pendingMonthAttempts = 0;
       }
-      this.pendingMonth = null;
     }
 
     const target = this.readCells().find((cell) => cell.date === targetDate);
@@ -82,7 +107,14 @@ export class CalendarAdapter {
     }
     control.click();
     this.pendingMonth = displayedMonth;
-    return { status: "acted", message: `${targetMonth} 달력으로 이동합니다.` };
+    this.pendingMonthRequestedAt = this.monotonicNow();
+    this.pendingMonthAttempts += 1;
+    return {
+      status: "acted",
+      message: this.pendingMonthAttempts === 1
+        ? `${targetMonth} 달력으로 이동합니다.`
+        : `${targetMonth} 달력 이동을 재시도합니다.`,
+    };
   }
 
   private monthControl(label: "Previous page" | "Next page"): HTMLButtonElement | null {

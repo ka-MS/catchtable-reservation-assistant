@@ -47,6 +47,79 @@ test("calendar preparation waits for a month transition before another click", a
   assert.equal(clicks, 2);
 });
 
+test("calendar preparation retries a month click that produced no visible transition", async () => {
+  const dom = await loadFixture("calendar-navigation.html");
+  const next = dom.window.document.querySelector('[aria-label="Next page"]');
+  let clicks = 0;
+  let now = 0;
+  next.addEventListener("click", () => { clicks += 1; });
+  const adapter = new CalendarAdapter(dom.window.document, () => now);
+
+  assert.equal(adapter.prepareTarget("2026-09-10").status, "acted");
+  now = 500;
+  assert.equal(adapter.prepareTarget("2026-09-10").status, "waiting");
+  now = 750;
+  assert.equal(adapter.prepareTarget("2026-09-10").status, "acted");
+  assert.equal(clicks, 2);
+});
+
+test("calendar preparation bounds retries when the displayed month never changes", async () => {
+  const dom = await loadFixture("calendar-navigation.html");
+  const next = dom.window.document.querySelector('[aria-label="Next page"]');
+  let clicks = 0;
+  let now = 0;
+  next.addEventListener("click", () => { clicks += 1; });
+  const adapter = new CalendarAdapter(dom.window.document, () => now);
+
+  assert.equal(adapter.prepareTarget("2026-09-10").status, "acted");
+  now = 750;
+  assert.equal(adapter.prepareTarget("2026-09-10").status, "acted");
+  now = 1_500;
+  assert.equal(adapter.prepareTarget("2026-09-10").status, "acted");
+  now = 2_250;
+  assert.deepEqual(adapter.prepareTarget("2026-09-10"), {
+    status: "blocked",
+    message: "달력 월 전환을 확인할 수 없습니다.",
+  });
+  assert.equal(clicks, 3);
+});
+
+test("calendar preparation advances across multiple displayed months", async () => {
+  const dom = await loadFixture("calendar-navigation.html");
+  const month = Array.from(dom.window.document.querySelectorAll("button"))
+    .find((button) => button.textContent.replace(/\s+/g, "") === "2026년7월");
+  const adapter = new CalendarAdapter(dom.window.document);
+
+  assert.equal(adapter.prepareTarget("2026-09-10").status, "acted");
+  month.replaceChildren("2026년 8월");
+  assert.equal(adapter.prepareTarget("2026-09-10").status, "acted");
+  month.replaceChildren("2026년 9월");
+  const target = dom.window.document.createElement("div");
+  target.setAttribute("role", "button");
+  target.setAttribute("aria-label", "목요일, 9월 10, 2026");
+  target.setAttribute("aria-pressed", "false");
+  target.addEventListener("click", () => target.setAttribute("aria-pressed", "true"));
+  dom.window.document.querySelector("section").append(target);
+
+  assert.equal(adapter.prepareTarget("2026-09-10").status, "acted");
+  assert.equal(adapter.prepareTarget("2026-09-10").status, "ready");
+});
+
+test("calendar preparation keeps waiting through a transient missing month heading", async () => {
+  const dom = await loadFixture("calendar-navigation.html");
+  const month = Array.from(dom.window.document.querySelectorAll("button"))
+    .find((button) => button.textContent.replace(/\s+/g, "") === "2026년7월");
+  let now = 0;
+  const adapter = new CalendarAdapter(dom.window.document, () => now);
+
+  assert.equal(adapter.prepareTarget("2026-09-10").status, "acted");
+  month.replaceChildren();
+  now = 100;
+  assert.equal(adapter.prepareTarget("2026-09-10").status, "waiting");
+  month.replaceChildren("2026년 8월");
+  assert.equal(adapter.prepareTarget("2026-09-10").status, "acted");
+});
+
 test("calendar preparation selects a rendered target and blocks a disabled target", async () => {
   const dom = await loadFixture("calendar-navigation.html");
   const adapter = new CalendarAdapter(dom.window.document);
