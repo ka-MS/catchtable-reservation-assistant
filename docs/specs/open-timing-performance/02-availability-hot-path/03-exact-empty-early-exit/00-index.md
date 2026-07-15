@@ -1,6 +1,6 @@
 # RT-14 - EXACT EMPTY cycle 조기 종료
 
-**상태:** PROMOTED - 분석 완료, 설계 대기  
+**상태:** PROMOTED - 분석·설계 완료, 구현 대기
 **상위 설계:** [3신호 슬롯 감지 구조와 EXACT EMPTY 조기 종료](../100-three-signal-and-empty-early-exit.md)
 
 ## 목표
@@ -12,8 +12,8 @@
 ## 문서 인덱스
 
 1. [분석](10-analysis.md)
-2. `20-design.md` - 분석 gate 승인 후 작성
-3. `30-implementation.md` - TDD 작업과 변경 목록
+2. [설계](20-design.md)
+3. [구현 계획](30-implementation.md)
 4. `40-verification.md` - 자동·Chrome 검증
 5. `50-adversarial-review.md` - race·운영 위험 재검토
 6. `60-live-verification.md` - 정상 크기 전면 실오픈 결과
