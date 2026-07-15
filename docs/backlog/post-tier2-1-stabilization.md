@@ -303,6 +303,8 @@ Tier 2-2 종료 후 [사후 레드팀 리뷰](../specs/open-timing-performance/0
 
 오픈→클릭 p50 1127ms의 지배 항은 서버 게시 지연 + cycle 양자화(~914ms)로, body wake가 건드릴 수 없는 구간이다. `EXACT EMPTY` body 확인 시 bounded 대기를 조기 종료해 cycle 주기를 줄이는 옵션은 검토된 적이 없다. 클릭 없는 경로라 오클릭 위험은 낮지만 재요청 빈도 증가 = 사이트 부하·운영정책 위험(RT-09와 동일 계열)이 있다. **판정: 조사 필요.** 채택하지 않더라도 우산 문서 §7 거부 대안 표 수준의 기각 근거를 남긴다. **보완 항목: RT-14**
 
+2026-07-16 설계 메모에서 RT-14를 3신호 구조와 분리했다. 기존 XHR correlation을 재사용해 현재 cycle의 `EXACT EMPTY`만 별도 종료 신호로 전달할 수 있으므로 MutationObserver 제어 연결은 선행 조건이 아니다. 구현 전 기존 실측 CSV의 counterfactual 절감과 요청 증가량을 먼저 계산한다. 상세 계약은 [`100-three-signal-and-empty-early-exit.md`](../specs/open-timing-performance/02-availability-hot-path/100-three-signal-and-empty-early-exit.md)를 따른다.
+
 ### 4.3.4 원시 시계 표본 trace 기록 (F3 후속)
 
 trace에는 `CLOCK_SYNCED` 요약 2건만 남고 개별 HEAD 표본(t0, t1, 서버 Date)이 없어 사후 재추정이 불가능하다. 원시 표본을 남기면 오픈 이후 표본까지 포함한 hindsight 재추정으로 일부 고불확실성 실행을 복원하고 estimator 오류를 분석할 수 있다. 단, 서버 풀 스큐가 실재하면 표본을 늘려도 하나의 정답으로 수렴하지 않으므로 모든 실행의 복원을 보장하지 않는다. **판정: 수용.** 설계 제약: 표본은 실시간 전송하지 않고 메모리 ring에 보관한 뒤 armed 또는 종료 시 한 번에 batch 기록해 정각 hot path의 메시지·로그 부담을 만들지 않는다. shadow 비교 측정(RT-11) 이후에 착수한다. **보완 항목: RT-15**
@@ -327,7 +329,7 @@ trace에는 `CLOCK_SYNCED` 요약 2건만 남고 개별 HEAD 표본(t0, t1, 서�
 | RT-11 | 공식 p95와 wake counterfactual 측정 | 실측 보강 | 동질 actual-open 표본 확보 시 | 없음 | DEFERRED | `docs/specs/open-timing-performance/02-availability-hot-path/70-live-run-analysis.md` §10 |
 | RT-12 | probe off 구성 actual-open 확인 표본 | 수용 | 다음 실제 오픈 | 없음 | PENDING | `docs/specs/open-timing-performance/02-availability-hot-path/90-redteam-review.md` F1 |
 | RT-13 | inactive_cycle 기회비용·수락 완화 분석 | 조사 필요 | 중요 예약 시즌 이후 | 없음 | INVESTIGATE | `docs/specs/open-timing-performance/02-availability-hot-path/90-redteam-review.md` F4 |
-| RT-14 | EXACT EMPTY body cycle 조기 종료 검토 | 조사 필요 | 중요 예약 시즌 이후 | 없음 | INVESTIGATE | `docs/specs/open-timing-performance/02-availability-hot-path/90-redteam-review.md` F5 |
+| RT-14 | EXACT EMPTY body cycle 조기 종료 검토 | 조사 필요 | counterfactual 분석은 즉시 가능, hot path 구현은 중요 예약 시즌 이후 | 없음 | INVESTIGATE | `docs/specs/open-timing-performance/02-availability-hot-path/100-three-signal-and-empty-early-exit.md` |
 | RT-15 | 원시 시계 표본 ring buffer trace 기록 | 수용 | shadow 비교(RT-11) 이후 | 없음 | PENDING | 본 문서 §4.3.4 |
 
 상태 값은 다음 의미로 사용한다.

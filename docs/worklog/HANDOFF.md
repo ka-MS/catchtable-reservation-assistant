@@ -1,8 +1,9 @@
 # HANDOFF
 
-**갱신:** 2026-07-15
+**갱신:** 2026-07-16
 **브랜치:** `codex/live-run-analysis-probe-decision`
 **최신 작업 로그:** `docs/worklog/2026-07-15-06-redteam-review-counterfactual-instrumentation.md`
+**최신 성능 설계 메모:** `docs/specs/open-timing-performance/02-availability-hot-path/100-three-signal-and-empty-early-exit.md`
 **직전 작업 로그:** `docs/worklog/2026-07-15-05-live-run-analysis-probe-decision.md`
 **최신 증거 정리 작업 로그:** `docs/worklog/2026-07-15-03-live-run-evidence-package.md`
 **최신 실행 진단 작업 로그:** `docs/worklog/2026-07-15-02-run-diagnostic-bundle.md`
@@ -78,6 +79,9 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 RT-05 운영 격�
 - F3 시계 gating을 집계 스크립트에 추가했다. MEDIUM|HIGH + uncertainty ≤ 100ms gate에서 클릭 19건 중 13건이 통과하고 gated 오픈→클릭 p50은 `+1042ms`다(ungated `+1127ms`). 두 값 모두 참고값이며 공식 성능값이 아니다. gate는 오픈 대비 통계에만 적용하고, 성능 판정은 시계 독립적인 monotonic 구간 지표를 우선한다.
 - 26건 actual-open은 전량 probe 상시 주입 빌드 표본이다. 운영 기본(probe off) 구성의 실오픈 확인 표본 1건이 필요하다(RT-12).
 - RT-13(inactive_cycle 기회비용), RT-14(EXACT EMPTY cycle 조기 종료 검토)를 backlog에 등재했다. 중요 예약 시즌에는 착수하지 않는다.
+- 3신호 구조(XHR POPULATED + narrow MutationObserver + 25ms polling)는 단일 coordinator·단일 click claim 후보로 문서화했지만 구현을 승인하지 않았다.
+- RT-14는 3신호 구조와 독립적이다. 기존 XHR correlation에서 현재 cycle의 `EXACT EMPTY`를 별도 조기 종료 신호로 전달할 수 있으며 MutationObserver 제어 연결이 필요하지 않다.
+- RT-14 counterfactual 분석은 hot path를 바꾸지 않아 먼저 수행할 수 있다. 실제 구현은 이론 절감 중앙값과 요청 증가량을 확인한 뒤 결정한다.
 - BOM/CRLF로 수정돼 있던 evidence `run.csv` 26건을 커밋 상태로 복원했다.
 
 ## 검증 근거
@@ -109,6 +113,7 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 RT-05 운영 격�
 - `docs/specs/open-timing-performance/02-availability-hot-path/50-adversarial-review.md`
 - `docs/specs/open-timing-performance/02-availability-hot-path/70-live-run-analysis.md`
 - `docs/specs/open-timing-performance/02-availability-hot-path/80-probe-final-decision.md`
+- `docs/specs/open-timing-performance/02-availability-hot-path/100-three-signal-and-empty-early-exit.md`
 
 ## 다음 작업 1 - 실행 환경 진단
 
