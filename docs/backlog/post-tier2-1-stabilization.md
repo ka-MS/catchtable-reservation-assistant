@@ -329,7 +329,7 @@ trace에는 `CLOCK_SYNCED` 요약 2건만 남고 개별 HEAD 표본(t0, t1, 서�
 | RT-11 | 공식 p95와 wake counterfactual 측정 | 실측 보강 | 동질 actual-open 표본 확보 시 | 없음 | DEFERRED | `docs/specs/open-timing-performance/02-availability-hot-path/70-live-run-analysis.md` §10 |
 | RT-12 | probe off 구성 actual-open 확인 표본 | 수용 | 다음 실제 오픈 | 없음 | PENDING | `docs/specs/open-timing-performance/02-availability-hot-path/90-redteam-review.md` F1 |
 | RT-13 | inactive_cycle 기회비용·수락 완화 분석 | 조사 필요 | 중요 예약 시즌 이후 | 없음 | INVESTIGATE | `docs/specs/open-timing-performance/02-availability-hot-path/90-redteam-review.md` F4 |
-| RT-14 | EXACT EMPTY body cycle 조기 종료 | 수용 | 보수적 counterfactual p50 약 281ms 확인, 독립 구현 진행 | 없음 | PROMOTED | `docs/specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/` |
+| RT-14 | EXACT EMPTY body cycle 조기 종료 | 수용 | 구현·자동·Chrome 검증 완료, 비중요 실오픈 성능 검증 대기 | 없음 | DONE | `docs/specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/` |
 | RT-15 | 원시 시계 표본 ring buffer trace 기록 | 수용 | shadow 비교(RT-11) 이후 | 없음 | PENDING | 본 문서 §4.3.4 |
 
 상태 값은 다음 의미로 사용한다.

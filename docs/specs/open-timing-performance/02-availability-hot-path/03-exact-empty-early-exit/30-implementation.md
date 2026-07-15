@@ -1,5 +1,7 @@
 # RT-14 구현 계획
 
+**상태:** 완료. 자동·Chrome 검증은 [40-verification.md](40-verification.md), 적대적 검토는 [50-adversarial-review.md](50-adversarial-review.md)에 기록한다.
+
 ## Task 1 - 설정과 UI 계약
 
 테스트 먼저:
@@ -61,3 +63,11 @@
 - 이미 열린 매장에서 observe/empty_exit 실행 회귀
 
 실제 성능 판정은 정상 크기 전면 창의 비중요 실제 오픈에서 수행한다. 자동 테스트와 이미 열린 슬롯은 안전성만 검증하며 성능 성공으로 기록하지 않는다.
+
+## 구현 결과
+
+- `AvailabilityProbeMode = off | observe | empty_exit`와 legacy boolean 마이그레이션을 추가했다.
+- Background는 `off`가 아닐 때만 MAIN probe를 설치한다.
+- current active cycle의 `EXACT EMPTY`만 `empty_exit` 신호로 수용한다.
+- 오케스트레이터는 최초 DOM scan, 목표 날짜 선택 guard, 최종 DOM scan 순서로 후보 우선권을 보존한다.
+- observe/off, POPULATED wake, 25ms fallback, `nextTogglePlan()`, stop/timeout 계약은 유지한다.

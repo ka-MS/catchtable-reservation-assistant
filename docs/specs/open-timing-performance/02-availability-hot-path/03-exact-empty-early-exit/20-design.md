@@ -121,7 +121,7 @@ flowchart TD
 
 핵심 순서는 **DOM scan이 신호 처리보다 항상 먼저**다. EMPTY와 슬롯 DOM이 동시에 관측되면 슬롯 후보가 승리한다.
 
-목표 날짜 선택 재확인은 EMPTY를 body 권위로 승격하지 않기 위한 마지막 UI guard다. 실패하면 조기 종료하지 않고 기존 fallback을 계속한다.
+목표 날짜 선택 재확인은 EMPTY를 body 권위로 승격하지 않기 위한 UI guard다. 실패하면 조기 종료하지 않고 기존 fallback을 계속한다. 선택 확인 중 슬롯이 렌더되는 race를 막기 위해 guard 통과 직후 DOM을 한 번 더 읽고, 이 최종 검사에서도 후보가 있으면 조기 종료하지 않는다.
 
 ## 6. cycle 결과와 trace
 
@@ -147,7 +147,7 @@ flowchart TD
 ## 7. 안전 불변식
 
 1. body는 클릭하지 않는다.
-2. `SlotAdapter`가 반환한 후보가 EMPTY보다 우선한다.
+2. `SlotAdapter`가 반환한 후보가 EMPTY보다 우선한다. 이 우선권은 최초 scan과 목표 날짜 guard 직후 최종 scan 모두에 적용한다.
 3. `STRONG`, stale, inactive, duplicate EMPTY는 제어에 사용하지 않는다.
 4. probe off와 observe mode의 기존 실행 결과·cadence는 유지한다.
 5. 조기 종료 후에도 `nextTogglePlan()`과 stop/timeout을 그대로 사용한다.

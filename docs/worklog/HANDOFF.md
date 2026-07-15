@@ -1,8 +1,9 @@
 # HANDOFF
 
 **갱신:** 2026-07-16
-**브랜치:** `codex/live-run-analysis-probe-decision`
-**최신 작업 로그:** `docs/worklog/2026-07-15-06-redteam-review-counterfactual-instrumentation.md`
+**브랜치:** `codex/rt14-exact-empty-early-exit`
+**최신 작업 로그:** `docs/worklog/2026-07-16-01-rt14-exact-empty-early-exit.md`
+**최신 성능 구현:** `docs/specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/`
 **최신 성능 설계 메모:** `docs/specs/open-timing-performance/02-availability-hot-path/100-three-signal-and-empty-early-exit.md`
 **직전 작업 로그:** `docs/worklog/2026-07-15-05-live-run-analysis-probe-decision.md`
 **최신 증거 정리 작업 로그:** `docs/worklog/2026-07-15-03-live-run-evidence-package.md`
@@ -78,17 +79,29 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 RT-05 운영 격�
 - F2 counterfactual 계측을 구현했다. `wake_result`에 `baselineNextScanAtMonoMs`/`wakeScanAtMonoMs`/`wakeAdvanceMs`가 추가되어 다음 probe-on 진단 실오픈부터 RT-11 표본이 유효해진다.
 - F3 시계 gating을 집계 스크립트에 추가했다. MEDIUM|HIGH + uncertainty ≤ 100ms gate에서 클릭 19건 중 13건이 통과하고 gated 오픈→클릭 p50은 `+1042ms`다(ungated `+1127ms`). 두 값 모두 참고값이며 공식 성능값이 아니다. gate는 오픈 대비 통계에만 적용하고, 성능 판정은 시계 독립적인 monotonic 구간 지표를 우선한다.
 - 26건 actual-open은 전량 probe 상시 주입 빌드 표본이다. 운영 기본(probe off) 구성의 실오픈 확인 표본 1건이 필요하다(RT-12).
-- RT-13(inactive_cycle 기회비용), RT-14(EXACT EMPTY cycle 조기 종료 검토)를 backlog에 등재했다. 중요 예약 시즌에는 착수하지 않는다.
+- RT-13(inactive_cycle 기회비용)은 backlog에 유지한다. 중요 예약 시즌에는 착수하지 않는다.
 - 3신호 구조(XHR POPULATED + narrow MutationObserver + 25ms polling)는 단일 coordinator·단일 click claim 후보로 문서화했지만 구현을 승인하지 않았다.
-- RT-14는 3신호 구조와 독립적이다. 기존 XHR correlation에서 현재 cycle의 `EXACT EMPTY`를 별도 조기 종료 신호로 전달할 수 있으며 MutationObserver 제어 연결이 필요하지 않다.
-- RT-14 counterfactual 분석은 hot path를 바꾸지 않아 먼저 수행할 수 있다. 실제 구현은 이론 절감 중앙값과 요청 증가량을 확인한 뒤 결정한다.
+- RT-14는 3신호 구조와 독립적으로 분석·구현했다. MutationObserver 제어 연결은 추가하지 않았다.
 - BOM/CRLF로 수정돼 있던 evidence `run.csv` 26건을 커밋 상태로 복원했다.
+
+RT-14 EXACT EMPTY cycle 조기 종료를 구현하고 자동·Chrome 검증을 완료했다.
+
+- XHR 응답 모드는 `off | observe | empty_exit` 단일 설정이며 기본값은 `off`다.
+- legacy `availabilityProbeEnabled=true`는 `observe`, false/누락은 `off`로 복원한다.
+- current active cycle의 non-stale 최신 `EXACT EMPTY`만 조기 종료 신호로 수용한다.
+- 최초 DOM scan과 목표 날짜 guard 직후 최종 DOM scan 모두에서 슬롯 후보가 EMPTY보다 우선한다.
+- 목표 날짜 selected가 풀리면 EMPTY를 폐기하고 기존 25ms fallback을 유지한다.
+- 조기 종료 후 무제한 재클릭하지 않고 기존 `nextTogglePlan()`과 stop/timeout을 재사용한다.
+- 기존 26건 counterfactual에서 다음 target 이론 선행 p50 약 281ms를 확인했지만 실제 성능 이득과 요청 증가량은 아직 미확정이다.
+- 정상 크기 전면 비중요 실오픈 전까지 기본 활성화하지 않는다.
 
 ## 검증 근거
 
 - 결제 정책 UX 대상 테스트: 73/73 통과
 - CSV short-cut 대상 테스트: 19/19 통과
 - 전체 `npm run check`: 303/303 tests(wakeAdvanceMs 계측 2건 포함), typecheck, dist validation, MAIN/ISOLATED independence 통과
+- RT-14 전체 `npm run check`: 315/315 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
+- RT-14 Chrome live: 3상태 radio 표시, `empty_exit` 저장·재로드 복원, `off` 원복, Side Panel 런타임 오류 없음
 - probe 정책 Chrome live: 확장 재로드 후 `XHR 응답 진단` 기본 꺼짐, 토글 동작, Side Panel 재로드 후 꺼짐 복원, 경고·오류 없음 확인
 - 실행 진단 Chrome live: IndexedDB v2에서 기존 runs 20/events 740 보존, snapshots store 생성, 실제 ZIP 다운로드와 Windows 기본 압축 해제 통과
 - CSV Chrome live 확인: 원격 디버깅 미연결로 대기
@@ -114,6 +127,12 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 RT-05 운영 격�
 - `docs/specs/open-timing-performance/02-availability-hot-path/70-live-run-analysis.md`
 - `docs/specs/open-timing-performance/02-availability-hot-path/80-probe-final-decision.md`
 - `docs/specs/open-timing-performance/02-availability-hot-path/100-three-signal-and-empty-early-exit.md`
+- `docs/specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/40-verification.md`
+- `docs/specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/50-adversarial-review.md`
+
+## 다음 작업 0 - RT-14 비중요 실오픈 검증
+
+정상 크기 전면 창에서 `empty_exit`을 명시적으로 선택하고 비중요 실제 오픈을 1회 이상 측정한다. `EMPTY → EMPTY_EARLY_EXIT → 다음 target`의 cycle·requestSequence, DOM 후보 손실 여부, 기존 설정 대비 cycle·요청 증가량을 확인한다. 이 검증 전에는 `empty_exit`을 기본값으로 승격하지 않는다. RT-14 실오픈 검증은 다른 안정화 작업을 막지 않는다.
 
 ## 다음 작업 1 - 실행 환경 진단
 

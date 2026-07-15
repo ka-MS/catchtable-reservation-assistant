@@ -1,6 +1,6 @@
 # RT-14 - EXACT EMPTY cycle 조기 종료
 
-**상태:** PROMOTED - 분석·설계 완료, 구현 대기
+**상태:** IMPLEMENTED - 자동·Chrome 검증 완료, 실오픈 성능 검증 대기
 **상위 설계:** [3신호 슬롯 감지 구조와 EXACT EMPTY 조기 종료](../100-three-signal-and-empty-early-exit.md)
 
 ## 목표
@@ -14,8 +14,8 @@
 1. [분석](10-analysis.md)
 2. [설계](20-design.md)
 3. [구현 계획](30-implementation.md)
-4. `40-verification.md` - 자동·Chrome 검증
-5. `50-adversarial-review.md` - race·운영 위험 재검토
+4. [검증](40-verification.md)
+5. [적대적 리뷰](50-adversarial-review.md)
 6. `60-live-verification.md` - 정상 크기 전면 실오픈 결과
 
 ## 단계 gate
@@ -25,3 +25,5 @@
 - 구현: 기본값 off, 기존 probe/polling fallback 보존
 - 검증: 전체 check와 Chrome UI/E2E
 - 운영: probe-on 실제 오픈 검증 전 기본 활성 금지
+
+현재 기본값은 `off`다. `empty_exit`은 명시적으로 선택한 실행에서만 활성화되며, 실제 성능 향상 판정은 `60-live-verification.md`의 정상 크기 전면 실오픈 표본까지 보류한다.
