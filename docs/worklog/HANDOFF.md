@@ -2,7 +2,8 @@
 
 **갱신:** 2026-07-15
 **브랜치:** `codex/run-diagnostic-bundle`
-**최신 작업 로그:** `docs/worklog/2026-07-15-03-live-run-evidence-package.md`
+**최신 작업 로그:** `docs/worklog/2026-07-15-04-live-run-sample-sufficiency.md`
+**최신 증거 정리 작업 로그:** `docs/worklog/2026-07-15-03-live-run-evidence-package.md`
 **최신 실행 진단 작업 로그:** `docs/worklog/2026-07-15-02-run-diagnostic-bundle.md`
 **최신 보조 작업 로그:** `docs/worklog/2026-07-14-10-payment-policy-ux-shortcut.md`
 **핵심 hot-path 작업 로그:** `docs/worklog/2026-07-14-09-tier2-2-availability-hot-path.md`
@@ -22,7 +23,10 @@
 - 2026-07-14 누와 RT-10M 4개 실행과 2026-07-15 다매장 22개 실행을 보관한다.
 - 실행별 `run.csv`를 단일 원본으로 두고 진단 bundle은 같은 실행의 `diagnostic/` 아래에 둔다.
 - 날짜별 README에서 모든 실행과 원본 메모를 찾을 수 있다.
-- 2026-07-15 신규 표본의 성능·실패 원인 분석은 아직 수행하지 않았다.
+- 2026-07-15 신규 표본의 전체 실패 원인 분석은 아직 수행하지 않았다.
+- 표본 적합성 1차 집계에서 22개 중 `EXACT/STRONG POPULATED` 17개, 슬롯 감지·클릭 17개, response-to-DOM 완전 표본 6개를 확인했다.
+- 운영 오픈→클릭의 탐색적 p50은 계산할 수 있지만 공식 p95와 body wake p50/p95에는 부족하다.
+- 키이로의 명시적 테이블 선정 실패를 retry case 1, 윤주당의 무안내 shop·슬롯 화면 유지를 retry case 2로 분리했다.
 
 - 최근 3개 저빈도 breadcrumb는 Content 메모리에만 두고 정상 실행에서는 폐기한다.
 - 예기치 않은 `HANDED_OFF`, `TIMED_OUT`, `FAILED`에서 구조화 DOM snapshot과 정제 fragment를 저장한다.
