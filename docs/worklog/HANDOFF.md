@@ -75,6 +75,7 @@ Tier 2-2 availability hot-path는 fallback 보존형 구현과 RT-05 운영 격�
 - 결제 정책 UX 대상 테스트: 73/73 통과
 - CSV short-cut 대상 테스트: 19/19 통과
 - 전체 `npm run check`: 301/301 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
+- probe 정책 Chrome live: 확장 재로드 후 `XHR 응답 진단` 기본 꺼짐, 토글 동작, Side Panel 재로드 후 꺼짐 복원, 경고·오류 없음 확인
 - 실행 진단 Chrome live: IndexedDB v2에서 기존 runs 20/events 740 보존, snapshots store 생성, 실제 ZIP 다운로드와 Windows 기본 압축 해제 통과
 - CSV Chrome live 확인: 원격 디버깅 미연결로 대기
 - `git diff --check` 통과

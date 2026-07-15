@@ -34,6 +34,8 @@ RT-05 완료 조건을 충족해 Tier 2-2를 종료한다. XHR wake 성능 이�
 - typecheck, dist validation, MAIN/ISOLATED independence 통과
 - 비활성 probe 주입 0회, 활성 MAIN bundle 주입, 주입 실패 fallback 테스트 통과
 - 26건 evidence 집계 불변식과 변경 문서 local link 검사 통과
+- Chrome live에서 확장 재로드 후 고급 설정의 `XHR 응답 진단`이 기존 저장값 누락 상태에서도 기본 꺼짐으로 표시되는 것을 확인했다.
+- 토글 켜기/끄기와 Side Panel 재로드 후 꺼짐 복원을 확인했으며, 경고·오류 콘솔 메시지는 없었다. 실제 예약 실행은 하지 않았다.
 
 상세:
 
