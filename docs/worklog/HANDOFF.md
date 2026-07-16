@@ -1,8 +1,9 @@
 # HANDOFF
 
-**갱신:** 2026-07-16
+**갱신:** 2026-07-17
 **브랜치:** `main`
-**최신 작업 로그:** `docs/worklog/2026-07-16-05-rt16-preparation-recovery.md`
+**최신 작업 로그:** `docs/worklog/2026-07-17-01-run-control-plane-phase1.md`
+**최신 제어 평면 구현:** `docs/specs/run-control-plane/` (Phase 1 완료, Phase 2 계획 대기)
 **최신 Tier 3 구현:** `docs/specs/open-timing-performance/03-runtime-resilience/01-rt16-preparation-recovery/`
 **최신 기준시계 구현:** `docs/specs/open-timing-performance/01-reference-clock-reliability/01-raw-sample-trace/`
 **최신 Tier 3 분석:** `docs/specs/open-timing-performance/03-runtime-resilience/10-analysis.md`
@@ -130,7 +131,15 @@ RT-16 오픈 전 준비 복원력은 부분 구현 상태이며 책임 구조화
 - 실제 `CalendarAdapter`와 동일 `OpenRunOrchestrator`를 재사용한 두 연속 실행에서 첫 bounded handoff 뒤 두 번째 실행이 독립 날짜 dispatch를 거쳐 `DRY_RUN_COMPLETED`에 도달했다.
 - Chrome 동일 탭에서 날짜 click 2회를 차단한 첫 실행은 attempt 2 `DATE_SELECTION_STALLED`로 인계됐고, 달력만 닫은 뒤 무새로고침 재시작은 독립 날짜 dispatch로 8/20을 선택해 `DRY_RUN_COMPLETED`에 도달했다.
 - 두 live run은 같은 tabId/windowId를 공유하고 IndexedDB eventCount 일치, seq 연속, dropped 0이며 준비 event의 focus/visibility 문맥도 확인했다.
-- 현행 bounded retry와 상태 초기화는 보존해 후속 준비 행동 구현체로 이동한다. Adapter 사실 반환, 실패 분류, 복구 정책, 행동 실행, telemetry 책임 분리와 동일 탭 URL 재진입은 미구현이므로 RT-16 전체는 완료가 아니다.
+- 현행 bounded retry와 상태 초기화는 보존해 후속 준비 행동 구현체로 이동한다.
+
+run-control-plane Phase 1(Data Plane 순수화)을 완료했다 (`docs/worklog/2026-07-17-01-run-control-plane-phase1.md`).
+
+- Adapter 사실 반환(`inspectPreparation`/shared facts), 실패 원인 분류(`classifier.ts` 단독 소유), 복구 정책(`decide()` 타입·테스트 고정), 기계 루프(BoundedStepRunner), 단계 의미(coordinator 3종), telemetry reporter 수렴을 구현했다.
+- RT-16C 상수(2회·1초, 월 750ms×3, 날짜 1s×2)는 그대로 이식했고, 재시도 상태가 run-scoped가 되어 RT-16B의 `resetPreparation`은 구조적으로 대체됐다.
+- 구 `DATE_PREPARATION_BLOCKED`는 메시지 불변으로 4개 코드로 세분화했다(의도된 계약 변경, orchestrator 테스트로 고정).
+- hot path(`waitForOpen` 이후)는 diff 0이며 실행 단계 테스트는 무수정 통과했다.
+- supervisor·`AttemptControlMessage` 배선·동일 탭 URL 재진입(RESET_PAGE 실행)·reconcile은 Phase 2(`31-control-plane-implementation.md` 계획 작성부터) 범위다. RT-16 전체는 Phase 2 완료 시점에 종결 판정한다. blocking backlog는 아니다.
 
 ## 검증 근거
 
@@ -140,6 +149,7 @@ RT-16 오픈 전 준비 복원력은 부분 구현 상태이며 책임 구조화
 - RT-14 전체 `npm run check`: 315/315 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - RT-15 전체 `npm run check`: 323/323 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - RT-16 전체 `npm run check`: 336/336 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
+- run-control-plane Phase 1 전체 `npm run check`: 360/360 tests(Task별 게이트 344→354→361→368→369→360), typecheck, dist validation, MAIN/ISOLATED independence 통과
 - RT-16 Chrome live: `run-e2a5c932` HANDED_OFF(33 events, DATE_SELECTION_STALLED attempt 2) → 같은 탭 무새로고침 `run-40f9f982` DRY_RUN_COMPLETED(42 events), 양쪽 dropped 0
 - RT-14 Chrome live: 3상태 radio 표시, `empty_exit` 저장·재로드 복원, `off` 원복, Side Panel 런타임 오류 없음
 - probe 정책 Chrome live: 확장 재로드 후 `XHR 응답 진단` 기본 꺼짐, 토글 동작, Side Panel 재로드 후 꺼짐 복원, 경고·오류 없음 확인
