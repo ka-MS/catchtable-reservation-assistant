@@ -176,6 +176,7 @@ const POST_OPEN_STAGES = new Set<RunState>([
 let priorityTimes: string[] = [];
 let importantEventsOnly = false;
 let latestActiveRun: ActiveRun | null | undefined;
+let logicalRunStatus: string | null = null;
 let latestEvents: RunEvent[] = [];
 const countdownServerClock = new MonotonicEpochClock({ now: () => performance.now() });
 let countdownClockOffsetMs: number | null = null;
@@ -529,7 +530,9 @@ function renderRuntime(activeRun: ActiveRun | null | undefined, events: RunEvent
   const state = activeRun?.state ?? "IDLE";
   stateBadge.textContent = STATE_BADGE[state];
   stateBadge.dataset.state = state;
-  statusDetail.textContent = STATE_LABEL[state];
+  statusDetail.textContent = logicalRunStatus === "RECOVERING"
+    ? `${STATE_LABEL[state]} · 재시도 중 — 같은 탭에서 페이지를 다시 준비합니다.`
+    : STATE_LABEL[state];
   const running = activeRun !== null && activeRun !== undefined && !TERMINAL.has(state);
   fieldset.disabled = running;
   startButton.hidden = running;
@@ -830,8 +833,9 @@ stopButton.addEventListener("click", async () => {
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") return;
-  if (changes.activeRun || changes.runEvents) {
-    void chrome.storage.local.get(["activeRun", "runEvents"]).then((stored) => {
+  if (changes.activeRun || changes.runEvents || changes.logicalRun) {
+    void chrome.storage.local.get(["activeRun", "runEvents", "logicalRun"]).then((stored) => {
+      logicalRunStatus = (stored.logicalRun as { status?: string } | null | undefined)?.status ?? null;
       renderRuntime(stored.activeRun as ActiveRun | null | undefined, (stored.runEvents as RunEvent[] | undefined) ?? []);
     });
   }
@@ -858,11 +862,13 @@ void chrome.storage.local.get([
   "reservationConfig",
   "activeRun",
   "runEvents",
+  "logicalRun",
   "draftForm",
   "configHistory",
   "configFavorites",
   "scheduledJobs",
 ]).then((stored) => {
+  logicalRunStatus = (stored.logicalRun as { status?: string } | null | undefined)?.status ?? null;
   const draft = stored.draftForm as FormValues | undefined;
   const config = stored.reservationConfig as ReservationConfig | undefined;
   if (draft) {
