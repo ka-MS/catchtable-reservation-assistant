@@ -21,6 +21,7 @@ import { IndexedDbTraceRepository } from "./telemetry/indexeddb-repository.js";
 import { LiveTraceHub } from "./telemetry/live-trace-hub.js";
 import { TraceIngestor } from "./telemetry/trace-ingestor.js";
 import { ensureAvailabilityProbe } from "./availability-probe.js";
+import { captureRunExecutionContext } from "./run-execution-context.js";
 
 const TERMINAL_STATES = new Set<RunState>([
   "DRY_RUN_COMPLETED",
@@ -147,10 +148,16 @@ async function runOnTab(
       activeRun: { ...pendingRun, state: "CONFIGURED", updatedAt: Date.now() },
     });
     await assertPending();
+    const executionContext = await captureRunExecutionContext(tab.id, {
+      get: (tabId) => chrome.tabs.get(tabId),
+    }, {
+      get: (windowId) => chrome.windows.get(windowId),
+    });
     const response = await chrome.tabs.sendMessage(tab.id, {
       type: "START",
       runId: pendingRunId,
       config,
+      executionContext,
       ...(shadowChannelId === undefined ? {} : { shadowChannelId }),
       ...(scheduledJobId === undefined ? {} : { scheduledJobId }),
     } satisfies ContentCommand);

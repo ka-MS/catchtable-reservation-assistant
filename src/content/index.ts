@@ -18,6 +18,7 @@ import { OpenRunOrchestrator } from "./orchestrator.js";
 import { BatchTraceProcessor } from "./telemetry/batch-processor.js";
 import { PortTraceTransport } from "./telemetry/port-transport.js";
 import { TraceLogger } from "./telemetry/trace-logger.js";
+import { capturePreparationPageContext } from "./preparation-observation.js";
 
 declare global {
   interface Window {
@@ -68,6 +69,7 @@ if (!window.__ctReserveInjected) {
         return null;
       }
     },
+    capturePreparationContext: () => capturePreparationPageContext(document),
     runId: () => crypto.randomUUID(),
   });
   let running = false;
@@ -87,7 +89,7 @@ if (!window.__ctReserveInjected) {
       availabilityShadow.configure(message.shadowChannelId ?? null);
       diagnosticRecorder.start(message.runId);
       traceLogger.start(message.runId, message.config, message.scheduledJobId);
-      void orchestrator.start(message.config, message.runId).finally(() => {
+      void orchestrator.start(message.config, message.runId, message.executionContext).finally(() => {
         availabilityShadow.configure(null);
         diagnosticRecorder.reset();
         running = false;

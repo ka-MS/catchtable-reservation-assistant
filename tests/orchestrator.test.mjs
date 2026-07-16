@@ -122,6 +122,12 @@ function harness({
     urlKind: "shop", headings: [], buttons: ["확인"], disabledButtons: [false],
     disabledButtonCount: 0, dialogLabel: "", dialogTitle: "", textSnippet: "", fingerprint: "ss-test",
   }),
+  capturePreparationContext = () => ({
+    visibilityState: "visible", hasFocus: true, viewportWidth: 1280, viewportHeight: 720,
+    visualViewportWidth: 1280, visualViewportHeight: 720,
+    activeElementTag: "button", activeElementRole: null, activeElementId: "reserve",
+    urlKind: "shop", fingerprint: "ss-preparation",
+  }),
 } = {}) {
   let now = 0;
   let monotonicNow = 0;
@@ -200,6 +206,7 @@ function harness({
     },
     flushTrace: async () => undefined,
     captureSnapshot,
+    capturePreparationContext,
     ...(diagnostics ? { diagnostics } : {}),
     runId: () => "run-1",
   });
@@ -1094,6 +1101,46 @@ test("auto entry opens the reservation, prepares date and person, then uses the 
     "PREPARING_PAGE",
     "WAITING_FOR_OPEN",
   ]);
+});
+
+test("preparation trace correlates background context with change-based dispatch observations", async () => {
+  let reservationOpen = false;
+  let datePrepared = false;
+  let personSelected = false;
+  const h = harness({
+    entry: {
+      inspect: () => ({ reservationOpen, ctaAvailable: true, waitingOnly: false }),
+      openReservation: () => { reservationOpen = true; return true; },
+    },
+    prepareTarget: (_target, beforeDispatch) => {
+      if (datePrepared) return { status: "ready", message: "목표 날짜가 준비됐습니다." };
+      beforeDispatch?.({ kind: "date", target: "2026-07-30", attempt: 1 });
+      datePrepared = true;
+      return { status: "acted", message: "목표 날짜를 선택했습니다." };
+    },
+    person: {
+      inspect: () => ({ ready: true, targetAvailable: true, targetSelected: personSelected }),
+      select: () => { personSelected = true; return true; },
+    },
+  });
+  const executionContext = {
+    capturedAt: 99, tabId: 7, windowId: 11, tabActive: false, windowFocused: true,
+  };
+
+  await h.orchestrator.start(config({ entryMode: "auto" }), "run-context", executionContext);
+  const preparation = h.traces.filter((trace) => trace.code === "PREPARATION_OBSERVED");
+
+  assert.ok(preparation.some((trace) => trace.options.attributes.preparationPhase === "stage_start"));
+  assert.ok(preparation.some((trace) => trace.options.attributes.preparationAction === "open_reservation"
+    && trace.options.attributes.preparationPhase === "dispatch_before"));
+  assert.ok(preparation.some((trace) => trace.options.attributes.preparationAction === "select_date"
+    && trace.options.attributes.preparationPhase === "dispatch_after"));
+  assert.ok(preparation.some((trace) => trace.options.attributes.preparationAction === "select_person"
+    && trace.options.attributes.preparationPhase === "dispatch_after"));
+  assert.ok(preparation.every((trace) => trace.options.attributes.runTabId === 7));
+  assert.ok(preparation.every((trace) => trace.options.attributes.runWindowId === 11));
+  assert.ok(preparation.every((trace) => trace.options.attributes.pageVisibilityState === "visible"));
+  assert.ok(preparation.every((trace) => trace.options.attributes.pageFingerprint === "ss-preparation"));
 });
 
 test("auto entry dismisses the promo interstitial and re-clicks the CTA", async () => {

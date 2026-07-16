@@ -12,6 +12,12 @@ export interface CalendarPreparationResult {
   message: string;
 }
 
+export interface CalendarPreparationDispatch {
+  kind: "month" | "date";
+  target: string;
+  attempt: number;
+}
+
 const MONTH_TRANSITION_RETRY_DELAY_MS = 750;
 const MONTH_TRANSITION_MAX_ATTEMPTS = 3;
 
@@ -48,7 +54,10 @@ export class CalendarAdapter {
     return true;
   }
 
-  prepareTarget(targetDate: string): CalendarPreparationResult {
+  prepareTarget(
+    targetDate: string,
+    beforeDispatch?: (dispatch: CalendarPreparationDispatch) => void,
+  ): CalendarPreparationResult {
     if (this.preparingTarget !== targetDate) {
       this.preparingTarget = targetDate;
       this.pendingMonth = null;
@@ -89,6 +98,7 @@ export class CalendarAdapter {
       if (this.pendingDate === targetDate) {
         return { status: "waiting", message: "목표 날짜 선택 상태를 기다립니다." };
       }
+      beforeDispatch?.({ kind: "date", target: targetDate, attempt: 1 });
       target.element.click();
       this.pendingDate = targetDate;
       return { status: "acted", message: `${targetDate} 날짜를 선택했습니다.` };
@@ -105,6 +115,7 @@ export class CalendarAdapter {
     if (!control || isDisabled(control)) {
       return { status: "blocked", message: "목표 월로 이동할 수 없습니다." };
     }
+    beforeDispatch?.({ kind: "month", target: targetMonth, attempt: this.pendingMonthAttempts + 1 });
     control.click();
     this.pendingMonth = displayedMonth;
     this.pendingMonthRequestedAt = this.monotonicNow();

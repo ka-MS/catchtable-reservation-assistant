@@ -104,9 +104,24 @@ export interface ActiveRun {
   scheduledJobId?: string;
 }
 
+export interface RunExecutionContext {
+  capturedAt: number;
+  tabId: number;
+  windowId: number | null;
+  tabActive: boolean;
+  windowFocused: boolean | null;
+}
+
 export type ContentCommand =
   | { type: "PING" }
-  | { type: "START"; runId: string; scheduledJobId?: string; shadowChannelId?: string; config: ReservationConfig }
+  | {
+    type: "START";
+    runId: string;
+    scheduledJobId?: string;
+    shadowChannelId?: string;
+    executionContext?: RunExecutionContext;
+    config: ReservationConfig;
+  }
   | { type: "STOP" };
 
 export type PanelCommand =

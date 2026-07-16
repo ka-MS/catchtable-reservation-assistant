@@ -12,10 +12,10 @@ import { nextTogglePlan } from "../shared/toggle-schedule.js";
 import type { SlotRefreshWatchPort } from "./adapter/slot-refresh-watch.js";
 import type { SlotDomMutationWatchPort } from "./adapter/slot-dom-mutation-watch.js";
 import type { ReferenceClockPort } from "./reference-clock-sampler.js";
-import type { ReservationConfig, RunEvent, RunState } from "../shared/types.js";
+import type { ReservationConfig, RunEvent, RunExecutionContext, RunState } from "../shared/types.js";
 import type { TraceCode } from "../shared/telemetry/codes.js";
 import type { TraceAttributes, TraceSeverity } from "../shared/telemetry/types.js";
-import type { CalendarInspection, CalendarPreparationResult } from "./adapter/calendar.js";
+import type { CalendarInspection, CalendarPreparationDispatch, CalendarPreparationResult } from "./adapter/calendar.js";
 import type { EntryInspection } from "./adapter/entry.js";
 import type { PersonInspection } from "./adapter/person.js";
 import type { PostSlotActionResult, PostSlotInspection } from "./adapter/post-slot.js";
@@ -25,10 +25,11 @@ import {
   AvailabilityDomWake,
   type AvailabilityWakeSignal,
 } from "./availability-dom-wake.js";
+import type { PreparationPageContext } from "./preparation-observation.js";
 
 interface CalendarPort {
   inspect(targetDate: string): CalendarInspection;
-  prepareTarget(targetDate: string): CalendarPreparationResult;
+  prepareTarget(targetDate: string, beforeDispatch?: (dispatch: CalendarPreparationDispatch) => void): CalendarPreparationResult;
   clickDate(date: string): boolean;
 }
 
@@ -85,6 +86,7 @@ interface Dependencies {
   }): void;
   flushTrace?(): Promise<void>;
   captureSnapshot?(): StageSnapshot | null;
+  capturePreparationContext?(): PreparationPageContext;
   diagnostics?: DiagnosticsPort;
   slotWatch?: SlotRefreshWatchPort;
   slotDomMutationWatch?: SlotDomMutationWatchPort;
@@ -194,6 +196,7 @@ class RunSession {
     private readonly deps: Dependencies,
     private readonly config: ReservationConfig,
     requestedRunId?: string,
+    private readonly executionContext?: RunExecutionContext,
   ) {
     this.runId = requestedRunId ?? deps.runId();
     this.machine = new RunStateMachine({ dryRun: config.dryRun, now: () => deps.clock.now() });
@@ -236,6 +239,53 @@ class RunSession {
       } catch {
         // Diagnostics must not affect reservation control.
       }
+    }
+  }
+
+  private tracePreparation(
+    phase: "stage_start" | "condition_changed" | "dispatch_before" | "dispatch_after" | "decision",
+    attributes: TraceAttributes = {},
+    severity: TraceSeverity = "trace",
+  ): void {
+    try {
+      let page: PreparationPageContext | null = null;
+      try {
+        page = this.deps.capturePreparationContext?.() ?? null;
+      } catch {
+        page = null;
+      }
+      const execution = this.executionContext;
+      this.deps.trace?.("PREPARATION_OBSERVED", severity, `준비 단계 ${phase} 상태를 기록했습니다.`, {
+        serverAt: this.serverClockReady ? this.serverClock.now() : null,
+        state: this.machine.state,
+        attributes: {
+          preparationStage: this.machine.state,
+          preparationPhase: phase,
+          ...(execution ? {
+            runContextCapturedAt: execution.capturedAt,
+            runTabId: execution.tabId,
+            runWindowId: execution.windowId,
+            runTabActive: execution.tabActive,
+            runWindowFocused: execution.windowFocused,
+          } : {}),
+          ...(page ? {
+            pageVisibilityState: page.visibilityState,
+            pageHasFocus: page.hasFocus,
+            pageViewportWidth: page.viewportWidth,
+            pageViewportHeight: page.viewportHeight,
+            pageVisualViewportWidth: page.visualViewportWidth,
+            pageVisualViewportHeight: page.visualViewportHeight,
+            pageActiveElementTag: page.activeElementTag,
+            pageActiveElementRole: page.activeElementRole,
+            pageActiveElementId: page.activeElementId,
+            pageUrlKind: page.urlKind,
+            pageFingerprint: page.fingerprint,
+          } : {}),
+          ...attributes,
+        },
+      });
+    } catch {
+      // 준비 진단은 예약 결과를 바꾸지 않는다.
     }
   }
 
@@ -676,27 +726,66 @@ class RunSession {
     const controller = this.controller;
     const serverClock = this.serverClock;
     this.transition("ENTERING_RESERVATION", "예약창 진입 상태를 확인합니다.");
+    this.tracePreparation("stage_start", { preparationTarget: "reservation_calendar" });
     const entryDeadline = Math.min(serverClock.now() + 5_000, config.stopAtMs);
     let entryClicked = false;
+    let lastCondition = "";
     while (true) {
       if (controller.signal.aborted) return this.finishStopped();
       if (serverClock.now() >= config.stopAtMs) {
         return this.timedOut("예약 페이지 준비 중 감시 종료 시각에 도달했습니다.");
       }
       const entry = this.deps.entry.inspect();
-      if (entry.reservationOpen) break;
+      const condition = `${entry.reservationOpen}:${entry.ctaAvailable}:${entry.waitingOnly}`;
+      if (condition !== lastCondition) {
+        lastCondition = condition;
+        this.tracePreparation("condition_changed", {
+          reservationOpen: entry.reservationOpen,
+          reservationCtaAvailable: entry.ctaAvailable,
+          waitingOnly: entry.waitingOnly,
+        });
+      }
+      if (entry.reservationOpen) {
+        this.tracePreparation("decision", { preparationDecision: "ready" });
+        break;
+      }
       if (entry.waitingOnly) {
+        this.tracePreparation("decision", { preparationDecision: "handoff", preparationErrorCode: "WAITING_ONLY" }, "warn");
         return this.diagnosticHandOff("이 식당은 현장 웨이팅만 가능해 예약창을 열 수 없습니다.");
       }
-      if (!entryClicked && entry.ctaAvailable && this.deps.entry.openReservation()) {
-        entryClicked = true;
-        this.emit("action", "예약하기 버튼을 클릭했습니다.");
-      } else if (this.deps.entry.dismissPromo?.()) {
+      let entryDispatched = false;
+      if (!entryClicked && entry.ctaAvailable) {
+        this.tracePreparation("dispatch_before", { preparationAction: "open_reservation", preparationAttempt: 1 });
+        entryDispatched = this.deps.entry.openReservation();
+        this.tracePreparation("dispatch_after", {
+          preparationAction: "open_reservation",
+          preparationAttempt: 1,
+          preparationDispatched: entryDispatched,
+        });
+        if (entryDispatched) {
+          entryClicked = true;
+          this.emit("action", "예약하기 버튼을 클릭했습니다.");
+        }
+      }
+      if (!entryDispatched) {
+        const dismissed = this.deps.entry.dismissPromo?.() ?? false;
+        if (dismissed) this.tracePreparation("dispatch_after", {
+          preparationAction: "dismiss_promo",
+          preparationAttempt: 1,
+          preparationDispatched: true,
+        });
+        if (dismissed) {
         // 홍보 인터스티셜이 예약하기 클릭을 삼키므로 닫은 뒤 다시 클릭한다.
-        entryClicked = false;
-        this.emit("action", "매장 홍보 안내 창을 닫았습니다.");
+          entryClicked = false;
+          this.emit("action", "매장 홍보 안내 창을 닫았습니다.");
+        }
       }
       if (serverClock.now() >= entryDeadline) {
+        this.tracePreparation("decision", {
+          preparationDecision: "handoff",
+          preparationErrorCode: entryClicked ? "ENTRY_TRANSITION_STALLED" : "ENTRY_CTA_MISSING",
+          preparationAttempt: entryClicked ? 1 : 0,
+        }, "warn");
         return this.diagnosticHandOff(entryClicked
           ? "예약하기 클릭 후 달력 화면을 확인할 수 없습니다."
           : "식당 페이지에서 예약하기 버튼을 찾을 수 없습니다.");
@@ -712,19 +801,59 @@ class RunSession {
     const controller = this.controller;
     const serverClock = this.serverClock;
     this.transition("SELECTING_DATE", "목표 월과 예약 날짜를 준비합니다.");
+    this.tracePreparation("stage_start", { preparationTarget: config.reservationDate });
     const dateDeadline = Math.min(serverClock.now() + 10_000, config.stopAtMs);
+    let lastCondition = "";
     while (true) {
       if (controller.signal.aborted) return this.finishStopped();
       if (serverClock.now() >= config.stopAtMs) {
         return this.timedOut("예약 날짜 준비 중 감시 종료 시각에 도달했습니다.");
       }
-      const preparation = this.deps.calendar.prepareTarget(config.reservationDate);
-      if (preparation.status === "ready") break;
+      const dispatches: CalendarPreparationDispatch[] = [];
+      const preparation = this.deps.calendar.prepareTarget(config.reservationDate, (nextDispatch) => {
+        dispatches.push(nextDispatch);
+        this.tracePreparation("dispatch_before", {
+          preparationAction: nextDispatch.kind === "date" ? "select_date" : "change_month",
+          preparationTarget: nextDispatch.target,
+          preparationAttempt: nextDispatch.attempt,
+        });
+      });
+      const condition = `${preparation.status}:${preparation.message}`;
+      if (condition !== lastCondition) {
+        lastCondition = condition;
+        this.tracePreparation("condition_changed", {
+          preparationStatus: preparation.status,
+          preparationTarget: config.reservationDate,
+        });
+      }
+      const dispatch = dispatches.at(-1);
+      if (dispatch && preparation.status === "acted") {
+        this.tracePreparation("dispatch_after", {
+          preparationAction: dispatch.kind === "date" ? "select_date" : "change_month",
+          preparationTarget: dispatch.target,
+          preparationAttempt: dispatch.attempt,
+          preparationDispatched: true,
+        });
+      }
+      if (preparation.status === "ready") {
+        this.tracePreparation("decision", { preparationDecision: "ready", preparationTarget: config.reservationDate });
+        break;
+      }
       if (preparation.status === "blocked") {
+        this.tracePreparation("decision", {
+          preparationDecision: "handoff",
+          preparationErrorCode: "DATE_PREPARATION_BLOCKED",
+          preparationTarget: config.reservationDate,
+        }, "warn");
         return this.diagnosticHandOff(preparation.message);
       }
       if (preparation.status === "acted") this.emit("action", preparation.message);
       if (serverClock.now() >= dateDeadline) {
+        this.tracePreparation("decision", {
+          preparationDecision: "handoff",
+          preparationErrorCode: "DATE_SELECTION_STALLED",
+          preparationTarget: config.reservationDate,
+        }, "warn");
         return this.diagnosticHandOff("목표 월 또는 날짜 선택 상태를 제한 시간 안에 확인할 수 없습니다.");
       }
       if (!(await this.deps.sleep(50, controller.signal))) return this.finishStopped();
@@ -738,23 +867,63 @@ class RunSession {
     const controller = this.controller;
     const serverClock = this.serverClock;
     this.transition("SELECTING_PERSON", "예약 인원을 준비합니다.");
+    this.tracePreparation("stage_start", { preparationTargetPersonCount: config.personCount });
     const personDeadline = Math.min(serverClock.now() + 3_000, config.stopAtMs);
     let personClicked = false;
+    let lastCondition = "";
     while (true) {
       if (controller.signal.aborted) return this.finishStopped();
       if (serverClock.now() >= config.stopAtMs) {
         return this.timedOut("예약 인원 준비 중 감시 종료 시각에 도달했습니다.");
       }
       const person = this.deps.person.inspect(config.personCount);
-      if (person.targetSelected) break;
+      const condition = `${person.ready}:${person.targetAvailable}:${person.targetSelected}`;
+      if (condition !== lastCondition) {
+        lastCondition = condition;
+        this.tracePreparation("condition_changed", {
+          personControlReady: person.ready,
+          targetPersonAvailable: person.targetAvailable,
+          targetPersonSelected: person.targetSelected,
+          preparationTargetPersonCount: config.personCount,
+        });
+      }
+      if (person.targetSelected) {
+        this.tracePreparation("decision", { preparationDecision: "ready", preparationTargetPersonCount: config.personCount });
+        break;
+      }
       if (person.ready && !person.targetAvailable) {
+        this.tracePreparation("decision", {
+          preparationDecision: "handoff",
+          preparationErrorCode: "PERSON_UNAVAILABLE",
+          preparationTargetPersonCount: config.personCount,
+        }, "warn");
         return this.diagnosticHandOff(`이 식당에서 ${config.personCount}명을 선택할 수 없습니다.`);
       }
-      if (!personClicked && person.targetAvailable && this.deps.person.select(config.personCount)) {
-        personClicked = true;
-        this.emit("action", `${config.personCount}명으로 설정했습니다.`);
+      if (!personClicked && person.targetAvailable) {
+        this.tracePreparation("dispatch_before", {
+          preparationAction: "select_person",
+          preparationAttempt: 1,
+          preparationTargetPersonCount: config.personCount,
+        });
+        const dispatched = this.deps.person.select(config.personCount);
+        this.tracePreparation("dispatch_after", {
+          preparationAction: "select_person",
+          preparationAttempt: 1,
+          preparationTargetPersonCount: config.personCount,
+          preparationDispatched: dispatched,
+        });
+        if (dispatched) {
+          personClicked = true;
+          this.emit("action", `${config.personCount}명으로 설정했습니다.`);
+        }
       }
       if (serverClock.now() >= personDeadline) {
+        this.tracePreparation("decision", {
+          preparationDecision: "handoff",
+          preparationErrorCode: "PERSON_SELECTION_STALLED",
+          preparationAttempt: personClicked ? 1 : 0,
+          preparationTargetPersonCount: config.personCount,
+        }, "warn");
         return this.diagnosticHandOff("예약 인원 선택 상태를 제한 시간 안에 확인할 수 없습니다.");
       }
       if (!(await this.deps.sleep(50, controller.signal))) return this.finishStopped();
@@ -1453,9 +1622,13 @@ export class OpenRunOrchestrator {
     this.activeController?.abort();
   }
 
-  async start(config: ReservationConfig, requestedRunId?: string): Promise<RunResult> {
+  async start(
+    config: ReservationConfig,
+    requestedRunId?: string,
+    executionContext?: RunExecutionContext,
+  ): Promise<RunResult> {
     if (this.activeController) throw new Error("이미 실행 중입니다.");
-    const session = new RunSession(this.dependencies, config, requestedRunId);
+    const session = new RunSession(this.dependencies, config, requestedRunId, executionContext);
     this.activeController = session.controller;
     try {
       return await session.execute();
