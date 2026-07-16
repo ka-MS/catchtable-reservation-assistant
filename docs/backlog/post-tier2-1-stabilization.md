@@ -333,7 +333,7 @@ RT-15의 성격은 서버 시계 **진단 로그 강화**다. 실시간 estimato
 | RT-13 | inactive_cycle 기회비용·수락 완화 분석 | 조사 필요 | 중요 예약 시즌 이후 | 없음 | INVESTIGATE | `docs/specs/open-timing-performance/02-availability-hot-path/90-redteam-review.md` F4 |
 | RT-14 | EXACT EMPTY body cycle 조기 종료 | 수용 | 구현·자동·Chrome 검증 완료, 비중요 실오픈 성능 검증 대기 | 없음 | DONE | `docs/specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/` |
 | RT-15 | 원시 시계 표본 ring buffer trace 기록 | 수용 | 구현·자동 검증 완료 | 없음 | DONE | `docs/specs/open-timing-performance/01-reference-clock-reliability/01-raw-sample-trace/` |
-| RT-16 | 런타임 오류 분류와 오픈 전 준비 bounded recovery | 수용 | Tier 3 | 없음 | PROMOTED | `docs/specs/open-timing-performance/03-runtime-resilience/10-analysis.md` |
+| RT-16 | 런타임 오류 분류와 오픈 전 준비 bounded recovery | 수용 | 구현·자동 검증 완료, Chrome live 재현 대기 | 없음 | PROMOTED | `docs/specs/open-timing-performance/03-runtime-resilience/01-rt16-preparation-recovery/` |
 
 상태 값은 다음 의미로 사용한다.
 

@@ -39,7 +39,7 @@
 - 진단 fixture 변환 도구
 - Adapter strategy/fingerprint 변화 감지
 
-## 6. 런타임 오류 분류와 복구 정책 — RT-16
+## 6. 런타임 오류 분류와 복구 정책 — RT-16 (구현·자동 검증 완료, Chrome live 대기)
 
 오류를 하나의 `FAILED` 메시지로 처리하지 않고 원인과 허용된 복구 행동을 구조화한다.
 

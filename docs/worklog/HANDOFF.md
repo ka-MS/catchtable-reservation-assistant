@@ -2,7 +2,8 @@
 
 **갱신:** 2026-07-16
 **브랜치:** `codex/rt14-exact-empty-early-exit`
-**최신 작업 로그:** `docs/worklog/2026-07-16-04-rt15-clock-raw-sample-trace.md`
+**최신 작업 로그:** `docs/worklog/2026-07-16-05-rt16-preparation-recovery.md`
+**최신 Tier 3 구현:** `docs/specs/open-timing-performance/03-runtime-resilience/01-rt16-preparation-recovery/`
 **최신 기준시계 구현:** `docs/specs/open-timing-performance/01-reference-clock-reliability/01-raw-sample-trace/`
 **최신 Tier 3 분석:** `docs/specs/open-timing-performance/03-runtime-resilience/10-analysis.md`
 **최신 성능 구현:** `docs/specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/`
@@ -118,6 +119,16 @@ RT-15 기준시계 원시 표본 trace 구현과 자동 검증을 완료했다.
 - raw event의 `state=null` 계약으로 기존 run finalState와 finishedAt을 보존한다.
 - terminal 전 Content context 강제 종료와 trace queue overflow에서는 일부 raw 표본이 유실될 수 있으며 진단 best-effort 정책으로 수용했다.
 
+RT-16 오픈 전 준비 복원력 구현과 자동 검증을 완료했다.
+
+- RT-16A는 START 시점 tab/window 문맥과 준비 event 시점 visibility/focus/viewport/fingerprint를 `PREPARATION_OBSERVED`로 결합한다.
+- RT-16B는 auto run마다 CalendarAdapter preparation state를 reset해 동일 날짜 `pendingDate` 누출을 제거한다.
+- RT-16C는 CTA·날짜·인원을 총 2회로 제한하고 1초 뒤 한 번만 재시도한다.
+- 계속 정체되면 단계별 error code, attempt count와 recovery decision을 terminal handoff에 남긴다.
+- CTA discovery deadline과 클릭 후 confirmation deadline을 분리해 늦은 CTA 클릭 직후 즉시 인계되던 경계를 수정했다.
+- Tier 2 slot loop, wake, EMPTY 조기 종료와 claim 정책은 변경하지 않았다.
+- 자동 gate는 통과했지만 Chrome 원격 디버깅 미연결로 동일 탭 live 재현은 미실행이다. RT-16은 `PROMOTED`를 유지한다.
+
 ## 검증 근거
 
 - 결제 정책 UX 대상 테스트: 73/73 통과
@@ -125,6 +136,7 @@ RT-15 기준시계 원시 표본 trace 구현과 자동 검증을 완료했다.
 - 전체 `npm run check`: 303/303 tests(wakeAdvanceMs 계측 2건 포함), typecheck, dist validation, MAIN/ISOLATED independence 통과
 - RT-14 전체 `npm run check`: 315/315 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - RT-15 전체 `npm run check`: 323/323 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
+- RT-16 전체 `npm run check`: 335/335 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - RT-14 Chrome live: 3상태 radio 표시, `empty_exit` 저장·재로드 복원, `off` 원복, Side Panel 런타임 오류 없음
 - probe 정책 Chrome live: 확장 재로드 후 `XHR 응답 진단` 기본 꺼짐, 토글 동작, Side Panel 재로드 후 꺼짐 복원, 경고·오류 없음 확인
 - 실행 진단 Chrome live: IndexedDB v2에서 기존 runs 20/events 740 보존, snapshots store 생성, 실제 ZIP 다운로드와 Windows 기본 압축 해제 통과

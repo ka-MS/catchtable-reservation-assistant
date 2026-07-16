@@ -1,8 +1,10 @@
 # Tier 3 — 런타임 견고성 분석 (개요)
 
-**상태:** 2026-07-16 실측 실패를 입력으로 분석 착수. 복구 설계와 구현은 미착수다.
+**상태:** RT-16 구현·자동 검증 완료. 동일 탭 Chrome live 재현 검증 대기.
 **우산 분석:** `../open-timing-performance-analysis.md` §4 Tier 3.
 **관련 backlog:** RT-08, RT-09, RT-16. RT-11은 Tier 2 공식 p95·wake counterfactual 측정에만 사용한다.
+
+RT-16 상세 구현은 [오픈 전 준비 복원력 패키지](01-rt16-preparation-recovery/00-index.md)를 따른다. 탭 focus 정책, Service Worker reconcile과 페이지 새로고침 재주입은 RT-16 범위에 포함하지 않았다.
 
 ## 범위 (개요)
 

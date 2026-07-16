@@ -1,6 +1,6 @@
 # RT-16 — 오픈 전 준비 복원력
 
-**상태:** 구현 진행
+**상태:** 구현·자동 검증 완료, Chrome live 재현 대기
 **부모:** `../10-analysis.md`
 
 ## 목표
@@ -14,6 +14,8 @@ Tier 2 슬롯 탐색 hot path의 interval, wake, EMPTY 조기 종료와 click cl
 1. [RT-16A 준비 단계 관측성](01-rt16a-observability/10-design.md)
 2. [RT-16B 실행 간 상태 격리](02-rt16b-state-isolation/10-design.md)
 3. [RT-16C bounded recovery](03-rt16c-bounded-recovery/10-design.md)
+4. [검증](40-verification.md)
+5. [적대적 검토](50-adversarial-review.md)
 
 ## 종료 gate
 
