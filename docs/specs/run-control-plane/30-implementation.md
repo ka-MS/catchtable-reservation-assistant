@@ -13,7 +13,7 @@
 - shared core는 `chrome.*`/`window`/`document` 참조 금지 (`docs/design/architecture.md`).
 - adapter 외 모듈은 `querySelector` 호출 금지.
 - `waitForOpen()` 이후 코드(토글·슬롯·post-slot)는 diff 0이어야 한다.
-- 사용자 가시 메시지·`preparationErrorCode` 문자열·상태 전이 순서는 현행 유지 (각 Task에 원문 명시).
+- 사용자 가시 메시지·상태 전이 순서는 현행 유지 (각 Task에 원문 명시). **`preparationErrorCode`는 의도된 계약 변경** — 구 fallback `DATE_PREPARATION_BLOCKED`가 세분화된다(Task 5의 매핑 표를 따르고 테스트로 고정).
 - 원인 분류 로직은 `classifier.ts` 단독 소유 — coordinator·runner·adapter가 Cause 문자열을 스스로 만들지 않는다.
 - 각 Task 완료 시 `npm run check` 통과 후 커밋. 커밋 제목은 conventional prefix + 영어, 본문 없음.
 - 테스트는 `dist/`를 import하므로 실행 전 `npm run build` 필수.
@@ -543,6 +543,11 @@ export interface StepRunOptions {
   pollMs?: number;
 }
 
+/** closed union의 exhaustive 처리 보조 — 미처리 variant를 컴파일·런타임 양쪽에서 잡는다. */
+export function assertNever(value: never): never {
+  throw new Error(`처리되지 않은 variant: ${String(value)}`);
+}
+
 export async function runPreparationStep<F>(
   spec: StepSpec<F>,
   options: StepRunOptions,
@@ -857,7 +862,7 @@ export async function runEntryPreparation(
 import { classifyDateFatal, classifyMonthFatal, classifyStall } from "../../shared/run-control/classifier.js";
 import type { FailureVia, PreparationCause } from "../../shared/run-control/causes.js";
 import type { CalendarFacts } from "../../shared/run-control/facts.js";
-import { runPreparationStep, type StepRunOptions, type StepSpec } from "./step-runner.js";
+import { assertNever, runPreparationStep, type StepRunOptions, type StepSpec } from "./step-runner.js";
 import { toPreparationResult, type PreparationResult } from "./result.js";
 
 export interface CalendarStagePort {
@@ -948,15 +953,21 @@ export async function runCalendarPreparation(
     }
     const dateOutcome = await runPreparationStep(dateSpec(port, targetDate), options);
     if (dateOutcome.kind === "interrupted") {
-      if (options.clock.now() < Math.min(options.overallDeadlineAtMs, options.stopAtMs)) continue;
-      const cause = classifyStall("date", dateOutcome.attempts);
-      return {
-        kind: "failed",
-        cause,
-        via: "deadline",
-        attempts: dateOutcome.attempts,
-        message: messageFor(cause, "deadline"),
-      };
+      switch (dateOutcome.token) {
+        case "target_cell_missing": {
+          if (options.clock.now() < Math.min(options.overallDeadlineAtMs, options.stopAtMs)) continue;
+          const cause = classifyStall("date", dateOutcome.attempts);
+          return {
+            kind: "failed",
+            cause,
+            via: "deadline",
+            attempts: dateOutcome.attempts,
+            message: messageFor(cause, "deadline"),
+          };
+        }
+        default:
+          return assertNever(dateOutcome.token);
+      }
     }
     return toPreparationResult(dateOutcome, messageFor, CALENDAR_TIMEOUT_MESSAGE);
   }
@@ -1018,15 +1029,17 @@ export async function runPersonPreparation(
 
 ---
 
-### Task 4: CalendarAdapter 사실 API 추가 (정책 제거는 Task 6)
+### Task 4: Adapter 사실 타입 단일화 + CalendarAdapter 사실 API 추가 (정책 제거는 Task 6)
 
 **Files:**
 - Modify: `src/content/adapter/calendar.ts` (`inspectPreparation`/`clickMonth` 추가 — `prepareTarget`은 이 Task에서 아직 유지)
+- Modify: `src/content/adapter/entry.ts`, `src/content/adapter/person.ts` (로컬 `EntryInspection`/`PersonInspection` interface 삭제, shared `EntryFacts`/`PersonFacts`를 직접 반환 — 사실 타입 단일 소유)
+- Modify: `src/content/orchestrator.ts` (EntryPort/PersonPort 타입 import를 shared facts로 교체)
 - Test: `tests/calendar-adapter.test.mjs` (추가 케이스)
 
 **Interfaces:**
-- Consumes: `readCalendarCells`/`readDisplayedCalendarMonth` (`adapter/calendar-dom.ts`), `CalendarFacts` (`shared/run-control/facts.ts`)
-- Produces: `inspectPreparation(targetDate): CalendarFacts`, `clickMonth(direction): boolean` — Task 3의 `CalendarStagePort` 계약 구현.
+- Consumes: `readCalendarCells`/`readDisplayedCalendarMonth` (`adapter/calendar-dom.ts`), `CalendarFacts`/`EntryFacts`/`PersonFacts` (`shared/run-control/facts.ts`)
+- Produces: `EntryAdapter.inspect(): EntryFacts`, `PersonAdapter.inspect(personCount): PersonFacts`, `CalendarAdapter.inspectPreparation(targetDate): CalendarFacts`, `clickMonth(direction): boolean` — Task 3의 stage port 계약 구현. adapter가 반환하는 사실 타입의 정의처는 shared/run-control/facts.ts **한 곳**이다.
 
 - [ ] **Step 1: 실패하는 테스트 작성** — 기존 `tests/calendar-adapter.test.mjs`에 추가(기존 fixture 재사용):
 
@@ -1053,7 +1066,31 @@ test("clickMonth는 해당 방향 버튼을 한 번 클릭한다", async () => {
 
 (fixture의 실제 표시 월·셀 구성은 기존 테스트 기대값 기준으로 assert를 구체화한다.)
 
-- [ ] **Step 2: 실패 확인** — Run: `npm run build && node --test tests/calendar-adapter.test.mjs` / Expected: 신규 2건 FAIL, 기존 전부 PASS.
+추가로, Task 6에서 삭제될 prepareTarget 테스트가 커버하던 DOM 판독 시나리오를 **사실 단언으로 변환해 이 파일에 보존**한다. 변환 규칙: "prepareTarget 반환 status/message 단언" → "inspectPreparation 사실 필드 단언". 보존 대상과 기대 사실:
+
+| 기존 시나리오 | inspectPreparation 기대 사실 |
+|---|---|
+| 같은 월인데 목표 셀 없음 | `displayedMonth === targetMonth`이고 `target === null` |
+| disabled 목표 날짜 | `target: { available: false, ... }` |
+| 월 제목 판독 불가(전환 중) | `displayedMonth === null` |
+| 월 이동 control 부재/disabled | `monthNavigation === null` 또는 `{ available: false }` |
+| Mobiscroll DOM(`calendar-mobiscroll.html`) | aria 변형과 동일한 사실 산출 |
+
+변환 예시(기존 disabled 케이스):
+
+```js
+test("inspectPreparation: disabled 목표 날짜는 available=false 사실로 보고한다", async () => {
+  const dom = await loadFixture("calendar.html");
+  const adapter = new CalendarAdapter(dom.window.document);
+  // 기존 prepareTarget 테스트가 사용하던 disabled 날짜 상수를 재사용한다.
+  const facts = adapter.inspectPreparation(DISABLED_DATE);
+  assert.deepEqual(facts.target, { available: false, selected: false });
+});
+```
+
+- [ ] **Step 1-b: entry/person 사실 타입 단일화** — `adapter/entry.ts`에서 `export interface EntryInspection`을 삭제하고 `import type { EntryFacts } from "../../shared/run-control/facts.js";` 후 `inspect(): EntryFacts`로 변경. `adapter/person.ts`도 동일하게 `PersonFacts`로. orchestrator의 `import type { EntryInspection }`/`import type { PersonInspection }`을 shared facts import로 교체. 구조가 동일하므로(구조적 타이핑) 동작 변화 없음 — typecheck가 검증.
+
+- [ ] **Step 2: 실패 확인** — Run: `npm run build && node --test tests/calendar-adapter.test.mjs` / Expected: 신규 케이스 FAIL, 기존 전부 PASS.
 
 - [ ] **Step 3: 구현** — `CalendarAdapter`에 추가:
 
@@ -1101,7 +1138,33 @@ clickMonth(direction: "Previous page" | "Next page"): boolean {
 - Consumes: Task 3 coordinator 3종 + `PreparationResult`, Task 2 `StepReporter`, Task 4 사실 API.
 - Produces: `CalendarPort`가 `{ inspect, inspectPreparation, clickMonth, clickDate }`로 바뀜(`resetPreparation`/`prepareTarget` 제거는 Task 6). 실행영역 코드는 무변경.
 
-- [ ] **Step 1: 오케스트레이터 준비 단계 테스트를 새 포트 계약으로 갱신** — fake calendar의 `prepareTarget` 기반 시나리오를 `inspectPreparation`/`clickMonth` 기반으로 바꾼다. 검증 불변 항목: ① 상태 전이 순서(`ENTERING_RESERVATION → SELECTING_DATE → SELECTING_PERSON → PREPARING_PAGE`), ② terminal 메시지 원문, ③ `preparationErrorCode`/`preparationAttemptCount`/`preparationRecoveryDecision` 데이터 필드. 실행 단계 테스트는 한 줄도 수정하지 않는다.
+- [ ] **Step 1: 오케스트레이터 준비 단계 테스트를 새 포트 계약으로 갱신** — fake calendar의 `prepareTarget` 기반 시나리오를 `inspectPreparation`/`clickMonth` 기반으로 바꾼다. 검증 불변 항목: ① 상태 전이 순서(`ENTERING_RESERVATION → SELECTING_DATE → SELECTING_PERSON → PREPARING_PAGE`), ② terminal 메시지 원문, ③ `preparationAttemptCount`/`preparationRecoveryDecision` 데이터 필드. 실행 단계 테스트는 한 줄도 수정하지 않는다.
+
+**`preparationErrorCode`는 의도된 계약 변경이다** — 아래 구→신 매핑을 테스트로 고정한다(설계 §8-9). 사용자 가시 메시지는 불변, 코드만 세분화된다:
+
+| 구 코드 (메시지 기준) | 신 코드 |
+|---|---|
+| `DATE_PREPARATION_BLOCKED` + "목표 날짜를 선택할 수 없습니다." | `DATE_UNAVAILABLE` |
+| `DATE_PREPARATION_BLOCKED` + "목표 날짜가 현재 달력에 없습니다." | `DATE_NOT_IN_CALENDAR` |
+| `DATE_PREPARATION_BLOCKED` + "목표 월로 이동할 수 없습니다." | `MONTH_NAVIGATION_UNAVAILABLE` |
+| `DATE_PREPARATION_BLOCKED` + "달력 월 전환을 확인할 수 없습니다." | `MONTH_TRANSITION_STALLED` |
+| `WAITING_ONLY` / `ENTRY_CTA_MISSING` / `ENTRY_TRANSITION_STALLED` / `DATE_SELECTION_STALLED` / `PERSON_UNAVAILABLE` / `PERSON_SELECTION_STALLED` | 유지 |
+
+매핑 고정 테스트(orchestrator 테스트에 추가):
+
+```js
+test("구 DATE_PREPARATION_BLOCKED 경로는 세분화된 코드와 기존 메시지로 인계된다", async () => {
+  // fake calendar: 목표 월 표시 + 목표 셀 없음 → 월 단계 최종 판정
+  const { events } = await runWithFakeCalendar({
+    inspectPreparation: () => ({ displayedMonth: TARGET_MONTH, target: null, monthNavigation: null }),
+  });
+  const handoff = events.findLast((e) => e.data?.state === "HANDED_OFF");
+  assert.equal(handoff.message, "목표 날짜가 현재 달력에 없습니다.");
+  assert.equal(handoff.data.preparationErrorCode, "DATE_NOT_IN_CALENDAR");
+});
+```
+
+(`runWithFakeCalendar`는 기존 orchestrator 테스트의 세션 실행 헬퍼를 재사용한다 — 기존 테스트 파일의 START 구동 패턴과 동일.)
 
 - [ ] **Step 2: 실패 확인** — Run: `npm test` / Expected: 갱신된 준비 시나리오 FAIL (아직 구 구현).
 
@@ -1206,7 +1269,18 @@ private async preparePerson(): Promise<RunResult | null> {
 - Modify: `src/content/orchestrator.ts` (CalendarPort에서 optional 잔재 제거)
 - Test: `tests/calendar-adapter.test.mjs` (prepareTarget 테스트 삭제)
 
-- [ ] **Step 1: prepareTarget 테스트 삭제 및 대체 매핑 기록** — 삭제 전에 각 시나리오의 이전처를 주석으로 남긴다: 월 전환 750ms×3 재시도 → `tests/preparation-step-runner.test.mjs`(progressKey 리셋), 날짜 1s×2 재시도 → runner exhausted 케이스, blocked 메시지·오류 코드 → `tests/run-control-classifier.test.mjs` + `tests/preparation-coordinators.test.mjs`.
+- [ ] **Step 1: prepareTarget 테스트 삭제 전 보존 체크리스트 확인** — 아래 6종이 전부 신규 테스트에 존재하는지 확인한 뒤에만 삭제한다(누락 시 이 Task에서 추가):
+
+| 보존 대상 | 이전처 |
+|---|---|
+| 같은 월인데 목표 셀 없음 | `run-control-classifier.test.mjs`(month fatal) + `calendar-adapter.test.mjs`(사실 단언, Task 4) |
+| disabled 날짜 | `calendar-adapter.test.mjs`(Task 4) + classifier `DATE_UNAVAILABLE` |
+| 월 제목 판독 불가 | `calendar-adapter.test.mjs`(`displayedMonth === null`) + runner 빈 progressKey 케이스 |
+| 월 이동 control 부재 | `calendar-adapter.test.mjs`(사실) + classifier `MONTH_NAVIGATION_UNAVAILABLE` |
+| Mobiscroll DOM | `calendar-adapter.test.mjs`(Task 4, `calendar-mobiscroll.html`) |
+| 구→신 오류 코드 매핑 | `orchestrator.test.mjs`(Task 5 매핑 테스트) |
+
+월 전환 750ms×3 재시도 → `preparation-step-runner.test.mjs`(progressKey 리셋), 날짜 1s×2 재시도 → runner exhausted 케이스도 주석으로 기록한다.
 - [ ] **Step 2: 삭제 구현** — `CalendarAdapter`에서 `preparingTarget`, `pendingMonth*`, `pendingDate*` 필드와 `prepareTarget`, `resetPreparation` 메서드, `CalendarPreparationResult`/`CalendarPreparationDispatch` export 삭제. 사용처가 없어지면 `monotonicNow` 생성자 파라미터도 삭제. orchestrator `CalendarPort`에서 optional 잔재 제거.
 - [ ] **Step 3: 전체 게이트** — Run: `npm run check` / Expected: typecheck·전체 테스트·dist·independence 전부 PASS.
 - [ ] **Step 4: Commit** — `git commit -am "refactor: reduce calendar adapter to facts and single actions"`
@@ -1228,7 +1302,9 @@ private async preparePerson(): Promise<RunResult | null> {
 
 ## Phase 2 예고 (별도 계획: `31-control-plane-implementation.md`)
 
-Phase 1 병합 후 작성한다. 범위: `background/run-supervisor.ts` + `logicalRun` storage(attempt별 decision·message 영속, `recovery` intent — `nextAttemptId` 사전 생성, `terminalEffectsCompletedAt` 마커) + PageRuntimePort(`navigateIfNeeded`/`forceReenter`/inject/ping) + TerminalEffects 분리 + `AttemptControlMessage` 배선(flush→결정·intent 단일 영속→ACK→reenter 계약, 재전송 재ACK, `{ok:false, reason}` 응답) + content의 `GET_ATTEMPT_STATUS` 응답 + top-level bootstrap reconcile(설계 §5.4 4분기 표)과 `supervisorReady` barrier + 기존 리스너 5개 흡수 + `decide()` 배선 + RESET_PAGE 실행 + 알림 억제 + Side Panel RECOVERING 표시 + Chrome DevTools MCP E2E(ACK 직후 SW 강제 종료 → reconcile 멱등 재개 시나리오 포함). Phase 1의 causes/policy/protocol과 `PreparationResult`가 그대로 입력이 된다.
+Phase 1 병합 후 작성한다. **작성 선행 요구(5차 리뷰)**: logicalRun status × 이벤트 **상태 전이표**, 쓰기 사이 **크래시 지점 목록**, **멱등 테스트 매트릭스**(durable flush, ACK disposition TERMINAL, 재전송 조회 순서, phase 단조, intent 재평가, 전이 원자성·START 멱등, TerminalEffects 멱등, FINISHING 경쟁 — 설계 §5.4에 계약 확정됨)를 먼저 담는다.
+
+범위: `background/run-supervisor.ts` + `logicalRun` storage(attempt별 decision·message 영속, `recovery` intent — `nextAttemptId` 사전 생성, `terminalEffectsCompletedAt` 마커) + PageRuntimePort(`navigateIfNeeded`/`forceReenter`/inject/ping) + TerminalEffects 분리 + `AttemptControlMessage` 배선(flush→결정·intent 단일 영속→ACK→reenter 계약, 재전송 재ACK, `{ok:false, reason}` 응답) + content의 `GET_ATTEMPT_STATUS` 응답 + top-level bootstrap reconcile(설계 §5.4 4분기 표)과 `supervisorReady` barrier + 기존 리스너 5개 흡수 + `decide()` 배선 + RESET_PAGE 실행 + 알림 억제 + Side Panel RECOVERING 표시 + Chrome DevTools MCP E2E(ACK 직후 SW 강제 종료 → reconcile 멱등 재개 시나리오 포함). Phase 1의 causes/policy/protocol과 `PreparationResult`가 그대로 입력이 된다.
 
 ## Self-Review 결과
 

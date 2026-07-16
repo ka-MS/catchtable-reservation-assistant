@@ -70,6 +70,23 @@
 | stale/missing에 성공 ACK | 인정 | `{ok:false, reason}` 응답 — content가 재시도 중단을 판단한다(§5.4). |
 | interrupt 임의 string | 인정 | `PreparationInterrupt` closed union으로 제한(§5.2, 계획 Task 2·3). |
 
+5차 리뷰 반영(Phase 1 보완 4건 + Phase 2 차단 8건):
+
+| 항목 | 판정 | 반영 |
+|---|---|---|
+| 오류 코드 세분화 vs 동작 보존 모순 | 인정 | 의도된 계약 변경으로 명시. 구→신 매핑 표와 테스트로 고정(§8, 계획 Task 5). |
+| interrupt 비exhaustive 처리 | 인정 | coordinator가 token을 exhaustive switch + `assertNever`로 소비(계획 Task 3). |
+| Entry/Person 사실 타입 이원화 | 인정 | adapter가 shared `EntryFacts`/`PersonFacts`를 직접 반환 — 사실 타입 단일 소유 완성(계획 Task 4). |
+| CalendarAdapter 테스트 유실 위험 | 인정 | 보존 대상 6종을 명시하고 이전처를 고정(계획 Task 4·6). |
+| durable flush 부재 | 인정(Phase 2) | flush가 저장 ACK 여부를 반환하도록 확장, ATTEMPT_FINISHED에 결과 동반(§5.4). |
+| ACK disposition 부족 | 인정(Phase 2) | `decision: RESET_PAGE \| HANDOFF \| TERMINAL`(§5.4). |
+| 재전송 조회 순서 | 인정(Phase 2) | attempt 기록 우선 → payload 검증 → stale 판정(§5.4). |
+| phase 비단조 | 인정(Phase 2) | PREPARING→EXECUTING 단조, 중복 재ACK, 역행 거부(§5.4). |
+| RESET intent 시효 | 인정(Phase 2) | 실행 직전 decide() 재평가 — 늦은 SW 재기동에서 시간 창 초과 시 HANDOFF 전환(§5.4). |
+| nextAttempt 전이 원자성 | 인정(Phase 2) | 단일 쓰기 전이 + content START의 attemptId 멱등 처리(§5.4). |
+| TerminalEffects 비멱등 | 인정(Phase 2) | deterministic notification ID + 멱등 효과 실행(§5.4). |
+| reconcile-terminal 전송 경쟁 | 인정(Phase 2) | `FINISHING` phase + outcome-bearing status 응답(§5.4). |
+
 ## 4. 아키텍처: Control Plane / Data Plane
 
 ```text
@@ -179,17 +196,25 @@ type AttemptControlMessage =
 
 // sendResponse = ACK. 실패를 침묵으로 삼키고 성공 ACK를 주지 않는다 —
 // content가 재시도 중단 여부를 reason으로 판단한다.
-type AttemptAckFailureReason = "unknown_logical_run" | "stale_attempt";
+type AttemptAckFailureReason =
+  | "unknown_logical_run" | "stale_attempt" | "outcome_conflict" | "phase_regression";
 type AttemptFinishedAck =
-  | { ok: true; decision: "RESET_PAGE" | "HANDOFF" }
+  // TERMINAL = 일반 종결(COMPLETED/STOPPED/FAILED 등) 접수 — 복구 결정이 아니다.
+  | { ok: true; decision: "RESET_PAGE" | "HANDOFF" | "TERMINAL" }
   | { ok: false; reason: AttemptAckFailureReason };
 type AttemptPhaseChangedAck =
   | { ok: true }
   | { ok: false; reason: AttemptAckFailureReason };
 
-// background → content (reconcile 전용)
+// background → content (reconcile 전용). FINISHING = terminal 도달 후 ATTEMPT_FINISHED
+// 전송 중 — reconcile이 "미실행"으로 오판해 안전 terminal을 덮는 경쟁을 막는다.
 interface AttemptStatusRequest { type: "GET_ATTEMPT_STATUS"; attemptId: string; }
-interface AttemptStatusResponse { attemptId: string; running: boolean; phase: AttemptPhase | null; }
+interface AttemptStatusResponse {
+  attemptId: string;
+  running: boolean;
+  phase: AttemptPhase | "FINISHING" | null;
+  pendingOutcome?: AttemptOutcome; // FINISHING이면 상태 응답이 outcome 수신 경로를 겸한다
+}
 ```
 
 준비 실패 시 순서(각 화살표가 계약 — **ACK 이전에 복구 재개에 필요한 전부가 영속돼 있어야 한다**):
@@ -219,6 +244,12 @@ content terminal 확정 → trace/diagnostics flush 완료
 | `PREPARING`/`EXECUTING` + 해당 attempt 미실행 | 안전 terminal 확정(FAILED, "실행 문맥이 유실됐습니다") → TerminalEffects |
 | `TERMINAL` + `terminalEffectsCompletedAt` 없음 | TerminalEffects 재개(attempt에 영속된 message·finishedAt 사용) |
 | attempt 실행 중 확인됨 | 개입 없음 — content 자율 실행 계속 |
+- **durable flush**: 현행 `forceFlush`(trace·diagnostics)는 timeout 후에도 무조건 resolve된다 — 저장 보장이 없다. Phase 2에서 저장 ACK 여부를 반환하도록 확장하고, content는 durable 실패 시 1회 재flush 후 결과를 `ATTEMPT_FINISHED`에 동반한다. 복구 진행은 flush 결과와 무관하게 계속한다(진단은 best-effort — 기존 telemetry 철학 유지), 단 유실 사실은 기록한다.
+- **재전송 조회 순서**: ① attempt 기록 조회 — decision이 있으면 동일 payload는 저장된 ACK replay, payload 불일치는 `outcome_conflict` 거부. ② 그다음에야 `currentAttemptId` stale 판정. (순서를 바꾸면 이미 결정된 attempt의 재전송이 stale로 오판된다.)
+- **phase 단조 전이**: PREPARING → EXECUTING만 허용. 동일 phase 중복은 재ACK, 역행은 `phase_regression` 거부.
+- **RESET intent 재평가**: recovery 실행 직전 `decide()`를 현재 시각으로 다시 평가한다 — SW가 늦게 재기동해 RESET_MIN_LEAD 창이 지났으면 HANDOFF로 전환해 terminal 확정. intent는 영속된 계획이지 무조건 실행 티켓이 아니다.
+- **nextAttempt 전이 원자성**: attempts 추가 · `currentAttemptId` 교체 · status(PREPARING) · recovery 제거를 단일 storage 쓰기로 수행한다. content START는 동일 attemptId 재수신을 멱등 처리한다(이미 실행 중이면 ok 재응답).
+- **TerminalEffects 멱등**: 알림은 logicalRunId 기반 deterministic notification ID를 사용하고 badge·finishJob은 멱등 실행 — `terminalEffectsCompletedAt` 기록 직전 SW가 죽어도 중복 알림이 없다.
 - RUN_EVENT는 계속 흐르되(사이드패널 projection·이벤트 로그) 제어 결정에 사용하지 않는다.
 
 ### 5.5 상태 모델·terminal 효과
@@ -300,6 +331,7 @@ Telemetry는 어떤 행동도 결정하지 않고, 어떤 제어 채널로도 �
 6. **RESET 루프 폭주**: resetCount 예산(기본 1)과 RESET_MIN_LEAD_MS가 이중 방어. E2E에서 2회째 정체가 HANDOFF로 끝나는지 확인한다.
 7. **terminal 효과 오보**: TerminalEffects가 supervisor 결정 이전에 실행되면 RESET 중 "인계됨" 알림이 나간다. 효과 호출 경로가 supervisor 하나뿐인지 타입 수준에서 강제한다(recordEvent에서 해당 분기 삭제).
 8. **scheduled job 경로**: launchScheduledJob이 supervisor를 경유하므로 job 상태 전이(markJobRunning/finishJob)는 logical run 종결 기준으로 이동한다.
+9. **오류 코드 세분화는 의도된 계약 변경**: 구 fallback `DATE_PREPARATION_BLOCKED`가 `DATE_UNAVAILABLE`/`DATE_NOT_IN_CALENDAR`/`MONTH_NAVIGATION_UNAVAILABLE`/`MONTH_TRANSITION_STALLED`로 세분화된다. "동작 보존"은 사용자 가시 메시지·상태 전이에 적용되고 `preparationErrorCode`에는 적용되지 않는다. 매핑은 `30-implementation.md` Task 5의 표와 테스트로 고정하며, CSV·진단 소비자는 코드 확장을 전제한다.
 
 ## 9. 테스트 전략
 
