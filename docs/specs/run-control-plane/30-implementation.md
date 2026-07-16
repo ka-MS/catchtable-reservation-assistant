@@ -79,9 +79,9 @@ test("month: 같은 월인데 셀 없음 / 이동 수단 없음이 fatal", () =>
   assert.equal(classifyMonthFatal({ displayedMonth: null, target: null, monthNavigation: null }, "2026-08"), null); // 판독 불가는 대기
 });
 
-test("date: unavailable fatal, 셀 소실은 DATE_NOT_IN_CALENDAR(재순환 신호)", () => {
+test("date: unavailable만 fatal — 셀 소실은 원인이 아니라 coordinator의 interrupt 재순환이다", () => {
   assert.equal(classifyDateFatal({ displayedMonth: "2026-08", target: { available: false, selected: false }, monthNavigation: null }), "DATE_UNAVAILABLE");
-  assert.equal(classifyDateFatal({ displayedMonth: "2026-07", target: null, monthNavigation: null }), "DATE_NOT_IN_CALENDAR");
+  assert.equal(classifyDateFatal({ displayedMonth: "2026-07", target: null, monthNavigation: null }), null);
   assert.equal(classifyDateFatal({ displayedMonth: "2026-08", target: { available: true, selected: false }, monthNavigation: null }), null);
 });
 
@@ -191,10 +191,10 @@ export function classifyMonthFatal(f: CalendarFacts, targetMonth: string): Prepa
   return null;
 }
 
-/** 셀 소실은 fatal이되, calendar coordinator가 재순환 신호로 소비한다. */
+/** 셀 소실(target null)은 원인이 아니다 — coordinator가 interrupt 토큰으로 월 단계를 재순환한다.
+ * DATE_NOT_IN_CALENDAR는 월 단계의 최종 판정(classifyMonthFatal)에서만 나온다. */
 export function classifyDateFatal(f: CalendarFacts): PreparationCause | null {
-  if (f.target === null) return "DATE_NOT_IN_CALENDAR";
-  if (!f.target.available) return "DATE_UNAVAILABLE";
+  if (f.target !== null && !f.target.available) return "DATE_UNAVAILABLE";
   return null;
 }
 
@@ -255,18 +255,37 @@ export function decide(
 
 ```ts
 // src/shared/run-control/protocol.ts — Phase 2에서 배선. Telemetry는 제어에 사용하지 않는다.
+// outcome은 TerminalEffects·finishJob이 필요로 하는 전부(메시지·종료 시각)를 싣는다.
 import type { RunState } from "../types.js";
 import type { PreparationCause } from "./causes.js";
 
+export type TerminalRunState = Extract<RunState,
+  "DRY_RUN_COMPLETED" | "HANDED_OFF" | "COMPLETED" | "STOPPED" | "TIMED_OUT" | "FAILED">;
 export type AttemptPhase = "PREPARING" | "EXECUTING";
 
 export type AttemptOutcome =
-  | { kind: "terminal"; state: RunState }
-  | { kind: "preparation_failed"; cause: PreparationCause; attempts: number };
+  | {
+    kind: "preparation_failed";
+    state: "HANDED_OFF";
+    cause: PreparationCause;
+    attempts: number;
+    message: string;
+    finishedAt: number;
+  }
+  | { kind: "terminal"; state: TerminalRunState; message: string; finishedAt: number };
 
+// content → background
 export type AttemptControlMessage =
   | { type: "ATTEMPT_PHASE_CHANGED"; logicalRunId: string; attemptId: string; phase: AttemptPhase }
   | { type: "ATTEMPT_FINISHED"; logicalRunId: string; attemptId: string; outcome: AttemptOutcome };
+
+/** ATTEMPT_FINISHED의 sendResponse. ACK = "결정이 영속 접수됨"(행동 완료 아님).
+ * 같은 attempt의 재전송에는 영속된 decision을 그대로 재ACK한다. */
+export interface AttemptFinishedAck { ok: true; decision: "RESET_PAGE" | "HANDOFF"; }
+
+// background → content (SW bootstrap reconcile 전용 — PING은 주입 여부만 증명한다)
+export interface AttemptStatusRequest { type: "GET_ATTEMPT_STATUS"; attemptId: string; }
+export interface AttemptStatusResponse { attemptId: string; running: boolean; phase: AttemptPhase | null; }
 ```
 
 - [ ] **Step 4: 통과 확인** — Run: `npm run build && node --test tests/run-control-classifier.test.mjs tests/run-control-policy.test.mjs` / Expected: PASS 9건.
@@ -294,6 +313,7 @@ decide()/protocol은 Phase 1에서 배선하지 않는다(Phase 2 supervisor가 
 - `overallDeadlineAtMs` 도달 → `failed(classifyStall, via:"deadline")`.
 - `progressKey`가 **비어 있지 않은 값으로** 바뀌면 attempt 예산·confirm 리셋(다단 월 이동. `""`는 판독 불가 = 리셋 아님).
 - `spec.fatal(facts)`(classifier 부분 적용)가 원인 반환 시 즉시 `failed(cause, via:"fatal")`.
+- `spec.interrupt?.(facts)`가 토큰 반환 시 즉시 `{ kind: "interrupted", token, attempts }` — **원인 코드가 아니라 내부 제어 신호**다. coordinator가 해석한다(달력의 셀 소실 재순환).
 - attempts>0일 때 매 루프 `dismissObstacle` 시도(홍보 인터스티셜) — 성공 시 즉시 재dispatch 허용.
 - **분류 로직은 이 파일에 없다**: fatal은 주입된 함수, stall은 `classifyStall` 호출.
 
@@ -432,6 +452,12 @@ test("obstacle 해제 후 즉시 재dispatch를 허용한다(홍보 인터스티
   assert.equal(dispatches, 2);
 });
 
+test("interrupt 토큰은 원인 없이 내부 신호로 종료한다", async () => {
+  const outcome = await runPreparationStep(
+    spec({ interrupt: () => "target_cell_missing" }), options(harness()));
+  assert.deepEqual(outcome, { kind: "interrupted", token: "target_cell_missing", attempts: 0 });
+});
+
 test("stopAt 도달 → timed_out, abort → stopped", async () => {
   const out1 = await runPreparationStep(spec({ canDispatch: () => false }),
     options(harness(), { stopAtMs: 200 }));
@@ -467,6 +493,8 @@ export interface StepSpec<F> {
   dispatch(f: F): boolean;
   dispatchAction: string;
   describeDispatch(f: F, attempt: number): string;
+  /** 내부 제어 신호(원인 코드 아님) — 토큰 반환 시 즉시 interrupted로 종료하고 coordinator가 해석한다. */
+  interrupt?(f: F): string | null;
   /** 비어 있지 않은 값으로 바뀌면 다단 진행으로 보고 attempt 예산을 리셋한다. `""`는 판독 불가. */
   progressKey(f: F): string;
   dismissObstacle?(f: F): boolean;
@@ -480,6 +508,7 @@ export interface StepSpec<F> {
 export type StepOutcome =
   | { kind: "ready" }
   | { kind: "failed"; cause: PreparationCause; via: FailureVia; attempts: number }
+  | { kind: "interrupted"; token: string; attempts: number }
   | { kind: "stopped" }
   | { kind: "timed_out" };
 
@@ -538,6 +567,8 @@ export async function runPreparationStep<F>(
       options.report.decision("ready", null, attempts);
       return { kind: "ready" };
     }
+    const interrupt = spec.interrupt?.(facts) ?? null;
+    if (interrupt !== null) return { kind: "interrupted", token: interrupt, attempts };
     const fatal = spec.fatal(facts);
     if (fatal !== null) return fail(fatal, "fatal");
 
@@ -587,7 +618,7 @@ export async function runPreparationStep<F>(
 }
 ```
 
-- [ ] **Step 4: 통과 확인** — Run: `npm run build && node --test tests/preparation-step-runner.test.mjs` / Expected: PASS 10건.
+- [ ] **Step 4: 통과 확인** — Run: `npm run build && node --test tests/preparation-step-runner.test.mjs` / Expected: PASS 11건.
 - [ ] **Step 5: Commit** — `git add src/content/preparation tests/preparation-step-runner.test.mjs && git commit -m "feat: add mechanical bounded preparation step runner"`
 
 ---
@@ -747,6 +778,10 @@ export function toPreparationResult(
   if (outcome.kind === "ready") return { kind: "ready" };
   if (outcome.kind === "stopped") return { kind: "stopped" };
   if (outcome.kind === "timed_out") return { kind: "timed_out", message: timeoutMessage };
+  if (outcome.kind === "interrupted") {
+    // interrupt는 해당 coordinator가 소비해야 하는 내부 신호다 — 여기 도달은 프로그래밍 오류.
+    throw new Error(`처리되지 않은 준비 interrupt: ${outcome.token}`);
+  }
   return { ...outcome, message: messageFor(outcome.cause, outcome.via) };
 }
 ```
@@ -809,7 +844,7 @@ export async function runEntryPreparation(
 
 ```ts
 // src/content/preparation/calendar-coordinator.ts
-import { classifyDateFatal, classifyMonthFatal } from "../../shared/run-control/classifier.js";
+import { classifyDateFatal, classifyMonthFatal, classifyStall } from "../../shared/run-control/classifier.js";
 import type { FailureVia, PreparationCause } from "../../shared/run-control/causes.js";
 import type { CalendarFacts } from "../../shared/run-control/facts.js";
 import { runPreparationStep, type StepRunOptions, type StepSpec } from "./step-runner.js";
@@ -873,6 +908,8 @@ function dateSpec(port: CalendarStagePort, targetDate: string): StepSpec<Calenda
     }),
     isReady: (f) => f.target?.selected === true,
     fatal: classifyDateFatal,
+    /** 셀 소실은 원인 코드가 아니라 내부 재순환 신호다 — coordinator가 월 단계부터 다시 돈다. */
+    interrupt: (f) => (f.target === null ? "target_cell_missing" : null),
     canDispatch: (f) => f.target?.available === true,
     dispatch: () => port.clickDate(targetDate),
     dispatchAction: "select_date",
@@ -887,8 +924,8 @@ function dateSpec(port: CalendarStagePort, targetDate: string): StepSpec<Calenda
 }
 
 /** 월 이동 → 날짜 선택 순서를 소유한다. 날짜 준비 중 셀이 소실되면(달력이 다른
- * 월로 바뀜) 남은 deadline 안에서 월 이동부터 재순환한다 — 현행 prepareTarget의
- * month↔date 오가는 동작 보존. */
+ * 월로 바뀜) interrupt 토큰을 받아 남은 deadline 안에서 월 단계부터 재순환한다 —
+ * 현행 prepareTarget의 month↔date 오가는 동작 보존. 원인 코드는 제어에 쓰지 않는다. */
 export async function runCalendarPreparation(
   port: CalendarStagePort,
   targetDate: string,
@@ -900,9 +937,16 @@ export async function runCalendarPreparation(
       return toPreparationResult(monthOutcome, messageFor, CALENDAR_TIMEOUT_MESSAGE);
     }
     const dateOutcome = await runPreparationStep(dateSpec(port, targetDate), options);
-    if (dateOutcome.kind === "failed" && dateOutcome.cause === "DATE_NOT_IN_CALENDAR"
-      && options.clock.now() < Math.min(options.overallDeadlineAtMs, options.stopAtMs)) {
-      continue;
+    if (dateOutcome.kind === "interrupted") {
+      if (options.clock.now() < Math.min(options.overallDeadlineAtMs, options.stopAtMs)) continue;
+      const cause = classifyStall("date", dateOutcome.attempts);
+      return {
+        kind: "failed",
+        cause,
+        via: "deadline",
+        attempts: dateOutcome.attempts,
+        message: messageFor(cause, "deadline"),
+      };
     }
     return toPreparationResult(dateOutcome, messageFor, CALENDAR_TIMEOUT_MESSAGE);
   }
@@ -1174,10 +1218,10 @@ private async preparePerson(): Promise<RunResult | null> {
 
 ## Phase 2 예고 (별도 계획: `31-control-plane-implementation.md`)
 
-Phase 1 병합 후 작성한다. 범위: `background/run-supervisor.ts` + `logicalRun` storage + PageRuntimePort(`navigateIfNeeded`/`forceReenter`/inject/ping) + TerminalEffects 분리 + `AttemptControlMessage` 배선(flush→ACK→reenter 계약) + top-level bootstrap reconcile + 기존 리스너 5개 흡수 + `decide()` 배선 + RESET_PAGE 실행 + 알림 억제 + Side Panel RECOVERING 표시 + Chrome DevTools MCP E2E. Phase 1의 causes/policy/protocol과 `PreparationResult`가 그대로 입력이 된다.
+Phase 1 병합 후 작성한다. 범위: `background/run-supervisor.ts` + `logicalRun` storage(attempt별 decision 영속) + PageRuntimePort(`navigateIfNeeded`/`forceReenter`/inject/ping) + TerminalEffects 분리 + `AttemptControlMessage` 배선(flush→결정 영속→ACK→reenter 계약, 재전송 재ACK) + content의 `GET_ATTEMPT_STATUS` 응답 + top-level bootstrap reconcile과 `supervisorReady` barrier + 기존 리스너 5개 흡수 + `decide()` 배선 + RESET_PAGE 실행 + 알림 억제 + Side Panel RECOVERING 표시 + Chrome DevTools MCP E2E. Phase 1의 causes/policy/protocol과 `PreparationResult`가 그대로 입력이 된다.
 
 ## Self-Review 결과
 
 - 스펙 §5.1(adapter 축소) → Task 4·6, §5.2(runner/coordinator) → Task 2·3, §5.3(파일 분리 core) → Task 1, §5.4(protocol 타입) → Task 1(배선은 Phase 2), §6(telemetry 발화점) → Task 5 reporter, §7 Phase 1 항목 전부 매핑 확인.
-- 분류 로직 위치: coordinator·runner에 Cause 리터럴 없음 — fatal은 classifier 함수 주입, stall은 `classifyStall` 호출(Task 2 구현 확인).
+- 분류 로직 위치: coordinator·runner에 Cause 리터럴 없음 — fatal은 classifier 함수 주입, stall은 `classifyStall` 호출(calendar coordinator의 interrupted-deadline 분기 포함). 셀 소실 재순환은 Cause가 아니라 interrupt 토큰(`"target_cell_missing"`)로 흐른다.
 - 타입 일관성: `CalendarFacts`는 shared/run-control/facts.ts 단일 정의, Task 3 포트 계약·Task 4 adapter 구현 일치. `PreparationResult` 소비처(Task 5 `resolvePreparation`) 일치.

@@ -49,6 +49,18 @@
 | clock sync를 준비 뒤로 이동 | 소유권만 수용, 순서 이동 기각 | 준비 deadline이 serverClock 위에서 돌고(동작 보존), rolling sampler는 관측 span이 길수록 confidence가 개선된다(HIGH = 5표본+3초 span; 오픈 임박 실행에선 준비 구간이 span의 상당 부분). 절충: 시계는 실행영역 소유로 명명하고, attempt 시작 시 조기 기동하는 "reference clock pre-sampler"로 명시한다(§5.6). |
 | `RETRY_ACTION{delayMs}` policy variant | 기각(미채택) | 단계 내 재시도는 runner의 기계적 예산이고, 예산 소진 후 동일 행동 재시도는 현행 동작에 없다(RESET이 그 역할). closed union은 추후 variant 추가 시 컴파일러가 전 소비처를 강제하므로 선제 추가의 이득이 없다. |
 
+3차 리뷰 반영(수정 5건 + 보강 2건):
+
+| 항목 | 판정 | 반영 |
+|---|---|---|
+| AttemptOutcome 정보 부족 | 결함 인정 | `message`/`finishedAt` 포함, `TerminalRunState`로 제한 — TerminalEffects·finishJob이 telemetry를 다시 읽지 않는다(§5.4). |
+| ACK 유실 재전송 미방어 | 결함 인정 | attempt별 decision 영속 + 재전송 시 저장된 decision 재ACK. 최초 처리에서만 resetCount 증가(§5.4). |
+| ACK 전 forceReenter | 결함 인정 | 결정 영속 → ACK → supervisor queue에서 reenter. ACK = "결정이 영속 접수됨"(§5.4). |
+| PING만으로 reconcile | 결함 인정 | `GET_ATTEMPT_STATUS(attemptId) → { running, phase }` 추가 + handler들의 `supervisorReady` barrier(§5.4). |
+| DATE_NOT_IN_CALENDAR 이중 사용 | 결함 인정 | 원인 코드와 제어흐름 신호 분리: 셀 일시 소실은 runner `interrupted("target_cell_missing")` 내부 토큰, 월 단계 최종 판정만 `DATE_NOT_IN_CALENDAR`(§5.2). |
+| pre-sampler 명칭 | 보강 | 초기 동기화·anchor까지 수행하므로 **attempt reference clock**으로 정정(§5.6). |
+| LogicalRun 필드 | 보강 | `currentAttemptId`/`startedAt`/`updatedAt`/`origin`/attempt별 `decision` 추가(§5.5). |
+
 ## 4. 아키텍처: Control Plane / Data Plane
 
 ```text
@@ -94,6 +106,7 @@ Adapter는 관측과 단일 행동만 남긴다. `EntryAdapter.inspect()`, `Cale
 - **원인 분류는 runner가 소유하지 않는다**: fatal 판정은 매 관측마다 필요하므로 runner가 `classifier.ts`의 stage별 분류 함수를 주입받아 호출하고, 정체 원인은 `classifyStall(stage, attempts)`를 호출한다. 분류 로직의 정의는 전부 `classifier.ts`에 있다.
 - **단계 의미는 coordinator가 소유한다**: `entry-coordinator`(홍보 인터스티셜 규칙 포함), `calendar-coordinator`(월 이동 → 날짜 선택 순서와 셀 소실 시 재순환 규칙), `person-coordinator`. 사용자 가시 메시지 표도 coordinator에 있다. coordinator는 루프를 재구현하지 않는다 — 루프-내 특수 행동(홍보 닫기)은 runner의 옵션 훅으로 지원한다.
 - `progressKey`가 비어 있지 않은 값으로 바뀌면 attempt 예산 리셋(다단 월 이동). 빈 문자열은 "판독 불가"로 리셋하지 않는다.
+- **interrupt 훅**: 원인 코드는 제어흐름 신호를 겸하지 않는다. 단계 내부 재순환이 필요한 관측(예: 날짜 준비 중 목표 셀 일시 소실)은 `interrupt(f)`가 내부 토큰을 반환해 runner가 `{ kind: "interrupted", token }`으로 종료하고, coordinator가 토큰을 해석한다(달력: `"target_cell_missing"` → 남은 deadline 안에서 월 단계부터 재순환). `DATE_NOT_IN_CALENDAR`는 월 단계의 최종 판정(목표 월인데 셀 없음)에서만 나온다.
 
 ### 5.3 순수 core (shared/run-control/)
 
@@ -137,45 +150,81 @@ decide(cause, budget: { resetCount }, time: { msToOpen; msToStop },
 
 ### 5.4 attempt 제어 프로토콜 — Telemetry는 제어에 사용하지 않는다
 
-content는 현행대로 attempt를 terminal 상태로 끝낸다(상태머신 terminal 불변·IndexedDB `[runId, seq]` 보존). 다만 supervisor 통지는 기존 RUN_EVENT(best-effort, 유실 허용)가 아니라 **전용 typed 메시지**로 한다:
+content는 현행대로 attempt를 terminal 상태로 끝낸다(상태머신 terminal 불변·IndexedDB `[runId, seq]` 보존). 다만 supervisor 통지는 기존 RUN_EVENT(best-effort, 유실 허용)가 아니라 **전용 typed 메시지**로 한다. outcome은 TerminalEffects·finishJob이 필요로 하는 전부(사용자 메시지·종료 시각)를 싣는다 — telemetry를 다시 읽지 않는다:
 
 ```ts
 // shared/run-control/protocol.ts
+type TerminalRunState = Extract<RunState,
+  "DRY_RUN_COMPLETED" | "HANDED_OFF" | "COMPLETED" | "STOPPED" | "TIMED_OUT" | "FAILED">;
 type AttemptPhase = "PREPARING" | "EXECUTING";
+
 type AttemptOutcome =
-  | { kind: "terminal"; state: RunState }                                   // 실행영역 종결(현행 의미)
-  | { kind: "preparation_failed"; cause: PreparationCause; attempts: number };
+  | { kind: "preparation_failed"; state: "HANDED_OFF"; cause: PreparationCause;
+      attempts: number; message: string; finishedAt: number }
+  | { kind: "terminal"; state: TerminalRunState; message: string; finishedAt: number };
+
+// content → background
 type AttemptControlMessage =
   | { type: "ATTEMPT_PHASE_CHANGED"; logicalRunId: string; attemptId: string; phase: AttemptPhase }
   | { type: "ATTEMPT_FINISHED"; logicalRunId: string; attemptId: string; outcome: AttemptOutcome };
+// ATTEMPT_FINISHED의 sendResponse = ACK:
+interface AttemptFinishedAck { ok: true; decision: "RESET_PAGE" | "HANDOFF"; }
+
+// background → content (reconcile 전용)
+interface AttemptStatusRequest { type: "GET_ATTEMPT_STATUS"; attemptId: string; }
+interface AttemptStatusResponse { attemptId: string; running: boolean; phase: AttemptPhase | null; }
 ```
 
 준비 실패 시 순서(각 화살표가 계약):
 
 ```text
 content terminal 확정 → trace/diagnostics flush 완료
-  → ATTEMPT_FINISHED 전송 (sendMessage response = ACK, 실패 시 제한 재시도)
-  → supervisor decide()
-  → RESET_PAGE: TerminalEffects 억제 → forceReenter() → inject → 새 attempt START
+  → ATTEMPT_FINISHED 전송 (ACK 없으면 제한 재시도)
+  → supervisor: decide() → attempt 레코드에 decision 영속
+  → sendResponse(ACK = "결정이 영속 접수됨". 행동 완료가 아님)
+  → RESET_PAGE: TerminalEffects 억제 → supervisor queue에서 forceReenter() → inject → 새 attempt START
   → HANDOFF: logical run terminal 확정 → TerminalEffects 실행
 ```
 
-- **flush 후 전송, ACK 후 reenter**: `forceReenter()`는 페이지를 unload하므로, ACK 이전에 실행하면 trace가 유실된다. content는 flush 완료 뒤에만 `ATTEMPT_FINISHED`를 보내고, supervisor는 이 메시지 수신(= flush 완료 증거) 후에만 reenter한다.
-- **안전 기본값**: content가 background에 도달하지 못하면(ACK 없음) 자동 reset 없이 현재 attempt의 terminal 상태로 끝난다 — 현행 동작과 동일.
-- **멱등성**: supervisor는 `logicalRun.currentAttemptId`와 불일치하는 메시지를 무시한다. `ATTEMPT_PHASE_CHANGED(EXECUTING)` 수신 후에는 어떤 RESET도 금지한다.
-- **SW 재기동**: `logicalRun`은 storage 영속. reconcile은 `onStartup`/`onInstalled`가 아니라 **service worker 모듈 top-level에서 매 기동마다** 실행한다(리스너 등록을 막지 않도록 비동기로). 진행 중 logical run을 읽고, content PING 실패 + 시간 예산 초과면 종결한다.
+- **flush 후 전송, ACK 후 reenter**: `forceReenter()`는 페이지를 unload하므로 두 가지를 모두 지킨다. ① content는 flush 완료 뒤에만 `ATTEMPT_FINISHED`를 보낸다(전송 자체가 flush 완료 증거). ② supervisor는 **ACK를 보낸 뒤** 별도 queue에서 reenter한다 — ACK 전에 unload하면 응답 채널이 죽어 content 재시도가 허공에 간다.
+- **멱등성(재전송 방어)**: `currentAttemptId` 비교만으로는 같은 attempt의 ACK 유실 재전송을 못 막는다. outcome 수신 시 attempt 레코드에 `decision`/`decidedAt`을 영속하고, **이미 결정된 attempt의 재전송에는 저장된 decision을 그대로 재ACK**한다. resetCount 증가·RESET 예약은 최초 처리에서만 일어난다. `currentAttemptId` 불일치 메시지는 무시하고, `ATTEMPT_PHASE_CHANGED(EXECUTING)` 이후에는 어떤 RESET도 금지한다.
+- **안전 기본값**: content가 background에 도달하지 못하면(재시도 후에도 ACK 없음) 자동 reset 없이 현재 attempt의 terminal 상태로 끝난다 — 현행 동작과 동일.
+- **SW 재기동**: `logicalRun`은 storage 영속. reconcile은 `onStartup`/`onInstalled`가 아니라 **service worker 모듈 top-level에서 매 기동마다** 실행한다. 리스너 등록은 동기로 먼저 하되, 모든 message·alarm handler 본문은 `supervisorReady` barrier(bootstrap reconcile 완료 promise)를 await한다. reconcile은 PING(주입 여부만 증명)이 아니라 `GET_ATTEMPT_STATUS`로 **해당 attempt가 실제 실행 중인지** 확인하고, 미실행 + 시간 예산 초과면 종결한다.
 - RUN_EVENT는 계속 흐르되(사이드패널 projection·이벤트 로그) 제어 결정에 사용하지 않는다.
 
 ### 5.5 상태 모델·terminal 효과
 
-- 신규: `LogicalRun { logicalRunId, attempts: [{ runId, startedAt, finalState?, cause? }], resetCount, config, tabId, status: PREPARING | EXECUTING | RECOVERING | TERMINAL }` — background 단독 소유 storage 키.
+- 신규 storage 키(background 단독 소유):
+
+```ts
+interface LogicalRun {
+  logicalRunId: string;
+  origin: { kind: "manual" } | { kind: "scheduled"; jobId: string };
+  config: ReservationConfig;
+  tabId: number;
+  status: "PREPARING" | "EXECUTING" | "RECOVERING" | "TERMINAL";
+  startedAt: number;
+  updatedAt: number;
+  resetCount: number;
+  currentAttemptId: string;
+  attempts: Array<{
+    runId: string;            // = attemptId
+    startedAt: number;
+    finalState?: TerminalRunState;
+    cause?: PreparationCause;
+    finishedAt?: number;
+    decision?: "RESET_PAGE" | "HANDOFF";  // 멱등 재ACK의 근거
+    decidedAt?: number;
+  }>;
+}
+```
 - 기존 `RunState`/`activeRun`은 attempt 단위 projection으로 **무변경 유지**(sidepanel 라벨·trace·CSV 하위호환).
 - **TerminalEffects 모듈**: 예약 작업 종료(finishJob)·배지·OS 알림. logical run terminal에서만, supervisor 결정 이후에만 실행한다. 현행 `recordEvent`의 해당 분기들은 이 모듈로 이동한다 — "저장 즉시 알림"이 사라져 RESET 중 오보(인계됨 알림)가 구조적으로 불가능해진다.
 - Side Panel: `logicalRun` 구독으로 "재시도 중"(RECOVERING) 표시 1줄 추가.
 
 ### 5.6 시계 소유권
 
-reference clock(부트스트랩 표본 + rolling sampler + 앵커·armLead)은 **실행영역 소유**다. 준비 파이프라인은 시계를 소유하지 않고 주입된 `Clock` view만 사용한다. 단 sampler는 attempt 시작 시 조기 기동한다 — 이름은 **reference clock pre-sampler**로 명시한다. 근거: 준비 deadline은 현행대로 serverClock 위에서 돌고(동작 보존), rolling estimator는 관측 span이 길수록 confidence가 개선되므로 준비 구간(수 초~수십 초)을 샘플링 창으로 쓰는 것이 armLead 품질에 기여한다. 동기화 실행 순서는 현행과 동일하다(validate → pre-sampler 기동 → 준비).
+reference clock(부트스트랩 표본 + rolling sampler + 앵커·armLead)은 **실행영역 소유**다. 준비 파이프라인은 시계를 소유하지 않고 주입된 `Clock` view만 사용한다. 단 이 서비스는 attempt 시작 시 조기 기동한다 — 초기 동기화와 anchor까지 수행하므로 "pre-sampler"가 아니라 **attempt reference clock**으로 명명한다. 근거: 준비 deadline은 현행대로 serverClock 위에서 돌고(동작 보존), rolling estimator는 관측 span이 길수록 confidence가 개선되므로 준비 구간(수 초~수십 초)을 샘플링 창으로 쓰는 것이 armLead 품질에 기여한다. 동기화 실행 순서는 현행과 동일하다(validate → pre-sampler 기동 → 준비).
 
 ## 6. Telemetry — 관측 전용
 
@@ -197,7 +246,7 @@ Telemetry는 어떤 행동도 결정하지 않고, 어떤 제어 채널로도 �
 
 **Phase 2 — Control Plane:** Phase 1 병합 후 `31-control-plane-implementation.md`로 계획.
 6. `logicalRun` storage + `background/run-supervisor.ts` + PageRuntimePort(`navigateIfNeeded`/`forceReenter`/inject/ping) + TerminalEffects. 기존 리스너 5개 흡수, 진입점 통일, top-level bootstrap reconcile.
-7. AttemptControlMessage 배선(flush→ACK→reenter 계약 포함) + decide() 배선 + RESET_PAGE 실행 + 알림 억제 + Side Panel RECOVERING 표시.
+7. AttemptControlMessage 배선(flush→결정 영속→ACK→reenter 계약, 재전송 재ACK, `GET_ATTEMPT_STATUS`, `supervisorReady` barrier 포함) + decide() 배선 + RESET_PAGE 실행 + 알림 억제 + Side Panel RECOVERING 표시.
 8. Chrome DevTools MCP E2E: DATE_SELECTION_STALLED 유도 → RESET 1회 → 재준비 → dry-run 완주. 오픈 임박 시 HANDOFF, EXECUTING 진입 후 RESET 금지 확인.
 
 **Phase 3 — 범위 밖(후속):** ExecutionPhase 내부 분해(Slot/PostSlot coordinator). 공식 p95 측정 하네스(RT-11/12) 확보 후 착수한다.
@@ -207,8 +256,8 @@ Telemetry는 어떤 행동도 결정하지 않고, 어떤 제어 채널로도 �
 1. **hot path 무변경**: `waitForOpen` 이후 코드는 diff가 없어야 한다. ExecutionPhase 경계는 메서드 호출 경계일 뿐 런타임 간접층을 추가하지 않는다.
 2. **orchestrator 테스트**: 준비 단계 관련 테스트는 coordinator/runner 단위로 이동·갱신되지만, 실행 단계 테스트(토글·슬롯·post-slot)는 한 줄도 수정하지 않고 통과해야 한다.
 3. **storage 계약**: `activeRun`/`runEvents`/`reservationConfig` 형식 불변. `logicalRun`은 추가 키.
-4. **제어 메시지 유실**: ATTEMPT_FINISHED ACK 실패 시 재시도 후 포기 — 안전 기본값은 "reset 없음, 현행 terminal 유지". reconcile이 잔여 logical run을 정리한다.
-5. **flush-reenter 순서**: ACK 이전 forceReenter는 trace 유실. E2E에서 reset 전후 IndexedDB eventCount·seq 연속성을 확인한다.
+4. **제어 메시지 유실·중복**: ATTEMPT_FINISHED ACK 실패 시 재시도 후 포기 — 안전 기본값은 "reset 없음, 현행 terminal 유지". 같은 attempt의 재전송은 영속된 decision 재ACK로 흡수해 resetCount 이중 증가를 막는다. reconcile이 잔여 logical run을 정리한다.
+5. **flush-ACK-reenter 순서**: ACK 이전 forceReenter는 trace 유실 + 응답 채널 사망(content 재시도 무한화). "결정 영속 → ACK → supervisor queue에서 reenter" 순서를 코드 구조로 강제하고, E2E에서 reset 전후 IndexedDB eventCount·seq 연속성을 확인한다.
 6. **RESET 루프 폭주**: resetCount 예산(기본 1)과 RESET_MIN_LEAD_MS가 이중 방어. E2E에서 2회째 정체가 HANDOFF로 끝나는지 확인한다.
 7. **terminal 효과 오보**: TerminalEffects가 supervisor 결정 이전에 실행되면 RESET 중 "인계됨" 알림이 나간다. 효과 호출 경로가 supervisor 하나뿐인지 타입 수준에서 강제한다(recordEvent에서 해당 분기 삭제).
 8. **scheduled job 경로**: launchScheduledJob이 supervisor를 경유하므로 job 상태 전이(markJobRunning/finishJob)는 logical run 종결 기준으로 이동한다.
@@ -219,5 +268,5 @@ Telemetry는 어떤 행동도 결정하지 않고, 어떤 제어 채널로도 �
 - BoundedStepRunner: fake clock/port로 발견·재시도·확인·정체·progressKey 리셋 시나리오.
 - Coordinator: fake 포트로 단계 의미(메시지·pair-loop·재순환) 검증. entry/person 중복 시나리오는 데이터만 바꿔 재사용.
 - Adapter: 기존 fixture 테스트를 사실 반환 계약으로 축소.
-- Supervisor(Phase 2): fake chrome ports로 revive·멱등·phase 가드·bootstrap reconcile·효과 순서.
+- Supervisor(Phase 2): fake chrome ports로 revive·멱등(ACK 유실 재전송 replay 포함)·phase 가드·bootstrap reconcile(`GET_ATTEMPT_STATUS`)·`supervisorReady` barrier·효과 순서.
 - E2E(Phase 2): Chrome DevTools MCP로 §7-8 시나리오.
