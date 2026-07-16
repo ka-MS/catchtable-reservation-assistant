@@ -109,7 +109,7 @@ function harness({
   clickResult = true,
   entry = { inspect: () => ({ reservationOpen: true, ctaAvailable: true, waitingOnly: false }), openReservation: () => true },
   person = { inspect: () => ({ ready: true, targetAvailable: true, targetSelected: true }), select: () => true },
-  prepareTarget = () => ({ status: "ready", message: "목표 날짜가 준비됐습니다." }),
+  inspectPreparation = () => ({ displayedMonth: "2026-07", target: { available: true, selected: true }, monthNavigation: null }),
   postSlot = { inspect: () => ({ kind: "form" }), advance: () => ({ status: "blocked", message: "unused" }) },
   onCalendarInspect = () => undefined,
   referenceEstimate = {},
@@ -137,15 +137,11 @@ function harness({
   let monotonicNow = 0;
   let cycles = 0;
   let slotClicks = 0;
-  let preparationResets = 0;
   const dateClicks = [];
   const dateClickTimes = [];
   const events = [];
   const traces = [];
   const defaultCalendar = {
-    resetPreparation: () => {
-      preparationResets += 1;
-    },
     inspect: () => {
       const selectedOverride = onCalendarInspect({ now, monotonicNow, cycles });
       const lastTargetClick = dateClickTimes.findLast((entry) => entry.date === "2026-07-30");
@@ -157,7 +153,8 @@ function harness({
         adjacentDate: "2026-07-29",
       };
     },
-    prepareTarget,
+    inspectPreparation,
+    clickMonth: () => true,
     clickDate: (date) => {
       dateClicks.push(date);
       dateClickTimes.push({ date, at: now, monotonicAt: monotonicNow });
@@ -232,7 +229,6 @@ function harness({
     fireReferenceEstimate: reference.fire,
     get slotClicks() { return slotClicks; },
     get now() { return now; },
-    get preparationResets() { return preparationResets; },
     jumpWall(ms) { now += ms; },
   };
 }
@@ -1082,12 +1078,24 @@ test("auto entry opens the reservation, prepares date and person, then uses the 
         return true;
       },
     },
-    prepareTarget: () => {
-      if (datePrepared) return { status: "ready", message: "목표 날짜가 준비됐습니다." };
-      datePrepared = true;
-      actions.push("date");
-      return { status: "acted", message: "목표 날짜를 선택했습니다." };
+    calendarOverride: {
+      inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: "2026-07-29" }),
+      inspectPreparation: () => ({
+        displayedMonth: "2026-07",
+        target: { available: true, selected: datePrepared },
+        monthNavigation: null,
+      }),
+      clickMonth: () => true,
+      clickDate: () => {
+        // 준비 dispatch만 기록한다 — 실행 단계 toggle 클릭은 이 검증 대상이 아니다.
+        if (!datePrepared) {
+          datePrepared = true;
+          actions.push("date");
+        }
+        return true;
+      },
     },
+    readSlots: () => [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }],
     person: {
       inspect: () => ({ ready: true, targetAvailable: true, targetSelected: personSelected }),
       select: () => {
@@ -1102,7 +1110,6 @@ test("auto entry opens the reservation, prepares date and person, then uses the 
 
   assert.equal(result.state, "DRY_RUN_COMPLETED");
   assert.deepEqual(actions, ["entry", "date", "person"]);
-  assert.equal(h.preparationResets, 1);
   assert.deepEqual(h.events.filter((event) => event.kind === "state").map((event) => event.data?.state).slice(0, 8), [
     "CONFIGURED",
     "VALIDATING",
@@ -1124,12 +1131,17 @@ test("preparation trace correlates background context with change-based dispatch
       inspect: () => ({ reservationOpen, ctaAvailable: true, waitingOnly: false }),
       openReservation: () => { reservationOpen = true; return true; },
     },
-    prepareTarget: (_target, beforeDispatch) => {
-      if (datePrepared) return { status: "ready", message: "목표 날짜가 준비됐습니다." };
-      beforeDispatch?.({ kind: "date", target: "2026-07-30", attempt: 1 });
-      datePrepared = true;
-      return { status: "acted", message: "목표 날짜를 선택했습니다." };
+    calendarOverride: {
+      inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: "2026-07-29" }),
+      inspectPreparation: () => ({
+        displayedMonth: "2026-07",
+        target: { available: true, selected: datePrepared },
+        monthNavigation: null,
+      }),
+      clickMonth: () => true,
+      clickDate: () => { datePrepared = true; return true; },
     },
+    readSlots: () => [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }],
     person: {
       inspect: () => ({ ready: true, targetAvailable: true, targetSelected: personSelected }),
       select: () => { personSelected = true; return true; },
@@ -1229,22 +1241,17 @@ test("auto entry hands off after two stalled CTA dispatches", async () => {
 });
 
 test("auto date preparation carries a bounded stall code into the terminal handoff", async () => {
-  let calls = 0;
+  let clicks = 0;
   const h = harness({
-    prepareTarget: (_target, beforeDispatch) => {
-      calls += 1;
-      if (calls <= 2) {
-        beforeDispatch?.({ kind: "date", target: "2026-07-30", attempt: calls });
-        return {
-          status: "acted",
-          message: calls === 1 ? "날짜를 선택했습니다." : "날짜 선택을 재시도했습니다.",
-        };
-      }
-      return {
-        status: "blocked",
-        message: "목표 날짜 선택 전환을 확인할 수 없습니다.",
-        errorCode: "DATE_SELECTION_STALLED",
-      };
+    calendarOverride: {
+      inspect: () => ({ targetAvailable: true, targetSelected: false, adjacentDate: "2026-07-29" }),
+      inspectPreparation: () => ({
+        displayedMonth: "2026-07",
+        target: { available: true, selected: false },
+        monthNavigation: null,
+      }),
+      clickMonth: () => true,
+      clickDate: () => { clicks += 1; return true; },
     },
   });
 
@@ -1252,11 +1259,60 @@ test("auto date preparation carries a bounded stall code into the terminal hando
   const handoff = h.events.find((event) => event.data?.state === "HANDED_OFF");
 
   assert.equal(result.state, "HANDED_OFF");
+  assert.equal(clicks, 2);
+  assert.equal(handoff?.message, "목표 날짜 선택 전환을 확인할 수 없습니다.");
   assert.equal(handoff?.data?.preparationErrorCode, "DATE_SELECTION_STALLED");
   assert.equal(handoff?.data?.preparationAttemptCount, 2);
 });
 
-test("consecutive same-tab runs reset the same CalendarAdapter before redispatching the same date", async () => {
+test("구 DATE_PREPARATION_BLOCKED 경로는 세분화된 코드와 기존 메시지로 인계된다", async () => {
+  // 설계 §8-9 구→신 오류 코드 매핑 고정: 사용자 가시 메시지는 불변, 코드만 세분화.
+  const scenarios = [
+    {
+      name: "같은 월인데 목표 셀 없음",
+      facts: () => ({ displayedMonth: "2026-07", target: null, monthNavigation: null }),
+      code: "DATE_NOT_IN_CALENDAR",
+      message: "목표 날짜가 현재 달력에 없습니다.",
+    },
+    {
+      name: "disabled 목표 날짜",
+      facts: () => ({ displayedMonth: "2026-07", target: { available: false, selected: false }, monthNavigation: null }),
+      code: "DATE_UNAVAILABLE",
+      message: "목표 날짜를 선택할 수 없습니다.",
+    },
+    {
+      name: "월 이동 수단 없음",
+      facts: () => ({ displayedMonth: "2026-06", target: null, monthNavigation: { direction: "Next page", available: false } }),
+      code: "MONTH_NAVIGATION_UNAVAILABLE",
+      message: "목표 월로 이동할 수 없습니다.",
+    },
+    {
+      name: "월 전환 정체",
+      facts: () => ({ displayedMonth: "2026-06", target: null, monthNavigation: { direction: "Next page", available: true } }),
+      code: "MONTH_TRANSITION_STALLED",
+      message: "달력 월 전환을 확인할 수 없습니다.",
+    },
+  ];
+  for (const scenario of scenarios) {
+    const h = harness({
+      calendarOverride: {
+        inspect: () => ({ targetAvailable: true, targetSelected: true, adjacentDate: "2026-07-29" }),
+        inspectPreparation: scenario.facts,
+        clickMonth: () => true,
+        clickDate: () => true,
+      },
+    });
+    const result = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 8_000 }));
+    const handoff = h.events.findLast((event) => event.data?.state === "HANDED_OFF");
+    assert.equal(result.state, "HANDED_OFF", scenario.name);
+    assert.equal(handoff?.message, scenario.message, scenario.name);
+    assert.equal(handoff?.data?.preparationErrorCode, scenario.code, scenario.name);
+  }
+});
+
+test("consecutive same-tab runs redispatch the same date without shared adapter retry state", async () => {
+  // 재시도 상태가 runner의 run-scoped 지역 변수로 이동했으므로, 같은
+  // CalendarAdapter를 공유하는 연속 실행은 reset 없이도 서로 격리된다(RT-16B 대체).
   const dom = await loadFixture("calendar-navigation.html");
   const document = dom.window.document;
   const section = document.querySelector("section");
@@ -1266,42 +1322,38 @@ test("consecutive same-tab runs reset the same CalendarAdapter before redispatch
   adjacent.setAttribute("aria-pressed", "false");
   section.append(adjacent);
   const target = document.querySelector('[aria-label*="7월 30"]');
-  let adapterNow = 0;
   let targetClicks = 0;
-  let run = 0;
-  let resets = 0;
+  let run = 1;
   const dispatchRuns = [];
   target.addEventListener("click", () => {
     targetClicks += 1;
     if (targetClicks === 3) target.setAttribute("aria-pressed", "true");
   });
-  const adapter = new CalendarAdapter(document, () => adapterNow);
+  const adapter = new CalendarAdapter(document);
   const sharedCalendar = {
-    resetPreparation: () => {
-      run += 1;
-      resets += 1;
-      adapter.resetPreparation();
-    },
     inspect: (targetDate) => adapter.inspect(targetDate),
-    prepareTarget: (targetDate, beforeDispatch) => adapter.prepareTarget(targetDate, (dispatch) => {
-      if (dispatch.kind === "date") dispatchRuns.push(run);
-      beforeDispatch?.(dispatch);
-    }),
-    clickDate: (date) => adapter.clickDate(date),
+    inspectPreparation: (targetDate) => adapter.inspectPreparation(targetDate),
+    clickMonth: (direction) => adapter.clickMonth(direction),
+    clickDate: (date) => {
+      // 준비 dispatch만 기록한다 — 실행 단계 toggle은 선택 완료 후에만 발생한다.
+      if (date === "2026-07-30" && target.getAttribute("aria-pressed") !== "true") {
+        dispatchRuns.push(run);
+      }
+      return adapter.clickDate(date);
+    },
   };
   const h = harness({
     calendarOverride: sharedCalendar,
-    onSleep: (ms) => { adapterNow += ms; },
     readSlots: () => [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }],
   });
 
   const first = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }), "run-first");
+  run = 2;
   const second = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }), "run-second");
 
   assert.equal(first.state, "HANDED_OFF");
   assert.equal(second.state, "DRY_RUN_COMPLETED");
   assert.deepEqual(dispatchRuns, [1, 1, 2]);
-  assert.equal(resets, 2);
   assert.equal(target.getAttribute("aria-pressed"), "true");
 });
 

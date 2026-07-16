@@ -15,7 +15,7 @@ npm run build             # clean -> tsc -> esbuild(content, main-world probe) -
 npm run typecheck          # tsc --noEmit (strict)
 npm test                   # build 후 node --test tests/*.test.mjs
 npm run check:dist         # dist 산출물 검증 (manifest v3, no content_scripts, no import 잔존 등)
-npm run check:independence # 코드/문서/테스트에 외부 실험 저장소 이름·경로 잔존 검사
+npm run check:independence # 코드/문서/테스트에 외부 실험 저장소 이름·경로 잔존 검사 (금지 문자열은 scripts/check-independence.mjs 참고 — 그 이름을 어디에도 새로 쓰지 말 것)
 npm run check              # 위 4개를 모두 실행 (병합 전 필수 게이트)
 ```
 

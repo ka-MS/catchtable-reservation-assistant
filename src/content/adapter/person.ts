@@ -1,15 +1,10 @@
+import type { PersonFacts } from "../../shared/run-control/facts.js";
 import { isDisabled, visibleAll } from "./dom.js";
-
-export interface PersonInspection {
-  ready: boolean;
-  targetAvailable: boolean;
-  targetSelected: boolean;
-}
 
 export class PersonAdapter {
   constructor(private readonly document: Document) {}
 
-  inspect(personCount: number): PersonInspection {
+  inspect(personCount: number): PersonFacts {
     const choices = this.choices();
     const target = choices.get(String(personCount));
     return {
