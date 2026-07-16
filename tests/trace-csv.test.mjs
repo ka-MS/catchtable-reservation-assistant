@@ -57,3 +57,31 @@ test("trace CSV keeps raw epochs, adds KST timestamps, and escapes dynamic attri
 test("trace CSV filename uses the shop, reservation date, and run id", () => {
   assert.equal(traceCsvFilename(run), "catchtable_nuwa_2026-08-02_run-abc.csv");
 });
+
+test("trace CSV preserves raw reference-clock sample attributes", () => {
+  const sample = {
+    ...event,
+    seq: 2,
+    code: "CLOCK_SAMPLE",
+    message: "기준시계 원시 표본",
+    attributes: {
+      clockSampleIndex: 1,
+      clockSampleTotal: 1,
+      clockSampleFreezeReason: "armed",
+      clockSampleT0MonoMs: 10,
+      clockSampleT1MonoMs: 50,
+      clockSampleServerDateMs: 1_000,
+      clockSampleRttMs: 40,
+      clockSampleOffsetLowerMs: 950,
+      clockSampleOffsetCenterMs: 1_470,
+      clockSampleOffsetUpperMs: 1_990,
+      clockSampleFromCache: false,
+    },
+  };
+  const csv = traceCsv(run, [sample]);
+  assert.match(csv, /attr\.clockSampleFreezeReason/);
+  assert.match(csv, /attr\.clockSampleT0MonoMs/);
+  assert.match(csv, /attr\.clockSampleOffsetCenterMs/);
+  assert.match(csv, /CLOCK_SAMPLE/);
+  assert.match(csv, /armed/);
+});

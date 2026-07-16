@@ -597,7 +597,8 @@ async function send(command: PanelCommand): Promise<CommandResponse> {
 }
 
 async function readTraceEvents(runId: string): Promise<TraceEvent[]> {
-  const response = await send({ type: "GET_RUN_TRACE", runId, limit: 100 });
+  // RT-15 raw clock events(max 64)는 화면에서 숨기므로 운영 로그 100건을 보존할 여유를 둔다.
+  const response = await send({ type: "GET_RUN_TRACE", runId, limit: 200 });
   if (!response.ok) throw new Error(response.error ?? "실행 로그를 읽을 수 없습니다.");
   return Array.isArray(response.data) ? response.data as TraceEvent[] : [];
 }

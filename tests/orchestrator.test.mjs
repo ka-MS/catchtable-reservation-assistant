@@ -17,11 +17,14 @@ function fakeReferenceClock({ estimate = {}, bootstrapFails = false } = {}) {
   });
   let latest = bootstrapFails ? null : build(estimate);
   let onEstimate = null;
-  const calls = { started: 0, stopped: 0 };
+  const samples = [];
+  const calls = { started: 0, stopped: 0, drained: 0 };
+  const bootstrapSample = { t0: 10, t1: 50, serverDateMs: 1_000, rttMs: 40, lowerMs: 950, upperMs: 1_990, fromCache: false };
   const port = {
     get latest() { return latest; },
-    sampleOnce: async () => (bootstrapFails ? null : { t0: 0, t1: 0, serverDateMs: 0, rttMs: 0, lowerMs: 0, upperMs: 0, fromCache: false }),
-    ingest: () => { latest = build(estimate); return latest; },
+    sampleOnce: async () => (bootstrapFails ? null : bootstrapSample),
+    ingest: (sample) => { samples.push(sample); latest = build(estimate); return latest; },
+    drainSamples: () => { calls.drained += 1; return samples.splice(0); },
     start: (cb) => { calls.started += 1; onEstimate = cb; return new Promise(() => {}); },
     stop: () => { calls.stopped += 1; },
   };
@@ -229,6 +232,63 @@ test("clock metrics transition from bootstrap to armed and forward the offset vi
     assert.equal(metric.data.clockOffsetMs, 42);
     assert.equal(metric.data.clockOffsetCenterMs, 42);
   }
+});
+
+test("raw reference-clock samples freeze at arm and trace exactly once at terminal", async () => {
+  const h = harness();
+  await h.orchestrator.start(config());
+  const raw = h.traces.filter((trace) => trace.code === "CLOCK_SAMPLE");
+  assert.equal(raw.length, 1);
+  assert.equal(h.referenceClockCalls.stopped, 1);
+  assert.equal(h.referenceClockCalls.drained, 1);
+  assert.equal(raw[0].options.state, null);
+  assert.deepEqual(raw[0].options.attributes, {
+    clockSampleIndex: 1,
+    clockSampleTotal: 1,
+    clockSampleFreezeReason: "armed",
+    clockSampleT0MonoMs: 10,
+    clockSampleT1MonoMs: 50,
+    clockSampleServerDateMs: 1_000,
+    clockSampleRttMs: 40,
+    clockSampleOffsetLowerMs: 950,
+    clockSampleOffsetCenterMs: 1_470,
+    clockSampleOffsetUpperMs: 1_990,
+    clockSampleFromCache: false,
+  });
+});
+
+test("an early handoff freezes reference-clock samples as terminal without duplication", async () => {
+  const h = harness({
+    entry: {
+      inspect: () => ({ reservationOpen: false, ctaAvailable: false, waitingOnly: true }),
+      openReservation: () => false,
+    },
+  });
+  await h.orchestrator.start(config({ entryMode: "auto" }));
+  const raw = h.traces.filter((trace) => trace.code === "CLOCK_SAMPLE");
+  assert.equal(raw.length, 1);
+  assert.equal(raw[0].options.attributes.clockSampleFreezeReason, "terminal");
+  assert.equal(h.referenceClockCalls.stopped, 1);
+  assert.equal(h.referenceClockCalls.drained, 1);
+});
+
+test("a failed bootstrap produces no raw reference-clock trace", async () => {
+  const h = harness({ bootstrapFails: true });
+  await h.orchestrator.start(config());
+  assert.equal(h.traces.some((trace) => trace.code === "CLOCK_SAMPLE"), false);
+  assert.equal(h.referenceClockCalls.drained, 1);
+});
+
+test("a failing raw reference-clock trace cannot change the terminal result", async () => {
+  const h = harness({
+    onTrace: (code) => {
+      if (code === "CLOCK_SAMPLE") throw new Error("raw clock exporter failed");
+    },
+  });
+  const result = await h.orchestrator.start(config());
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(h.referenceClockCalls.stopped, 1);
+  assert.equal(h.referenceClockCalls.drained, 1);
 });
 
 test("availability shadow records body/DOM agreement without changing the slot control result", async () => {

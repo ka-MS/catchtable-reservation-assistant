@@ -24,6 +24,7 @@
 - [슬롯 XHR 감시 패키지](xhr-slot-watch/10-analysis-design.md)
 - [오픈 타이밍 성능 패키지(우산)](open-timing-performance/open-timing-performance-analysis.md)
   - [Tier 1 · 기준시계 신뢰성](open-timing-performance/01-reference-clock-reliability/10-analysis.md)
+    - [RT-15 · 기준시계 원시 표본 trace](open-timing-performance/01-reference-clock-reliability/01-raw-sample-trace/00-index.md)
   - [Tier 2 · Availability 핫패스](open-timing-performance/02-availability-hot-path/10-analysis.md)
     - [Tier 2-1 · Shadow 관찰·안전 기반](open-timing-performance/02-availability-hot-path/01-observation-safety/10-analysis.md)
     - [Tier 2-2 · 제어 경로 활성화](open-timing-performance/02-availability-hot-path/02-control-activation/10-analysis.md)

@@ -86,6 +86,20 @@ test("trace view appends live batches incrementally and caps the DOM at one hund
   assert.equal(document.querySelector("#trace-event-count").textContent, "100개");
 });
 
+test("raw clock samples stay export-only and do not replace operational trace rows", () => {
+  const document = documentFixture();
+  const view = new TraceHistoryView(document, { select: () => undefined, download: () => undefined, diagnostic: () => undefined, remove: () => undefined });
+  const operational = event("run-clock", 1);
+  const raw = event("run-clock", 2, "CLOCK_SAMPLE");
+  view.renderRuns([run("run-clock", 1)]);
+  view.renderEvents([operational, raw]);
+  assert.equal(document.querySelectorAll("#trace-event-list > li").length, 1);
+  assert.match(document.querySelector("#trace-event-list > li")?.textContent ?? "", /event 1/);
+  view.appendLive({ type: "TRACE_LIVE_BATCH", run: run("run-clock"), events: [raw] });
+  assert.equal(document.querySelectorAll("#trace-event-list > li").length, 1);
+  assert.equal(document.querySelector("#trace-event-count").textContent, "1개");
+});
+
 test("clock sync detail shows phase, offset, uncertainty, confidence, and RTT/sample stats", () => {
   const document = documentFixture();
   const view = new TraceHistoryView(document, { select: () => undefined, download: () => undefined, remove: () => undefined });

@@ -23,6 +23,7 @@ export interface ReferenceClockPort {
   readonly latest: ReferenceClockEstimate | null;
   sampleOnce(signal: AbortSignal): Promise<ReferenceClockSample | null>;
   ingest(sample: ReferenceClockSample): ReferenceClockEstimate;
+  drainSamples(): ReferenceClockSample[];
   start(onEstimate: (estimate: ReferenceClockEstimate) => void): Promise<void>;
   stop(): void;
 }
@@ -57,6 +58,11 @@ export class ReferenceClockSampler implements ReferenceClockPort {
     if (this.samples.length > this.bufferSize) this.samples.shift();
     this.estimate = estimateReferenceClock(this.samples, this.estimate ?? undefined);
     return this.estimate;
+  }
+
+  /** 현재 원시 표본을 순서대로 넘기고 ring만 비운다. 마지막 estimate는 유지한다. */
+  drainSamples(): ReferenceClockSample[] {
+    return this.samples.splice(0);
   }
 
   /** HEAD 한 번으로 표본을 만든다. Date 없거나 파싱 불가면 null. */

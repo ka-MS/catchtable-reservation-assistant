@@ -2,7 +2,8 @@
 
 **갱신:** 2026-07-16
 **브랜치:** `codex/rt14-exact-empty-early-exit`
-**최신 작업 로그:** `docs/worklog/2026-07-16-03-tier3-preparation-resilience-analysis.md`
+**최신 작업 로그:** `docs/worklog/2026-07-16-04-rt15-clock-raw-sample-trace.md`
+**최신 기준시계 구현:** `docs/specs/open-timing-performance/01-reference-clock-reliability/01-raw-sample-trace/`
 **최신 Tier 3 분석:** `docs/specs/open-timing-performance/03-runtime-resilience/10-analysis.md`
 **최신 성능 구현:** `docs/specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/`
 **최신 성능 설계 메모:** `docs/specs/open-timing-performance/02-availability-hot-path/100-three-signal-and-empty-early-exit.md`
@@ -108,12 +109,22 @@ RT-14 EXACT EMPTY cycle 조기 종료를 구현하고 자동·Chrome 검증을 �
 - 종료 snapshot의 visible/focused만으로 구간 전체 focus를 설명할 수 없어 포커스 원인은 미확정으로 유지했다.
 - Tier 3 분석·RT-16·site behavior·evidence 판정을 보강했으며 코드와 hot path는 변경하지 않았다. RT-11은 공식 p95·wake counterfactual 측정 ID로 유지한다.
 
+RT-15 기준시계 원시 표본 trace 구현과 자동 검증을 완료했다.
+
+- 기존 최대 64개 `ReferenceClockSampler` ring을 actual arm에서 stop/drain하고 RunSession 메모리에 동결한다.
+- arm 전 종료는 terminal 경계에서 같은 동작을 수행하며, terminal `finally`에서만 `CLOCK_SAMPLE` event를 생성해 기존 flush에 합류시킨다.
+- estimator, monotonic anchor, armLead, 날짜 토글과 슬롯 제어 hot path는 변경하지 않았다.
+- raw event는 Side Panel 운영 목록에서 숨기고 CSV·진단 bundle에는 보존한다.
+- raw event의 `state=null` 계약으로 기존 run finalState와 finishedAt을 보존한다.
+- terminal 전 Content context 강제 종료와 trace queue overflow에서는 일부 raw 표본이 유실될 수 있으며 진단 best-effort 정책으로 수용했다.
+
 ## 검증 근거
 
 - 결제 정책 UX 대상 테스트: 73/73 통과
 - CSV short-cut 대상 테스트: 19/19 통과
 - 전체 `npm run check`: 303/303 tests(wakeAdvanceMs 계측 2건 포함), typecheck, dist validation, MAIN/ISOLATED independence 통과
 - RT-14 전체 `npm run check`: 315/315 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
+- RT-15 전체 `npm run check`: 323/323 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - RT-14 Chrome live: 3상태 radio 표시, `empty_exit` 저장·재로드 복원, `off` 원복, Side Panel 런타임 오류 없음
 - probe 정책 Chrome live: 확장 재로드 후 `XHR 응답 진단` 기본 꺼짐, 토글 동작, Side Panel 재로드 후 꺼짐 복원, 경고·오류 없음 확인
 - 실행 진단 Chrome live: IndexedDB v2에서 기존 runs 20/events 740 보존, snapshots store 생성, 실제 ZIP 다운로드와 Windows 기본 압축 해제 통과

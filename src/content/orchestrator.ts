@@ -1,5 +1,5 @@
 import { resolveAvailabilityProbeMode, validateReservationConfig } from "../shared/config.js";
-import { estimateReferenceClock, type ReferenceClockEstimate } from "../shared/clock.js";
+import { estimateReferenceClock, type ReferenceClockEstimate, type ReferenceClockSample } from "../shared/clock.js";
 import { waitUntil, type Clock, type Sleep } from "../shared/scheduler.js";
 import { MonotonicEpochClock } from "../shared/monotonic-clock.js";
 import { selectPreferredSlot, type SlotCandidate } from "../shared/slot-selection.js";
@@ -181,6 +181,10 @@ class RunSession {
   private watchLive = false;
   private lastArrivalAt: number | null = null;
   private referenceClockPort: ReferenceClockPort | null = null;
+  private frozenReferenceClockSamples: {
+    reason: "armed" | "terminal";
+    samples: ReferenceClockSample[];
+  } | null = null;
   private latestAppliedEstimate: ReferenceClockEstimate | null = null;
   private readonly runStartMonoMs: number;
   private readonly availabilityCorrelation = new AvailabilityCorrelationTracker();
@@ -360,7 +364,8 @@ class RunSession {
       } catch {
         // Mutation telemetry cleanup cannot change the terminal result.
       }
-      this.stopReferenceClock(); // waitForOpen 도달 전 조기 종료 시 안전망(참조를 비워 정상 경로에서 중복 호출 없음)
+      this.stopReferenceClock("terminal"); // waitForOpen 도달 전 조기 종료 시 안전망
+      this.traceFrozenReferenceClockSamples();
       await Promise.allSettled([
         this.deps.diagnostics?.forceFlush() ?? Promise.resolve(),
         this.deps.flushTrace?.() ?? Promise.resolve(),
@@ -596,9 +601,51 @@ class RunSession {
     return null;
   }
 
-  private stopReferenceClock(): void {
-    this.referenceClockPort?.stop();
+  private stopReferenceClock(reason: "armed" | "terminal"): void {
+    const port = this.referenceClockPort;
+    if (!port) return;
     this.referenceClockPort = null;
+    try {
+      port.stop();
+    } catch {
+      // 기준시계 진단 정리는 예약 결과를 바꾸지 않는다.
+    }
+    try {
+      this.frozenReferenceClockSamples ??= { reason, samples: port.drainSamples() };
+    } catch {
+      // 원시 표본 진단 실패는 기존 시계 추정·예약 경로와 격리한다.
+    }
+  }
+
+  private traceFrozenReferenceClockSamples(): void {
+    const frozen = this.frozenReferenceClockSamples;
+    this.frozenReferenceClockSamples = null;
+    if (!frozen || frozen.samples.length === 0) return;
+    const total = frozen.samples.length;
+    frozen.samples.forEach((sample, index) => {
+      try {
+        this.deps.trace?.("CLOCK_SAMPLE", "trace", `기준시계 원시 표본 ${index + 1}/${total}을 기록했습니다.`, {
+          serverAt: this.serverClockReady ? this.serverClock.now() : null,
+          // Raw 진단 event가 terminal prune를 반복 트리거하지 않도록 run state는 싣지 않는다.
+          state: null,
+          attributes: {
+            clockSampleIndex: index + 1,
+            clockSampleTotal: total,
+            clockSampleFreezeReason: frozen.reason,
+            clockSampleT0MonoMs: sample.t0,
+            clockSampleT1MonoMs: sample.t1,
+            clockSampleServerDateMs: sample.serverDateMs,
+            clockSampleRttMs: sample.rttMs,
+            clockSampleOffsetLowerMs: sample.lowerMs,
+            clockSampleOffsetCenterMs: (sample.lowerMs + sample.upperMs) / 2,
+            clockSampleOffsetUpperMs: sample.upperMs,
+            clockSampleFromCache: sample.fromCache,
+          },
+        });
+      } catch {
+        // Trace exporter 오류는 예약 결과를 바꾸지 않는다.
+      }
+    });
   }
 
   private applyReferenceClockEstimate(estimate: ReferenceClockEstimate): void {
@@ -742,7 +789,7 @@ class RunSession {
     });
     // 정밀 토글 그리드 진입 전 앵커를 동결한다 — 계속 갱신되게 두면 클릭 그리드
     // 계산 도중 앵커가 흔들릴 수 있다(20-design §3).
-    this.stopReferenceClock();
+    this.stopReferenceClock(waitResult === "ready" ? "armed" : "terminal");
     const waitingExit = this.stopOrTimeout(waitResult);
     if (waitingExit) return waitingExit;
     return null;

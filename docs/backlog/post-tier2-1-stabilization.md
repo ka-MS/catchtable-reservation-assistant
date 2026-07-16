@@ -307,7 +307,7 @@ Tier 2-2 종료 후 [사후 레드팀 리뷰](../specs/open-timing-performance/0
 
 ### 4.3.4 원시 시계 표본 trace 기록 (F3 후속)
 
-trace에는 `CLOCK_SYNCED` 요약 2건만 남고 개별 HEAD 표본(t0, t1, 서버 Date)이 없어 사후 재추정이 불가능하다. 원시 표본을 남기면 오픈 이후 표본까지 포함한 hindsight 재추정으로 일부 고불확실성 실행을 복원하고 estimator 오류를 분석할 수 있다. 단, 서버 풀 스큐가 실재하면 표본을 늘려도 하나의 정답으로 수렴하지 않으므로 모든 실행의 복원을 보장하지 않는다. **판정: 수용.** 설계 제약: 표본은 실시간 전송하지 않고 메모리 ring에 보관한 뒤 armed 또는 종료 시 한 번에 batch 기록해 정각 hot path의 메시지·로그 부담을 만들지 않는다. shadow 비교 측정(RT-11) 이후에 착수한다. **보완 항목: RT-15**
+trace에는 `CLOCK_SYNCED` 요약 2건만 남고 개별 HEAD 표본(t0, t1, 서버 Date)이 없어 사후 재추정이 불가능하다. 원시 표본을 남기면 hindsight 재추정으로 일부 고불확실성 실행을 복원하고 estimator 오류를 분석할 수 있다. 단, 서버 풀 스큐가 실재하면 표본을 늘려도 하나의 정답으로 수렴하지 않으므로 모든 실행의 복원을 보장하지 않는다. **판정: 수용.** 설계 제약: 표본은 실시간 전송하지 않고 기존 메모리 ring을 actual arm에서 동결한 뒤 terminal에서 기존 trace flush에 합류시켜 정각 hot path의 메시지·로그 부담을 만들지 않는다. RT-11 이후라는 기존 순서는 blocking이 아니며 2026-07-16 명시적 착수 결정으로 먼저 진행한다. **보완 항목: RT-15**
 
 RT-15의 성격은 서버 시계 **진단 로그 강화**다. 실시간 estimator, 예약 시각, 슬롯 제어 결정을 바꾸지 않고 각 HEAD 표본의 monotonic `t0/t1`, 서버 `Date`, RTT와 offset 후보를 제한된 메모리 ring에 보존하는 것이 범위다. flush 시점과 최대 표본 수, trace schema, 개인정보 비수집 계약은 별도 spec에서 확정한다.
 
@@ -332,7 +332,7 @@ RT-15의 성격은 서버 시계 **진단 로그 강화**다. 실시간 estimato
 | RT-12 | probe off 구성 actual-open 확인 표본 | 수용 | 다음 실제 오픈 | 없음 | PENDING | `docs/specs/open-timing-performance/02-availability-hot-path/90-redteam-review.md` F1 |
 | RT-13 | inactive_cycle 기회비용·수락 완화 분석 | 조사 필요 | 중요 예약 시즌 이후 | 없음 | INVESTIGATE | `docs/specs/open-timing-performance/02-availability-hot-path/90-redteam-review.md` F4 |
 | RT-14 | EXACT EMPTY body cycle 조기 종료 | 수용 | 구현·자동·Chrome 검증 완료, 비중요 실오픈 성능 검증 대기 | 없음 | DONE | `docs/specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/` |
-| RT-15 | 원시 시계 표본 ring buffer trace 기록 | 수용 | shadow 비교(RT-11) 이후 | 없음 | PENDING | 본 문서 §4.3.4 |
+| RT-15 | 원시 시계 표본 ring buffer trace 기록 | 수용 | 구현·자동 검증 완료 | 없음 | DONE | `docs/specs/open-timing-performance/01-reference-clock-reliability/01-raw-sample-trace/` |
 | RT-16 | 런타임 오류 분류와 오픈 전 준비 bounded recovery | 수용 | Tier 3 | 없음 | PROMOTED | `docs/specs/open-timing-performance/03-runtime-resilience/10-analysis.md` |
 
 상태 값은 다음 의미로 사용한다.

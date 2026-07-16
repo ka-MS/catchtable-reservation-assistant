@@ -62,6 +62,22 @@ test("repository stores idempotent batches, reads runs and deletes details", asy
   assert.equal((await repository.readEvents("run-1", 100)).length, 0);
 });
 
+test("raw clock events appended after terminal preserve the recorded final state", async () => {
+  const repository = new IndexedDbTraceRepository(indexedDB);
+  const run = descriptor("run-clock", 200);
+  await repository.append(run, [event("run-clock", 1, "FAILED")], "0.2.0");
+  const raw = {
+    ...event("run-clock", 2),
+    code: "CLOCK_SAMPLE",
+    attributes: { clockSampleIndex: 1, clockSampleTotal: 1 },
+  };
+  const record = await repository.append(run, [raw], "0.2.0");
+  assert.equal(record.finalState, "FAILED");
+  assert.equal(record.finishedAt, 1);
+  assert.equal(record.eventCount, 2);
+  await repository.deleteRun("run-clock");
+});
+
 test("repository prunes old runs and their events", async () => {
   const repository = new IndexedDbTraceRepository(indexedDB);
   for (let index = 1; index <= 3; index += 1) {

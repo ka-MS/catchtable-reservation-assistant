@@ -7,6 +7,10 @@ interface TraceViewActions {
   remove(runId: string): void;
 }
 
+function visibleEvents(events: TraceEvent[]): TraceEvent[] {
+  return events.filter((event) => event.code !== "CLOCK_SAMPLE");
+}
+
 function byId<T extends HTMLElement>(document: Document, id: string): T {
   const element = document.getElementById(id);
   if (!element) throw new Error(`필수 trace UI 요소가 없습니다: ${id}`);
@@ -172,7 +176,7 @@ export class TraceHistoryView {
   }
 
   renderEvents(events: TraceEvent[]): void {
-    const visible = events.slice(-100).reverse();
+    const visible = visibleEvents(events).slice(-100).reverse();
     const fragment = this.document.createDocumentFragment();
     visible.forEach((event) => fragment.append(eventItem(this.document, event)));
     this.list.replaceChildren(fragment);
@@ -193,9 +197,11 @@ export class TraceHistoryView {
     if (previousSelection !== null && previousSelection !== batch.run.runId) this.list.replaceChildren();
     this.select.value = batch.run.runId;
     this.syncActionState();
+    const events = visibleEvents(batch.events);
+    if (events.length === 0) return;
     if (this.list.querySelector(".event-empty")) this.list.replaceChildren();
     const fragment = this.document.createDocumentFragment();
-    [...batch.events].reverse().forEach((event) => fragment.append(eventItem(this.document, event)));
+    [...events].reverse().forEach((event) => fragment.append(eventItem(this.document, event)));
     this.list.prepend(fragment);
     while (this.list.children.length > 100) this.list.lastElementChild?.remove();
     this.count.textContent = `${this.list.children.length}개`;
