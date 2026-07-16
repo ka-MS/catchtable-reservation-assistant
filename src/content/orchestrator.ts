@@ -16,8 +16,7 @@ import type { ReservationConfig, RunEvent, RunExecutionContext, RunState } from 
 import type { TraceCode } from "../shared/telemetry/codes.js";
 import type { TraceAttributes, TraceSeverity } from "../shared/telemetry/types.js";
 import type { CalendarInspection, CalendarPreparationDispatch, CalendarPreparationResult } from "./adapter/calendar.js";
-import type { EntryInspection } from "./adapter/entry.js";
-import type { PersonInspection } from "./adapter/person.js";
+import type { EntryFacts, PersonFacts } from "../shared/run-control/facts.js";
 import type { PostSlotActionResult, PostSlotInspection } from "./adapter/post-slot.js";
 import type { StageSnapshot } from "./adapter/snapshot.js";
 import { AvailabilityCorrelationTracker, type DomCorrelation } from "./availability-correlation.js";
@@ -35,13 +34,13 @@ interface CalendarPort {
 }
 
 interface EntryPort {
-  inspect(): EntryInspection;
+  inspect(): EntryFacts;
   openReservation(): boolean;
   dismissPromo?(): boolean;
 }
 
 interface PersonPort {
-  inspect(personCount: number): PersonInspection;
+  inspect(personCount: number): PersonFacts;
   select(personCount: number): boolean;
 }
 

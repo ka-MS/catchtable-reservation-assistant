@@ -1,17 +1,12 @@
+import type { EntryFacts } from "../../shared/run-control/facts.js";
 import { readCalendarCells } from "./calendar-dom.js";
 import { isDisabled, isElementHidden, normalizedText, visibleAll } from "./dom.js";
 import { findPromoDismissButton } from "./dialog.js";
 
-export interface EntryInspection {
-  reservationOpen: boolean;
-  ctaAvailable: boolean;
-  waitingOnly: boolean;
-}
-
 export class EntryAdapter {
   constructor(private readonly document: Document) {}
 
-  inspect(): EntryInspection {
+  inspect(): EntryFacts {
     const reservationOpen = readCalendarCells(this.document).length > 0;
     const buttons = this.dockButtons();
     return {
