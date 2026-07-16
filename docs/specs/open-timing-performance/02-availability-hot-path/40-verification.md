@@ -87,7 +87,7 @@ Catchtable 페이지 콘솔에는 error/warn/issue가 없었다. extension page�
 - body의 actuator 승격
 - Tier 2-2 최종 종료
 
-현재 판정은 **fallback 보존형 구현 완료, RT-10M 재측정 대기**다. RT-05는 최종 종료 gate로 유지한다.
+이 절의 당시 판정은 **fallback 보존형 구현 완료, RT-10M 재측정 대기**였다. 이후 RT-10M 실제 오픈 판독과 RT-05 종료 gate를 완료했다. 현재 최종 판정은 **REDUCE 기능·안전 범위 종료, probe 기본 비활성, body wake 성능 이득 미입증**이며 공식 p95와 counterfactual은 후속 측정이다.
 
 ## 7. RT-10M 실제 오픈 음성 표본
 

@@ -90,6 +90,7 @@ Availability 응답/DOM = 실제 오픈의 ground truth (클릭 트리거)
 
 - 오픈 직전 탭 활성화·창 포커스(배경 탭 타이머 스로틀 회피)
 - Service Worker 재시작 시 런 상태 reconcile, 페이지 새로고침 재주입
+- 예약 CTA·날짜·인원 준비의 UI 전이 확인과 bounded recovery
 - 실패 주입 테스트(스큐 60%, 50:50 클러스터, RTT 급증, 응답 역전, 탭 hidden, SW 종료 등)
 
 ## 5. 티어 경계 요약

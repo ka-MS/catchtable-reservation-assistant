@@ -31,7 +31,7 @@ Tier 2-1 완료 후 외부 정적 레드팀 리뷰와 실제 후속 예약 흐�
 - Tier 2-1 XHR shadow 관찰 구현·자동 테스트·live dry-run 완료
 - 실제 오픈 `EMPTY -> POPULATED`를 1회 확인했고 body가 DOM보다 47.7ms 선행했다. 34/34 events, dropped 0, 최종 사용자 인계까지 공식 판독 완료
 - Tier 2-2 `REDUCE`를 구현했다. 검증된 body는 DOM scan만 깨우며 선택과 클릭은 기존 SlotAdapter가 담당한다.
-- 자동 게이트 263개와 Chrome dry-run을 통과했고 상태는 `fallback 보존형 구현 완료, RT-10M 재측정 대기`다.
+- 자동 게이트와 Chrome·실제 오픈 기능 검증을 통과했다. RT-10M과 RT-05까지 완료한 현재 상태는 `REDUCE 기능·안전 범위 종료, probe 기본 비활성, 성능 이득·공식 p95 미입증`이다.
 - live에서 확인한 `main` 밖 예약 portal 슬롯을 fixture로 고정하고 조상 가시성 필터를 유지한 채 SlotAdapter 범위를 보완했다.
 
 현재 기준선을 보존하기 위해 다음 제약을 둔다.
@@ -309,6 +309,8 @@ Tier 2-2 종료 후 [사후 레드팀 리뷰](../specs/open-timing-performance/0
 
 trace에는 `CLOCK_SYNCED` 요약 2건만 남고 개별 HEAD 표본(t0, t1, 서버 Date)이 없어 사후 재추정이 불가능하다. 원시 표본을 남기면 오픈 이후 표본까지 포함한 hindsight 재추정으로 일부 고불확실성 실행을 복원하고 estimator 오류를 분석할 수 있다. 단, 서버 풀 스큐가 실재하면 표본을 늘려도 하나의 정답으로 수렴하지 않으므로 모든 실행의 복원을 보장하지 않는다. **판정: 수용.** 설계 제약: 표본은 실시간 전송하지 않고 메모리 ring에 보관한 뒤 armed 또는 종료 시 한 번에 batch 기록해 정각 hot path의 메시지·로그 부담을 만들지 않는다. shadow 비교 측정(RT-11) 이후에 착수한다. **보완 항목: RT-15**
 
+RT-15의 성격은 서버 시계 **진단 로그 강화**다. 실시간 estimator, 예약 시각, 슬롯 제어 결정을 바꾸지 않고 각 HEAD 표본의 monotonic `t0/t1`, 서버 `Date`, RTT와 offset 후보를 제한된 메모리 ring에 보존하는 것이 범위다. flush 시점과 최대 표본 수, trace schema, 개인정보 비수집 계약은 별도 spec에서 확정한다.
+
 ## 5. 보완 항목 원장
 
 `Blocks`는 해당 항목이 미완료일 때 실제로 진입하거나 종료할 수 없는 체크포인트만 표시한다. `없음`인 항목은 backlog에 남아 있어도 다른 Tier 진행을 자동으로 막지 않는다.
@@ -331,6 +333,7 @@ trace에는 `CLOCK_SYNCED` 요약 2건만 남고 개별 HEAD 표본(t0, t1, 서�
 | RT-13 | inactive_cycle 기회비용·수락 완화 분석 | 조사 필요 | 중요 예약 시즌 이후 | 없음 | INVESTIGATE | `docs/specs/open-timing-performance/02-availability-hot-path/90-redteam-review.md` F4 |
 | RT-14 | EXACT EMPTY body cycle 조기 종료 | 수용 | 구현·자동·Chrome 검증 완료, 비중요 실오픈 성능 검증 대기 | 없음 | DONE | `docs/specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/` |
 | RT-15 | 원시 시계 표본 ring buffer trace 기록 | 수용 | shadow 비교(RT-11) 이후 | 없음 | PENDING | 본 문서 §4.3.4 |
+| RT-16 | 런타임 오류 분류와 오픈 전 준비 bounded recovery | 수용 | Tier 3 | 없음 | PROMOTED | `docs/specs/open-timing-performance/03-runtime-resilience/10-analysis.md` |
 
 상태 값은 다음 의미로 사용한다.
 

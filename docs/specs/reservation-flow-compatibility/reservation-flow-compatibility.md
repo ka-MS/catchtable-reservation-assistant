@@ -28,7 +28,7 @@
 - 빈 모달 일반 재진입, 인증·대기열 복구, 무한 재시도
 - 예약 폼 입력, 약관 동의, 결제 승인, 최종 예약 확정
 
-빈 모달 복구는 `docs/plans/next-development.md`의 RT-11로 인계한다.
+빈 모달 복구는 `docs/plans/next-development.md`의 RT-16으로 인계한다.
 
 ## 완료 기준
 
@@ -52,4 +52,4 @@
 ## 잔여 위험과 후속 백로그
 
 - 실제 슬롯 부재 시 해당 식당 E2E는 미검증으로 남긴다.
-- 빈 모달·전환 정지는 RT-11의 bounded recovery에서 다룬다.
+- 빈 모달·전환 정지는 RT-16의 bounded recovery에서 다룬다.

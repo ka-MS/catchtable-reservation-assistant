@@ -6,7 +6,7 @@
 
 - [RT-14 EXACT EMPTY 실오픈](#rt14-exact-empty-live)
 - [설정 적용 비교 표본](#probe-mode-comparison)
-- [달력 호환성 진단](#calendar-compatibility)
+- [날짜 준비 전환 진단](#calendar-compatibility)
 - [예약창 진입 진단](#reservation-entry)
 
 <a id="rt14-exact-empty-live"></a>
@@ -28,7 +28,7 @@
 manifest의 설정값은 `empty_exit`이지만 RT-14 전용 `empty_early_exit` trace가 없다. 실행 방식과 시작 조건이 달라 성능 비교군으로 사용하지 않는다.
 
 <a id="calendar-compatibility"></a>
-## 달력 호환성 진단
+## 날짜 준비 전환 진단
 
 | 실행 | 예약 날짜 | 종료 | 원본 메모 | 진단 |
 |---|---|---|---|---|
@@ -36,7 +36,9 @@ manifest의 설정값은 `empty_exit`이지만 RT-14 전용 `empty_early_exit` t
 | [mokran run-8b87f277](mokran-run-8b87f277-e782-4353-a925-7e1b05bc133f/run.csv) | 2026-08-20 | `HANDED_OFF` | `목표 날짜 상태 확인불가(실제로는있음)` | [manifest](mokran-run-8b87f277-e782-4353-a925-7e1b05bc133f/diagnostic/manifest.json), [screenshot](mokran-run-8b87f277-e782-4353-a925-7e1b05bc133f/screenshot.png) |
 | [mokran run-ec09336f](mokran-run-ec09336f-3a3a-4d7a-b9b7-514163ee67bd/run.csv) | 2026-08-20 | `HANDED_OFF` | `목표 날짜 상태 확인불가(실제로는있음)` | [manifest](mokran-run-ec09336f-3a3a-4d7a-b9b7-514163ee67bd/diagnostic/manifest.json) |
 
-이 세 실행은 달력 DOM과 선택 상태 확인 문제의 호환성 증거다. RT-14 성능 표본에는 포함하지 않는다.
+세 실행은 같은 목란 탭에서 새로고침 없이 달력만 닫고 수동 재시작한 연속 실행이다. 목표 `2026-08-20`은 활성 Mobiscroll 42셀 안에서 선택 가능한 날짜로 판독됐지만 종료 시 선택값은 모두 `2026-08-19`였고 fingerprint도 `ds-34f12e4c`로 같았다. `run-ec09336f`에만 목표 날짜 클릭 action이 있고 후속 동일 목표 실행에는 날짜 클릭 action이 없다. 목표 날짜 DOM 부재나 파싱 실패가 아니라 첫 클릭의 선택 전환 불발, 실행 간 pending 상태 누출과 복구 부재의 증거로 분류한다.
+
+종료 스냅샷은 모두 캡처 순간 `visible`·`hasFocus=true`였지만 클릭 전후와 전체 준비 구간은 기록하지 않는다. 사용자는 실행 중 예약 페이지가 주 포커스 화면은 아니었다고 확인했다. 따라서 focus는 가능한 환경 요인으로 남기되 직접 원인으로 확정하지 않는다. 이 세 실행은 RT-14 성능 표본에는 포함하지 않는다.
 
 <a id="reservation-entry"></a>
 ## 예약창 진입 진단
@@ -45,7 +47,9 @@ manifest의 설정값은 `empty_exit`이지만 RT-14 전용 `empty_early_exit` t
 |---|---|---|---|---|
 | [mokran run-18dd8f4a](mokran-run-18dd8f4a-612b-49c5-aa3c-eb4fb33d9309/run.csv) | 2026-08-22 | `HANDED_OFF` | `예약하기 클릭 후 달력 화면을 확인할 수 없습니다 케이스` | [manifest](mokran-run-18dd8f4a-612b-49c5-aa3c-eb4fb33d9309/diagnostic/manifest.json) |
 
-이 실행은 예약 CTA 클릭 후 달력 진입 확인 실패를 기록한 호환성 증거다. RT-14 성능 표본에는 포함하지 않는다.
+이 실행은 같은 탭 반복 조건에서 예약 CTA가 실행 시작 약 5.6초 뒤 한 번 클릭되고 약 69ms 뒤 달력 셀 없이 인계된 사례다. 종료 화면에는 활성 `예약하기` dock이 남았다. CTA dispatch 뒤 달력 출현 후조건을 확인할 시간과 bounded recovery가 없었던 예약창 진입 전환 정지 증거이며 RT-14 성능 표본에는 포함하지 않는다.
+
+두 실패군은 모두 오케스트레이터의 `waitForOpen`·슬롯 탐색보다 앞선 자동 준비 단계에 속한다. 공통 Tier 3 판정과 복구 후보는 [runtime resilience 분석](../../../specs/open-timing-performance/03-runtime-resilience/10-analysis.md), DOM·전환 관찰 원본은 [site behavior §1.3](../../../analysis/site-behavior.md)에 정리한다.
 
 ## 보관 구조
 

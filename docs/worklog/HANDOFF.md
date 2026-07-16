@@ -2,7 +2,8 @@
 
 **갱신:** 2026-07-16
 **브랜치:** `codex/rt14-exact-empty-early-exit`
-**최신 작업 로그:** `docs/worklog/2026-07-16-02-rt14-live-evidence.md`
+**최신 작업 로그:** `docs/worklog/2026-07-16-03-tier3-preparation-resilience-analysis.md`
+**최신 Tier 3 분석:** `docs/specs/open-timing-performance/03-runtime-resilience/10-analysis.md`
 **최신 성능 구현:** `docs/specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/`
 **최신 성능 설계 메모:** `docs/specs/open-timing-performance/02-availability-hot-path/100-three-signal-and-empty-early-exit.md`
 **직전 작업 로그:** `docs/worklog/2026-07-15-05-live-run-analysis-probe-decision.md`
@@ -98,6 +99,15 @@ RT-14 EXACT EMPTY cycle 조기 종료를 구현하고 자동·Chrome 검증을 �
 - 같은 실행은 오픈 후 cycle 10에서 슬롯을 발견해 서버 기준 `+891ms`에 클릭하고 예약 폼까지 도달했다. 비신뢰·비활성 응답의 제어 오수용과 DOM 후보 손실은 관측되지 않았다.
 - RT-14 기능·안전 실오픈 gate는 통과했다. 동등한 `off` 비교군이 없어 실제 성능 이득과 요청 증가량은 미확정이며 기본값은 `off`를 유지한다.
 
+2026-07-16 목란 준비 단계 실패 4건을 Tier 3 runtime resilience 입력으로 분석했다.
+
+- 같은 탭에서 새로고침 없이 달력만 닫고 반복 실행한 조건이다.
+- 날짜 실패 3건은 목표 8/20이 available이었지만 선택값 8/19와 동일 fingerprint가 유지됐다. 첫 실행에만 8/20 클릭 action이 있고, 같은 문서에서 재사용된 `CalendarAdapter.pendingDate`가 후속 동일 목표 실행까지 남을 수 있음을 확인했다.
+- 예약창 진입 실패 1건은 CTA를 늦게 한 번 클릭한 직후 달력 셀 없이 인계됐다.
+- 직접 실패는 DOM 파싱 부재가 아니라 클릭 뒤 UI 전이 불발과 bounded recovery 부재로 분류했다.
+- 종료 snapshot의 visible/focused만으로 구간 전체 focus를 설명할 수 없어 포커스 원인은 미확정으로 유지했다.
+- Tier 3 분석·RT-16·site behavior·evidence 판정을 보강했으며 코드와 hot path는 변경하지 않았다. RT-11은 공식 p95·wake counterfactual 측정 ID로 유지한다.
+
 ## 검증 근거
 
 - 결제 정책 UX 대상 테스트: 73/73 통과
@@ -139,7 +149,9 @@ RT-14 EXACT EMPTY cycle 조기 종료를 구현하고 자동·Chrome 검증을 �
 
 ## 다음 작업 1 - 실행 환경 진단
 
-중요 예약 전에는 hot path 상수나 cycle 정책을 변경하지 않는다. 최소화·작은 4분할 실행의 실패 원인을 분리하기 위해 다음 표본부터 run 시작과 종료 스냅샷에 `document.visibilityState`, `document.hasFocus()`, viewport 크기와 진입 CTA 구조를 남기는 설계를 먼저 검토한다. 좁은 화면의 대체 CTA는 실제 DOM을 확보하기 전까지 추측으로 지원하지 않는다.
+중요 예약 전에는 hot path 상수나 cycle 정책을 변경하지 않는다. 최소화·작은 4분할 실행과 목란 준비 전환 실패의 원인을 분리하기 위해 run 시작, CTA·날짜·인원 클릭 전후, 후조건 변화, 종료 경계에 `document.visibilityState`, `document.hasFocus()`, viewport, 선택값과 fingerprint를 change-based event로 남기는 설계를 검토한다. Background의 tabId/windowId·active/focused는 runId로 결합한다. 좁은 화면의 대체 CTA는 실제 DOM을 확보하기 전까지 추측으로 지원하지 않는다.
+
+준비 단계 복구는 `dispatch -> confirm -> classify -> bounded recovery -> handoff` 순서로 설계한다. CTA·날짜·인원별 retry budget과 자동 새로고침 승격 조건은 아직 미확정이다. 인증·대기열·알 수 없는 DOM은 자동 반복하지 않으며, 이 작업은 슬롯 탐색 hot path와 분리한다.
 
 운영 시에는 예약 페이지를 정상 크기의 보이는 창으로 유지하고 최소화하지 않으며, 실행은 오픈 최소 60초 전에 시작한다(관측 20초 미만 실행들이 동결 clock uncertainty 상위였던 실측 기반 권고, 절대 조건 아님). 즉시 실행에서 사용자가 모달·날짜·인원을 준비할 수 있으면 `entryMode=prepared`로 자동 진입 단계를 생략할 수 있다.
 

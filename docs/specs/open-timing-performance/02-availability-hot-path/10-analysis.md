@@ -1,7 +1,7 @@
 # Tier 2 - Availability 핫패스 분석
 
-**상태:** Tier 2-2 종료. probe는 진단·실험 전용 기본 비활성.
-**기준일:** 2026-07-14
+**상태:** Tier 2-2 REDUCE 기능·안전 범위 종료. probe 기본 비활성, 성능 이득·공식 p95 미입증.
+**기준일:** 2026-07-16
 
 ## 1. 결정
 
@@ -36,7 +36,7 @@ body가 없거나 신뢰할 수 없으면 기존 25ms bounded DOM 탐색과 날�
 ## 3. 현재 코드 기준선
 
 - `AvailabilityCorrelationTracker`는 cycle marker, 날짜, 인원, 요청 시각으로 `EXACT/STRONG/WEAK/NONE`을 계산한다.
-- `observeAvailabilityBody()`는 body를 기록하지만 제어 경로를 깨우지 않는다.
+- `observeAvailabilityBody()`는 current-cycle `EXACT/STRONG` body를 `AvailabilityDomWake`에 제안한다. 수락된 POPULATED는 즉시 DOM scan과 최대 250ms의 10ms bounded render window를 깨우며, `empty_exit`에서만 current `EXACT EMPTY`가 cycle 조기 종료 후보가 된다.
 - `runToggleCycle()`은 목표 날짜 선택 확인 후 최대 25ms 간격으로 `SlotAdapter.readAvailableSlots()`를 호출한다.
 - `SlotAdapter.clickSlot()`은 후보 key를 DOM에서 다시 찾아 연결·활성 상태를 확인한다.
 - body가 없을 때는 resource watch 상태에 따라 목표 클릭+700ms 또는 arrival+250ms까지 bounded 탐색한다.
@@ -73,11 +73,11 @@ body는 scan 시점만 앞당긴다. 슬롯 선택, 상태 전이, 클릭 여부
 
 ## 7. 완료 상태 표현
 
-자동 게이트와 비최종 Chrome 검증을 통과해도 상태는 다음으로 기록한다.
+RT-10M 실제 오픈 판독과 RT-05 운영 결정을 반영한 최종 상태는 다음으로 기록한다.
 
-> fallback 보존형 구현 완료, RT-10M 재측정 대기
+> Tier 2-2 REDUCE 기능·안전 범위 종료, probe 진단 전용 기본 비활성, 성능 이득·공식 p95 미입증
 
-RT-05는 Tier 2-2 최종 종료 전 별도 exit gate로 남긴다.
+RT-05 exit gate는 완료됐다. 이 종료는 body wake의 성능 목표 달성이나 pre-DOM actuator·MutationObserver 제어 승인을 의미하지 않는다.
 
 ## 8. 최종 실측과 RT-05
 
