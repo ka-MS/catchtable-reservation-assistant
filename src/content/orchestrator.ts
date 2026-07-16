@@ -15,8 +15,13 @@ import type { ReferenceClockPort } from "./reference-clock-sampler.js";
 import type { ReservationConfig, RunEvent, RunExecutionContext, RunState } from "../shared/types.js";
 import type { TraceCode } from "../shared/telemetry/codes.js";
 import type { TraceAttributes, TraceSeverity } from "../shared/telemetry/types.js";
-import type { CalendarInspection, CalendarPreparationDispatch, CalendarPreparationResult } from "./adapter/calendar.js";
-import type { EntryFacts, PersonFacts } from "../shared/run-control/facts.js";
+import type { CalendarInspection } from "./adapter/calendar.js";
+import type { CalendarFacts, EntryFacts, PersonFacts } from "../shared/run-control/facts.js";
+import { runEntryPreparation } from "./preparation/entry-coordinator.js";
+import { runCalendarPreparation } from "./preparation/calendar-coordinator.js";
+import { runPersonPreparation } from "./preparation/person-coordinator.js";
+import type { PreparationResult } from "./preparation/result.js";
+import type { StepReporter, StepRunOptions } from "./preparation/step-runner.js";
 import type { PostSlotActionResult, PostSlotInspection } from "./adapter/post-slot.js";
 import type { StageSnapshot } from "./adapter/snapshot.js";
 import { AvailabilityCorrelationTracker, type DomCorrelation } from "./availability-correlation.js";
@@ -28,8 +33,8 @@ import type { PreparationPageContext } from "./preparation-observation.js";
 
 interface CalendarPort {
   inspect(targetDate: string): CalendarInspection;
-  resetPreparation(): void;
-  prepareTarget(targetDate: string, beforeDispatch?: (dispatch: CalendarPreparationDispatch) => void): CalendarPreparationResult;
+  inspectPreparation(targetDate: string): CalendarFacts;
+  clickMonth(direction: "Next page" | "Previous page"): boolean;
   clickDate(date: string): boolean;
 }
 
@@ -108,12 +113,9 @@ const BODY_WAKE_SCAN_INTERVAL_MS = 10;
 // 오픈 타이밍 성능 Tier1(20-design §4): 병리적 불확실성이 감시를 몇 분씩 당기지
 // 않도록 하는 안전 상한. 하한은 없음 — config.preOpenLeadMs 자체가 최소 리드타임.
 const MAX_ARM_LEAD_MS = 30_000;
-const PREPARATION_MAX_DISPATCH_ATTEMPTS = 2;
-const PREPARATION_RETRY_DELAY_MS = 1_000;
 const ENTRY_DISCOVERY_TIMEOUT_MS = 5_000;
-const ENTRY_CONFIRM_TIMEOUT_MS = 2_000;
 const PERSON_DISCOVERY_TIMEOUT_MS = 3_000;
-const PERSON_CONFIRM_TIMEOUT_MS = 2_000;
+const DATE_PREPARATION_TIMEOUT_MS = 10_000;
 
 const TERMINAL = new Set<RunState>([
   "DRY_RUN_COMPLETED",
@@ -726,295 +728,81 @@ class RunSession {
     return this.serverClock.now() - this.deps.clock.now();
   }
 
+  private stepReporter(): StepReporter {
+    return {
+      stageStart: () => this.tracePreparation("stage_start", { preparationStage: this.machine.state }),
+      conditionChanged: (attributes) => this.tracePreparation("condition_changed", attributes),
+      dispatchBefore: (action, attempt) => this.tracePreparation("dispatch_before", {
+        preparationAction: action,
+        preparationAttempt: attempt,
+        preparationRecoveryDecision: attempt === 1 ? "initial" : "retry",
+      }),
+      dispatchAfter: (action, attempt, dispatched) => this.tracePreparation("dispatch_after", {
+        preparationAction: action,
+        preparationAttempt: attempt,
+        preparationDispatched: dispatched,
+        preparationRecoveryDecision: attempt === 1 ? "confirm" : "final_confirm",
+      }),
+      obstacleDismissed: () => this.tracePreparation("dispatch_after", {
+        preparationAction: "dismiss_promo",
+        preparationDispatched: true,
+        preparationRecoveryDecision: "retry",
+      }),
+      decision: (decision, cause, attempts) => this.tracePreparation("decision", {
+        preparationDecision: decision,
+        ...(cause === null ? {} : { preparationErrorCode: cause }),
+        preparationAttempt: attempts,
+      }, decision === "handoff" ? "warn" : "trace"),
+      action: (message) => this.emit("action", message),
+    };
+  }
+
+  private resolvePreparation(result: PreparationResult): RunResult | null {
+    if (result.kind === "ready") return null;
+    if (result.kind === "stopped") return this.finishStopped();
+    if (result.kind === "timed_out") return this.timedOut(result.message);
+    return this.diagnosticHandOff(result.message, {
+      preparationErrorCode: result.cause,
+      preparationAttemptCount: result.attempts,
+      preparationRecoveryDecision: "handoff",
+    });
+  }
+
+  private stepOptions(discoveryTimeoutMs: number, overallDeadlineAtMs: number): StepRunOptions {
+    return {
+      clock: this.serverClock,
+      sleep: this.deps.sleep,
+      signal: this.controller.signal,
+      stopAtMs: this.config.stopAtMs,
+      discoveryDeadlineAtMs: Math.min(this.serverClock.now() + discoveryTimeoutMs, this.config.stopAtMs),
+      overallDeadlineAtMs,
+      report: this.stepReporter(),
+    };
+  }
+
   private async prepareEntry(): Promise<RunResult | null> {
     if (this.config.entryMode !== "auto") return null;
-    const config = this.config;
-    const controller = this.controller;
-    const serverClock = this.serverClock;
     this.transition("ENTERING_RESERVATION", "예약창 진입 상태를 확인합니다.");
-    this.tracePreparation("stage_start", { preparationTarget: "reservation_calendar" });
-    const entryDiscoveryDeadline = Math.min(serverClock.now() + ENTRY_DISCOVERY_TIMEOUT_MS, config.stopAtMs);
-    let entryAttempts = 0;
-    let nextEntryDispatchAt: number | null = null;
-    let entryConfirmationDeadline: number | null = null;
-    let lastCondition = "";
-    while (true) {
-      if (controller.signal.aborted) return this.finishStopped();
-      if (serverClock.now() >= config.stopAtMs) {
-        return this.timedOut("예약 페이지 준비 중 감시 종료 시각에 도달했습니다.");
-      }
-      const entry = this.deps.entry.inspect();
-      const condition = `${entry.reservationOpen}:${entry.ctaAvailable}:${entry.waitingOnly}`;
-      if (condition !== lastCondition) {
-        lastCondition = condition;
-        this.tracePreparation("condition_changed", {
-          reservationOpen: entry.reservationOpen,
-          reservationCtaAvailable: entry.ctaAvailable,
-          waitingOnly: entry.waitingOnly,
-        });
-      }
-      if (entry.reservationOpen) {
-        this.tracePreparation("decision", { preparationDecision: "ready" });
-        break;
-      }
-      if (entry.waitingOnly) {
-        this.tracePreparation("decision", { preparationDecision: "handoff", preparationErrorCode: "WAITING_ONLY" }, "warn");
-        return this.diagnosticHandOff("이 식당은 현장 웨이팅만 가능해 예약창을 열 수 없습니다.", {
-          preparationErrorCode: "WAITING_ONLY",
-          preparationAttemptCount: entryAttempts,
-          preparationRecoveryDecision: "handoff",
-        });
-      }
-      const currentAt = serverClock.now();
-      const dismissed = entryAttempts > 0 && (this.deps.entry.dismissPromo?.() ?? false);
-      if (dismissed) {
-        this.tracePreparation("dispatch_after", {
-          preparationAction: "dismiss_promo",
-          preparationAttempt: entryAttempts,
-          preparationDispatched: true,
-          preparationRecoveryDecision: "retry",
-        });
-        this.emit("action", "매장 홍보 안내 창을 닫았습니다.");
-        nextEntryDispatchAt = currentAt;
-      }
-      const canDispatch = entry.ctaAvailable
-        && entryAttempts < PREPARATION_MAX_DISPATCH_ATTEMPTS
-        && (entryAttempts === 0 || (nextEntryDispatchAt !== null && currentAt >= nextEntryDispatchAt));
-      if (canDispatch) {
-        const attempt = entryAttempts + 1;
-        this.tracePreparation("dispatch_before", {
-          preparationAction: "open_reservation",
-          preparationAttempt: attempt,
-          preparationRecoveryDecision: attempt === 1 ? "initial" : "retry",
-        });
-        const entryDispatched = this.deps.entry.openReservation();
-        entryAttempts = attempt;
-        this.tracePreparation("dispatch_after", {
-          preparationAction: "open_reservation",
-          preparationAttempt: attempt,
-          preparationDispatched: entryDispatched,
-          preparationRecoveryDecision: attempt === 1 ? "confirm" : "final_confirm",
-        });
-        if (entryDispatched) {
-          this.emit("action", attempt === 1
-            ? "예약하기 버튼을 클릭했습니다."
-            : "예약하기 버튼 클릭을 재시도했습니다.");
-        }
-        entryConfirmationDeadline ??= Math.min(currentAt + ENTRY_CONFIRM_TIMEOUT_MS, config.stopAtMs);
-        nextEntryDispatchAt = currentAt + PREPARATION_RETRY_DELAY_MS;
-      }
-      if (entryAttempts === 0 && currentAt >= entryDiscoveryDeadline) {
-        this.tracePreparation("decision", {
-          preparationDecision: "handoff",
-          preparationErrorCode: "ENTRY_CTA_MISSING",
-          preparationAttempt: 0,
-        }, "warn");
-        return this.diagnosticHandOff("식당 페이지에서 예약하기 버튼을 찾을 수 없습니다.", {
-          preparationErrorCode: "ENTRY_CTA_MISSING",
-          preparationAttemptCount: 0,
-          preparationRecoveryDecision: "handoff",
-        });
-      }
-      if (entryAttempts > 0 && entryConfirmationDeadline !== null && currentAt >= entryConfirmationDeadline) {
-        this.tracePreparation("decision", {
-          preparationDecision: "handoff",
-          preparationErrorCode: "ENTRY_TRANSITION_STALLED",
-          preparationAttempt: entryAttempts,
-        }, "warn");
-        return this.diagnosticHandOff("예약하기 클릭 후 달력 화면을 확인할 수 없습니다.", {
-          preparationErrorCode: "ENTRY_TRANSITION_STALLED",
-          preparationAttemptCount: entryAttempts,
-          preparationRecoveryDecision: "handoff",
-        });
-      }
-      if (!(await this.deps.sleep(50, controller.signal))) return this.finishStopped();
-    }
-    return null;
+    const result = await runEntryPreparation(this.deps.entry,
+      this.stepOptions(ENTRY_DISCOVERY_TIMEOUT_MS, this.config.stopAtMs));
+    return this.resolvePreparation(result);
   }
 
   private async prepareDate(): Promise<RunResult | null> {
     if (this.config.entryMode !== "auto") return null;
-    const config = this.config;
-    const controller = this.controller;
-    const serverClock = this.serverClock;
     this.transition("SELECTING_DATE", "목표 월과 예약 날짜를 준비합니다.");
-    this.deps.calendar.resetPreparation();
-    this.tracePreparation("stage_start", { preparationTarget: config.reservationDate });
-    const dateDeadline = Math.min(serverClock.now() + 10_000, config.stopAtMs);
-    let lastCondition = "";
-    let lastDateAttempt = 0;
-    while (true) {
-      if (controller.signal.aborted) return this.finishStopped();
-      if (serverClock.now() >= config.stopAtMs) {
-        return this.timedOut("예약 날짜 준비 중 감시 종료 시각에 도달했습니다.");
-      }
-      const dispatches: CalendarPreparationDispatch[] = [];
-      const preparation = this.deps.calendar.prepareTarget(config.reservationDate, (nextDispatch) => {
-        dispatches.push(nextDispatch);
-        if (nextDispatch.kind === "date") lastDateAttempt = nextDispatch.attempt;
-        this.tracePreparation("dispatch_before", {
-          preparationAction: nextDispatch.kind === "date" ? "select_date" : "change_month",
-          preparationTarget: nextDispatch.target,
-          preparationAttempt: nextDispatch.attempt,
-          preparationRecoveryDecision: nextDispatch.attempt === 1 ? "initial" : "retry",
-        });
-      });
-      const condition = `${preparation.status}:${preparation.message}`;
-      if (condition !== lastCondition) {
-        lastCondition = condition;
-        this.tracePreparation("condition_changed", {
-          preparationStatus: preparation.status,
-          preparationTarget: config.reservationDate,
-        });
-      }
-      const dispatch = dispatches.at(-1);
-      if (dispatch && preparation.status === "acted") {
-        this.tracePreparation("dispatch_after", {
-          preparationAction: dispatch.kind === "date" ? "select_date" : "change_month",
-          preparationTarget: dispatch.target,
-          preparationAttempt: dispatch.attempt,
-          preparationDispatched: true,
-          preparationRecoveryDecision: dispatch.attempt === 1 ? "confirm" : "final_confirm",
-        });
-      }
-      if (preparation.status === "ready") {
-        this.tracePreparation("decision", { preparationDecision: "ready", preparationTarget: config.reservationDate });
-        break;
-      }
-      if (preparation.status === "blocked") {
-        const errorCode = preparation.errorCode ?? "DATE_PREPARATION_BLOCKED";
-        this.tracePreparation("decision", {
-          preparationDecision: "handoff",
-          preparationErrorCode: errorCode,
-          preparationTarget: config.reservationDate,
-          preparationAttempt: lastDateAttempt,
-        }, "warn");
-        return this.diagnosticHandOff(preparation.message, {
-          preparationErrorCode: errorCode,
-          preparationAttemptCount: lastDateAttempt,
-          preparationRecoveryDecision: "handoff",
-        });
-      }
-      if (preparation.status === "acted") this.emit("action", preparation.message);
-      if (serverClock.now() >= dateDeadline) {
-        this.tracePreparation("decision", {
-          preparationDecision: "handoff",
-          preparationErrorCode: "DATE_SELECTION_STALLED",
-          preparationTarget: config.reservationDate,
-        }, "warn");
-        return this.diagnosticHandOff("목표 월 또는 날짜 선택 상태를 제한 시간 안에 확인할 수 없습니다.", {
-          preparationErrorCode: "DATE_SELECTION_STALLED",
-          preparationAttemptCount: lastDateAttempt,
-          preparationRecoveryDecision: "handoff",
-        });
-      }
-      if (!(await this.deps.sleep(50, controller.signal))) return this.finishStopped();
-    }
-    return null;
+    const deadline = Math.min(this.serverClock.now() + DATE_PREPARATION_TIMEOUT_MS, this.config.stopAtMs);
+    const result = await runCalendarPreparation(this.deps.calendar, this.config.reservationDate,
+      this.stepOptions(DATE_PREPARATION_TIMEOUT_MS, deadline));
+    return this.resolvePreparation(result);
   }
 
   private async preparePerson(): Promise<RunResult | null> {
     if (this.config.entryMode !== "auto") return null;
-    const config = this.config;
-    const controller = this.controller;
-    const serverClock = this.serverClock;
     this.transition("SELECTING_PERSON", "예약 인원을 준비합니다.");
-    this.tracePreparation("stage_start", { preparationTargetPersonCount: config.personCount });
-    const personDiscoveryDeadline = Math.min(serverClock.now() + PERSON_DISCOVERY_TIMEOUT_MS, config.stopAtMs);
-    let personAttempts = 0;
-    let nextPersonDispatchAt: number | null = null;
-    let personConfirmationDeadline: number | null = null;
-    let lastCondition = "";
-    while (true) {
-      if (controller.signal.aborted) return this.finishStopped();
-      if (serverClock.now() >= config.stopAtMs) {
-        return this.timedOut("예약 인원 준비 중 감시 종료 시각에 도달했습니다.");
-      }
-      const person = this.deps.person.inspect(config.personCount);
-      const condition = `${person.ready}:${person.targetAvailable}:${person.targetSelected}`;
-      if (condition !== lastCondition) {
-        lastCondition = condition;
-        this.tracePreparation("condition_changed", {
-          personControlReady: person.ready,
-          targetPersonAvailable: person.targetAvailable,
-          targetPersonSelected: person.targetSelected,
-          preparationTargetPersonCount: config.personCount,
-        });
-      }
-      if (person.targetSelected) {
-        this.tracePreparation("decision", { preparationDecision: "ready", preparationTargetPersonCount: config.personCount });
-        break;
-      }
-      if (person.ready && !person.targetAvailable) {
-        this.tracePreparation("decision", {
-          preparationDecision: "handoff",
-          preparationErrorCode: "PERSON_UNAVAILABLE",
-          preparationTargetPersonCount: config.personCount,
-        }, "warn");
-        return this.diagnosticHandOff(`이 식당에서 ${config.personCount}명을 선택할 수 없습니다.`, {
-          preparationErrorCode: "PERSON_UNAVAILABLE",
-          preparationAttemptCount: personAttempts,
-          preparationRecoveryDecision: "handoff",
-        });
-      }
-      const currentAt = serverClock.now();
-      const canDispatch = person.targetAvailable
-        && personAttempts < PREPARATION_MAX_DISPATCH_ATTEMPTS
-        && (personAttempts === 0 || (nextPersonDispatchAt !== null && currentAt >= nextPersonDispatchAt));
-      if (canDispatch) {
-        const attempt = personAttempts + 1;
-        this.tracePreparation("dispatch_before", {
-          preparationAction: "select_person",
-          preparationAttempt: attempt,
-          preparationTargetPersonCount: config.personCount,
-          preparationRecoveryDecision: attempt === 1 ? "initial" : "retry",
-        });
-        const dispatched = this.deps.person.select(config.personCount);
-        personAttempts = attempt;
-        this.tracePreparation("dispatch_after", {
-          preparationAction: "select_person",
-          preparationAttempt: attempt,
-          preparationTargetPersonCount: config.personCount,
-          preparationDispatched: dispatched,
-          preparationRecoveryDecision: attempt === 1 ? "confirm" : "final_confirm",
-        });
-        if (dispatched) {
-          this.emit("action", attempt === 1
-            ? `${config.personCount}명으로 설정했습니다.`
-            : `${config.personCount}명 선택을 재시도했습니다.`);
-        }
-        personConfirmationDeadline ??= Math.min(currentAt + PERSON_CONFIRM_TIMEOUT_MS, config.stopAtMs);
-        nextPersonDispatchAt = currentAt + PREPARATION_RETRY_DELAY_MS;
-      }
-      if (personAttempts === 0 && currentAt >= personDiscoveryDeadline) {
-        this.tracePreparation("decision", {
-          preparationDecision: "handoff",
-          preparationErrorCode: "PERSON_SELECTION_STALLED",
-          preparationAttempt: 0,
-          preparationTargetPersonCount: config.personCount,
-        }, "warn");
-        return this.diagnosticHandOff("예약 인원 선택 상태를 제한 시간 안에 확인할 수 없습니다.", {
-          preparationErrorCode: "PERSON_SELECTION_STALLED",
-          preparationAttemptCount: 0,
-          preparationRecoveryDecision: "handoff",
-        });
-      }
-      if (personAttempts > 0 && personConfirmationDeadline !== null && currentAt >= personConfirmationDeadline) {
-        this.tracePreparation("decision", {
-          preparationDecision: "handoff",
-          preparationErrorCode: "PERSON_SELECTION_STALLED",
-          preparationAttempt: personAttempts,
-          preparationTargetPersonCount: config.personCount,
-        }, "warn");
-        return this.diagnosticHandOff("예약 인원 선택 상태를 제한 시간 안에 확인할 수 없습니다.", {
-          preparationErrorCode: "PERSON_SELECTION_STALLED",
-          preparationAttemptCount: personAttempts,
-          preparationRecoveryDecision: "handoff",
-        });
-      }
-      if (!(await this.deps.sleep(50, controller.signal))) return this.finishStopped();
-    }
-    return null;
+    const result = await runPersonPreparation(this.deps.person, this.config.personCount,
+      this.stepOptions(PERSON_DISCOVERY_TIMEOUT_MS, this.config.stopAtMs));
+    return this.resolvePreparation(result);
   }
 
   private confirmPageReady(): RunResult | null {
