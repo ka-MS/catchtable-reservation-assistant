@@ -306,32 +306,8 @@ async function recordEvent(event: RunEvent, tabId: number | undefined): Promise<
     runEvents: appendRunEvent(events, event, 300),
     activeRun,
   });
-
-  if (event.kind === "state" && TERMINAL_STATES.has(state) && activeRun.scheduledJobId !== undefined) {
-    const jobId = activeRun.scheduledJobId;
-    void jobWrites.enqueue(() => jobScheduler.onRunTerminal(jobId, state, event.message)).catch((error) => {
-      console.error("예약 작업 결과를 기록하지 못했습니다.", error);
-    });
-  }
-
-  if (event.kind === "state" && TERMINAL_STATES.has(state)) {
-    const needsAttention = state === "HANDED_OFF" || state === "DRY_RUN_COMPLETED";
-    await chrome.action.setBadgeBackgroundColor({ color: needsAttention ? "#ff5a1f" : "#4b5563" });
-    await chrome.action.setBadgeText({ text: needsAttention ? "!" : "" });
-    if (needsAttention || state === "TIMED_OUT" || state === "FAILED") {
-      // 운영체제 알림 실패는 상태 저장과 Side Panel 표시를 막지 않는다.
-      chrome.notifications.create({
-        type: "basic",
-        iconUrl: chrome.runtime.getURL("assets/icon-128.png"),
-        title: "Catchtable Reserve",
-        message: event.message,
-      }, () => {
-        if (chrome.runtime.lastError) {
-          console.warn("운영체제 알림을 표시하지 못했습니다.", chrome.runtime.lastError.message);
-        }
-      });
-    }
-  }
+  // terminal 효과(배지·알림·job 종결)는 RUN_EVENT가 아니라 supervisor의 결정 이후
+  // TerminalEffects가 실행한다 — RUN_EVENT는 projection(activeRun/runEvents) 전용.
 }
 
 chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
