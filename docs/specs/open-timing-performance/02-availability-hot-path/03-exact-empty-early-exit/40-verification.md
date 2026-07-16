@@ -22,13 +22,15 @@ git diff --check
 
 | 지표 | 값 |
 |---|---:|
-| 전체 실행 | 26 |
-| `EXACT EMPTY` | 94 |
+| 전체 실행 | 32 |
+| `EXACT EMPTY` | 97 |
 | active cycle 수용 가능 | 53 |
 | timing-clean | 28 / 13개 실행 |
 | target click → EMPTY p50 / p95 | 125.1ms / 280.6ms |
 | EMPTY → cycle 종료 p50 / p95 | 241.4ms / 248.2ms |
 | 다음 target 이론 선행 p50 / p95 | 281.3ms / 310.5ms |
+
+최초 구현 시점의 26건에 2026-07-16 실오픈·호환성 evidence 6건이 추가됐다. 새 실행은 과거 `no_matching_slot` counterfactual 조건에 포함되지 않아 적격 수와 timing-clean 통계는 기존 값과 동일하다.
 
 ## 고정한 회귀 계약
 
@@ -64,3 +66,5 @@ Chrome 확장을 재로드하고 Side Panel inspect view에서 확인했다.
 ## 판정
 
 자동·Chrome 기능 gate는 통과했다. 기본값 `off`를 유지한 채 실오픈 검증 단계로 넘긴다.
+
+후속 실제 오픈 결과는 [60-live-verification.md](60-live-verification.md)에 기록한다.

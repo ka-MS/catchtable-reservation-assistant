@@ -42,13 +42,11 @@ DOM scan
 4. 최소화·4분할·background throttling 환경은 이번 기능 검증 범위가 아니다.
 5. Catchtable 서버 운영정책과 부하 제한을 우회하는 방식으로 cadence를 추가 축소하지 않는다.
 
-## 운영 gate
+## 실오픈 gate 결과
 
-- 정상 크기 전면 창
-- 비중요 실제 오픈
-- `EMPTY → EMPTY_EARLY_EXIT → 다음 target` trace 확보
-- stale/inactive 오수용 0건
-- DOM 후보 손실 0건
-- 기존 설정 대비 cycle·요청 증가량 기록
+- 2026-07-16 목란 실제 오픈에서 `EMPTY → EMPTY_EARLY_EXIT → 후속 cycle 슬롯 발견` trace를 확보했다.
+- 비신뢰·비활성 응답의 제어 오수용과 DOM 후보 손실은 관측되지 않았다.
+- 슬롯 클릭과 예약 폼 도달까지 확인해 기능·안전 gate는 통과했다.
+- 동등한 비교군이 없어 기존 설정 대비 cycle·요청 증가량과 실제 성능 이득은 판정하지 못했다.
 
-이 gate를 통과하기 전 `empty_exit`은 사용자 명시 선택 기능으로만 유지한다.
+따라서 `empty_exit`은 사용자 명시 선택 기능으로 유지한다. 기본값 승격에는 동등한 `off` 비교 표본이 추가로 필요하다. 상세 근거는 [실오픈 검증](60-live-verification.md)을 따른다.

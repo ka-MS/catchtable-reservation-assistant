@@ -6,6 +6,13 @@
 
 - [2026-07-14](2026-07-14/README.md): 누와 RT-10M 최초 실제 오픈 표본
 - [2026-07-15](2026-07-15/README.md): 다매장 실제 오픈 및 경쟁 승패·후속 화면 표본
+- [2026-07-16](2026-07-16/README.md): 목란 RT-14 `EXACT EMPTY` 실오픈 검증과 달력 호환성 진단
+
+## 주제 인덱스
+
+- [RT-14 EXACT EMPTY 실오픈](2026-07-16/README.md#rt14-exact-empty-live)
+- [목란 달력 호환성 진단](2026-07-16/README.md#calendar-compatibility)
+- [목란 예약창 진입 진단](2026-07-16/README.md#reservation-entry)
 
 통합 판독은 [Actual-open cross-run analysis](../../specs/open-timing-performance/02-availability-hot-path/70-live-run-analysis.md)를 기준으로 한다. 재집계는 저장소 루트에서 `node scripts/analyze-live-runs.mjs`로 수행한다.
 
@@ -35,5 +42,6 @@ live-runs/
 ## 링크 규칙
 
 - 날짜 README는 해당 날짜의 모든 실행을 빠짐없이 링크한다.
+- 서로 다른 목적의 실행이 같은 날짜에 있으면 날짜 README에 목적별 앵커를 두고 관련 스펙은 해당 앵커로 연결한다.
 - 분석 문서는 가능한 한 run ID 텍스트가 아니라 `run.csv` 또는 `diagnostic/manifest.json` 링크를 사용한다.
 - 사용자 메모와 로그로 확인된 사실을 구분한다. 파일명에 있던 메모는 날짜 README의 `원본 메모` 열에 보존한다.

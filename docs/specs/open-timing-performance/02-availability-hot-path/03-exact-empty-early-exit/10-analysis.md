@@ -10,7 +10,7 @@
 npm run analyze:rt14 > /tmp/rt14-analysis.json
 ```
 
-분석기는 `docs/evidence/live-runs`의 26개 `run.csv`를 읽고 현재 코드의 `nextTogglePlan()`을 사용한다.
+분석기는 `docs/evidence/live-runs`의 모든 `run.csv`를 읽고 현재 코드의 `nextTogglePlan()`을 사용한다. 최초 구현 gate는 2026-07-14~15의 26개 실행으로 계산했다. 2026-07-16 evidence 추가 후에는 32개를 스캔하지만 새 실행은 아래 counterfactual 수용 조건을 만족하지 않아 적격 53건과 timing-clean 통계는 바뀌지 않는다.
 
 수용 표본:
 
@@ -44,10 +44,10 @@ npm run analyze:rt14 > /tmp/rt14-analysis.json
 
 | 지표 | 결과 |
 |---|---:|
-| 전체 실행 | 26 |
-| `EXACT EMPTY` | 94 |
+| 전체 실행 | 32 |
+| `EXACT EMPTY` | 97 |
 | active cycle 수용 가능 EMPTY | 53 |
-| inactive 또는 기타 | 41 |
+| inactive 또는 기타 | 44 |
 | timing-clean EMPTY | 28 / 13개 실행 |
 | target click → EMPTY p50 | 약 125ms |
 | target click → EMPTY p95 | 약 281ms |

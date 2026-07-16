@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "runId": "run-18dd8f4a-612b-49c5-aa3c-eb4fb33d9309",
+  "extensionVersion": "0.2.0",
+  "snapshots": [
+    {
+      "snapshotId": "578fd201-8104-4990-b830-9f079c6dcda9",
+      "capturedAt": 1784165325934,
+      "stage": "ENTERING_RESERVATION",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/mokran",
+        "urlKind": "shop",
+        "title": "캐치테이블 | 즐거운 미식 생활의 시작",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": true,
+        "viewportWidth": 987,
+        "viewportHeight": 762,
+        "visualViewportWidth": 987.2000122070312,
+        "visualViewportHeight": 761.5999755859375,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "body",
+          "role": "",
+          "text": "You need to enable JavaScript to run this app.<br /> 자바스크립트를 활성화해주시기 바랍니다. !(function (f, b, e, v, n, t, s) { if (f.fbq) return; n = f.fbq = function () { n.cal",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "body",
+          "attributes": {},
+          "rect": {
+            "x": 8,
+            "y": 8,
+            "width": 971.2,
+            "height": 0
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "7dc7fd7f-c3bb-40e7-bb51-573274dafd87",
+      "capturedAt": 1784165331567,
+      "stage": "ENTERING_RESERVATION",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/mokran",
+        "urlKind": "shop",
+        "title": "목란",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": true,
+        "viewportWidth": 987,
+        "viewportHeight": 762,
+        "visualViewportWidth": 972,
+        "visualViewportHeight": 761.5999755859375,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "body",
+          "role": "",
+          "text": "You need to enable JavaScript to run this app.<br /> 자바스크립트를 활성화해주시기 바랍니다. !(function (f, b, e, v, n, t, s) { if (f.fbq) return; n = f.fbq = function () { n.cal",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "body",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 972,
+            "height": 761.6
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "26e55b0f-e08f-4e06-a26d-c7f07b4c3bdd",
+      "capturedAt": 1784165331618,
+      "stage": "ENTERING_RESERVATION",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/mokran",
+        "urlKind": "shop",
+        "title": "목란",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": true,
+        "viewportWidth": 987,
+        "viewportHeight": 762,
+        "visualViewportWidth": 972,
+        "visualViewportHeight": 761.5999755859375,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "body",
+          "role": "",
+          "text": "You need to enable JavaScript to run this app.<br /> 자바스크립트를 활성화해주시기 바랍니다. !(function (f, b, e, v, n, t, s) { if (f.fbq) return; n = f.fbq = function () { n.cal",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "body",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 972,
+            "height": 761.6
+          }
+        }
+      }
+    }
+  ]
+}

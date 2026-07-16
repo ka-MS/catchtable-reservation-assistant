@@ -2,7 +2,7 @@
 
 **갱신:** 2026-07-16
 **브랜치:** `codex/rt14-exact-empty-early-exit`
-**최신 작업 로그:** `docs/worklog/2026-07-16-01-rt14-exact-empty-early-exit.md`
+**최신 작업 로그:** `docs/worklog/2026-07-16-02-rt14-live-evidence.md`
 **최신 성능 구현:** `docs/specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/`
 **최신 성능 설계 메모:** `docs/specs/open-timing-performance/02-availability-hot-path/100-three-signal-and-empty-early-exit.md`
 **직전 작업 로그:** `docs/worklog/2026-07-15-05-live-run-analysis-probe-decision.md`
@@ -93,7 +93,10 @@ RT-14 EXACT EMPTY cycle 조기 종료를 구현하고 자동·Chrome 검증을 �
 - 목표 날짜 selected가 풀리면 EMPTY를 폐기하고 기존 25ms fallback을 유지한다.
 - 조기 종료 후 무제한 재클릭하지 않고 기존 `nextTogglePlan()`과 stop/timeout을 재사용한다.
 - 기존 26건 counterfactual에서 다음 target 이론 선행 p50 약 281ms를 확인했지만 실제 성능 이득과 요청 증가량은 아직 미확정이다.
-- 정상 크기 전면 비중요 실오픈 전까지 기본 활성화하지 않는다.
+- 목란 비중요 실제 오픈의 기능·안전 gate는 통과했다. 동등한 비교군으로 성능과 요청 증가량을 확인하기 전까지 기본 활성화하지 않는다.
+- 2026-07-16 목란 실오픈에서 cycle 1의 current `EXACT EMPTY`를 수락하고 7ms 뒤 `EMPTY_EARLY_EXIT`로 종료했다.
+- 같은 실행은 오픈 후 cycle 10에서 슬롯을 발견해 서버 기준 `+891ms`에 클릭하고 예약 폼까지 도달했다. 비신뢰·비활성 응답의 제어 오수용과 DOM 후보 손실은 관측되지 않았다.
+- RT-14 기능·안전 실오픈 gate는 통과했다. 동등한 `off` 비교군이 없어 실제 성능 이득과 요청 증가량은 미확정이며 기본값은 `off`를 유지한다.
 
 ## 검증 근거
 
@@ -130,9 +133,9 @@ RT-14 EXACT EMPTY cycle 조기 종료를 구현하고 자동·Chrome 검증을 �
 - `docs/specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/40-verification.md`
 - `docs/specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/50-adversarial-review.md`
 
-## 다음 작업 0 - RT-14 비중요 실오픈 검증
+## 다음 작업 0 - RT-14 성능 비교 표본
 
-정상 크기 전면 창에서 `empty_exit`을 명시적으로 선택하고 비중요 실제 오픈을 1회 이상 측정한다. `EMPTY → EMPTY_EARLY_EXIT → 다음 target`의 cycle·requestSequence, DOM 후보 손실 여부, 기존 설정 대비 cycle·요청 증가량을 확인한다. 이 검증 전에는 `empty_exit`을 기본값으로 승격하지 않는다. RT-14 실오픈 검증은 다른 안정화 작업을 막지 않는다.
+목란 실제 오픈으로 `EMPTY → EMPTY_EARLY_EXIT → 후속 cycle 슬롯 발견` 기능·안전 경로는 확인했다. 다음 비중요 실오픈에서는 동일 매장·유사 환경의 `off` 또는 반복 `empty_exit` 표본을 추가해 cycle·요청 증가량과 실제 지연 차이를 비교한다. 이 비교 전에는 `empty_exit`을 기본값으로 승격하지 않는다. 성능 비교는 다른 안정화 작업을 막지 않는다.
 
 ## 다음 작업 1 - 실행 환경 진단
 
