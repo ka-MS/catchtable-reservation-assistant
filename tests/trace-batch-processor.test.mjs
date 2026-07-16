@@ -93,3 +93,17 @@ test("forceFlush completes when storage acknowledges synchronously", async () =>
   processor.record(event(1, "RUN_TERMINATED"));
   await processor.forceFlush(10);
 });
+
+test("forceFlush는 저장 ACK 완료 여부를 반환한다 (durable flush)", async () => {
+  const h = harness({ delayMs: 250, batchSize: 20, traceQueueSize: 8 });
+  assert.equal(await h.processor.forceFlush(10), true); // 빈 queue = 유실 없음
+
+  h.processor.record(event(1));
+  const pending = h.processor.forceFlush(100);
+  h.ack("run-1", 1);
+  assert.equal(await pending, true);
+
+  h.processor.record(event(2));
+  assert.equal(await h.processor.forceFlush(20), false); // ACK 없음 — timeout 후에도 resolve하되 false
+  assert.equal(await h.processor.forceFlush(20), false); // 재flush도 미ACK면 false
+});

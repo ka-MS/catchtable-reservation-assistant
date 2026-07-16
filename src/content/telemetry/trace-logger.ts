@@ -42,7 +42,12 @@ export class TraceLogger {
 
   constructor(private readonly processor: BatchTraceProcessor, private readonly now: () => number) {}
 
-  start(runId: string, config: ReservationConfig, scheduledJobId?: string): void {
+  start(
+    runId: string,
+    config: ReservationConfig,
+    scheduledJobId?: string,
+    attempt?: { logicalRunId: string; attemptIndex: number; resetCause?: string },
+  ): void {
     this.seq = 0;
     this.run = {
       schemaVersion: 1,
@@ -52,7 +57,13 @@ export class TraceLogger {
       ...(scheduledJobId === undefined ? {} : { scheduledJobId }),
     };
     this.processor.startRun(this.run);
-    this.record("RUN_STARTED", "info", "실행 추적을 시작했습니다.");
+    this.record("RUN_STARTED", "info", "실행 추적을 시작했습니다.", {
+      attributes: attempt === undefined ? {} : {
+        logicalRunId: attempt.logicalRunId,
+        attemptIndex: attempt.attemptIndex,
+        ...(attempt.resetCause === undefined ? {} : { resetCause: attempt.resetCause }),
+      },
+    });
   }
 
   record(
@@ -103,7 +114,7 @@ export class TraceLogger {
     });
   }
 
-  forceFlush(): Promise<void> {
+  forceFlush(): Promise<boolean> {
     return this.processor.forceFlush();
   }
 }

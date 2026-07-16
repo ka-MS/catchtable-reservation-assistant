@@ -89,7 +89,7 @@ interface Dependencies {
     attributes?: TraceAttributes;
     error?: unknown;
   }): void;
-  flushTrace?(): Promise<void>;
+  flushTrace?(): Promise<boolean>;
   captureSnapshot?(): StageSnapshot | null;
   capturePreparationContext?(): PreparationPageContext;
   diagnostics?: DiagnosticsPort;

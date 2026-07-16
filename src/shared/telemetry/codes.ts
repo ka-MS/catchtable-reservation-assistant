@@ -14,6 +14,8 @@ export const TRACE_CODES = [
   "RUN_FAILED",
   "RUN_TERMINATED",
   "BACKGROUND_FAILURE",
+  "RECOVERY_DECIDED",
+  "RECOVERY_DISPATCHED",
 ] as const;
 
 export type TraceCode = typeof TRACE_CODES[number];

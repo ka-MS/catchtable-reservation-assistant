@@ -72,18 +72,20 @@ export class BatchTraceProcessor {
     this.schedule(this.options.delayMs);
   }
 
-  async forceFlush(timeoutMs = 500): Promise<void> {
-    if (this.queue.length === 0) return;
+  /** 반환값 = 발행한 trace가 전부 저장 ACK를 받았는지(durable flush). timeout 후에도
+   * 반드시 resolve하며, 미ACK 잔량이 있으면 false — 복구 진행은 결과와 무관하다. */
+  async forceFlush(timeoutMs = 500): Promise<boolean> {
+    if (this.queue.length === 0) return true;
     this.flush();
-    if (this.queue.length === 0) return;
-    await new Promise<void>((resolve) => {
+    if (this.queue.length === 0) return true;
+    return new Promise<boolean>((resolve) => {
       let settled = false;
       const finish = () => {
         if (settled) return;
         settled = true;
         this.waiters.delete(onAck);
         globalThis.clearTimeout(timeout);
-        resolve();
+        resolve(this.queue.length === 0);
       };
       const onAck = () => {
         if (this.queue.length === 0) finish();
