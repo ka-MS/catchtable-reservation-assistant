@@ -279,9 +279,16 @@ export type AttemptControlMessage =
   | { type: "ATTEMPT_PHASE_CHANGED"; logicalRunId: string; attemptId: string; phase: AttemptPhase }
   | { type: "ATTEMPT_FINISHED"; logicalRunId: string; attemptId: string; outcome: AttemptOutcome };
 
-/** ATTEMPT_FINISHED의 sendResponse. ACK = "결정이 영속 접수됨"(행동 완료 아님).
- * 같은 attempt의 재전송에는 영속된 decision을 그대로 재ACK한다. */
-export interface AttemptFinishedAck { ok: true; decision: "RESET_PAGE" | "HANDOFF"; }
+/** sendResponse = ACK. ACK = "결정이 영속 접수됨"(행동 완료 아님).
+ * 같은 attempt의 재전송에는 영속된 decision을 그대로 재ACK한다.
+ * stale/missing은 침묵이 아니라 {ok:false, reason}으로 응답한다 — content가 재시도 중단을 판단. */
+export type AttemptAckFailureReason = "unknown_logical_run" | "stale_attempt";
+export type AttemptFinishedAck =
+  | { ok: true; decision: "RESET_PAGE" | "HANDOFF" }
+  | { ok: false; reason: AttemptAckFailureReason };
+export type AttemptPhaseChangedAck =
+  | { ok: true }
+  | { ok: false; reason: AttemptAckFailureReason };
 
 // background → content (SW bootstrap reconcile 전용 — PING은 주입 여부만 증명한다)
 export interface AttemptStatusRequest { type: "GET_ATTEMPT_STATUS"; attemptId: string; }
@@ -494,7 +501,7 @@ export interface StepSpec<F> {
   dispatchAction: string;
   describeDispatch(f: F, attempt: number): string;
   /** 내부 제어 신호(원인 코드 아님) — 토큰 반환 시 즉시 interrupted로 종료하고 coordinator가 해석한다. */
-  interrupt?(f: F): string | null;
+  interrupt?(f: F): PreparationInterrupt | null;
   /** 비어 있지 않은 값으로 바뀌면 다단 진행으로 보고 attempt 예산을 리셋한다. `""`는 판독 불가. */
   progressKey(f: F): string;
   dismissObstacle?(f: F): boolean;
@@ -505,10 +512,13 @@ export interface StepSpec<F> {
   confirmTimeoutMs?: number;
 }
 
+/** 내부 제어 신호의 closed union — 원인 코드와 분리된 어휘. 새 재순환 신호는 여기에 추가한다. */
+export type PreparationInterrupt = "target_cell_missing";
+
 export type StepOutcome =
   | { kind: "ready" }
   | { kind: "failed"; cause: PreparationCause; via: FailureVia; attempts: number }
-  | { kind: "interrupted"; token: string; attempts: number }
+  | { kind: "interrupted"; token: PreparationInterrupt; attempts: number }
   | { kind: "stopped" }
   | { kind: "timed_out" };
 
@@ -1218,7 +1228,7 @@ private async preparePerson(): Promise<RunResult | null> {
 
 ## Phase 2 예고 (별도 계획: `31-control-plane-implementation.md`)
 
-Phase 1 병합 후 작성한다. 범위: `background/run-supervisor.ts` + `logicalRun` storage(attempt별 decision 영속) + PageRuntimePort(`navigateIfNeeded`/`forceReenter`/inject/ping) + TerminalEffects 분리 + `AttemptControlMessage` 배선(flush→결정 영속→ACK→reenter 계약, 재전송 재ACK) + content의 `GET_ATTEMPT_STATUS` 응답 + top-level bootstrap reconcile과 `supervisorReady` barrier + 기존 리스너 5개 흡수 + `decide()` 배선 + RESET_PAGE 실행 + 알림 억제 + Side Panel RECOVERING 표시 + Chrome DevTools MCP E2E. Phase 1의 causes/policy/protocol과 `PreparationResult`가 그대로 입력이 된다.
+Phase 1 병합 후 작성한다. 범위: `background/run-supervisor.ts` + `logicalRun` storage(attempt별 decision·message 영속, `recovery` intent — `nextAttemptId` 사전 생성, `terminalEffectsCompletedAt` 마커) + PageRuntimePort(`navigateIfNeeded`/`forceReenter`/inject/ping) + TerminalEffects 분리 + `AttemptControlMessage` 배선(flush→결정·intent 단일 영속→ACK→reenter 계약, 재전송 재ACK, `{ok:false, reason}` 응답) + content의 `GET_ATTEMPT_STATUS` 응답 + top-level bootstrap reconcile(설계 §5.4 4분기 표)과 `supervisorReady` barrier + 기존 리스너 5개 흡수 + `decide()` 배선 + RESET_PAGE 실행 + 알림 억제 + Side Panel RECOVERING 표시 + Chrome DevTools MCP E2E(ACK 직후 SW 강제 종료 → reconcile 멱등 재개 시나리오 포함). Phase 1의 causes/policy/protocol과 `PreparationResult`가 그대로 입력이 된다.
 
 ## Self-Review 결과
 
