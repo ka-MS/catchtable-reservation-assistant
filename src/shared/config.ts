@@ -1,4 +1,4 @@
-import type { ReservationConfig } from "./types.js";
+import type { AvailabilityProbeMode, ReservationConfig } from "./types.js";
 
 const TEN_MINUTES_MS = 10 * 60 * 1_000;
 
@@ -6,11 +6,26 @@ export function defaultStopAt(openAtMs: number): number {
   return openAtMs + TEN_MINUTES_MS;
 }
 
+const AVAILABILITY_PROBE_MODES = new Set<AvailabilityProbeMode>(["off", "observe", "empty_exit"]);
+
+export function resolveAvailabilityProbeMode(
+  config: Pick<ReservationConfig, "availabilityProbeMode" | "availabilityProbeEnabled">,
+): AvailabilityProbeMode {
+  if (AVAILABILITY_PROBE_MODES.has(config.availabilityProbeMode as AvailabilityProbeMode)) {
+    return config.availabilityProbeMode as AvailabilityProbeMode;
+  }
+  return config.availabilityProbeEnabled === true ? "observe" : "off";
+}
+
 export function normalizeReservationConfig(config: ReservationConfig): ReservationConfig {
+  const { availabilityProbeEnabled: _legacyAvailabilityProbeEnabled, ...current } = config;
   return {
-    ...config,
+    ...current,
     paymentMethodAutoAdvance: config.paymentMethodAutoAdvance ?? true,
     paymentMethodPolicy: config.paymentMethodPolicy ?? "selected_allowed",
+    availabilityProbeMode: config.availabilityProbeMode === undefined
+      ? resolveAvailabilityProbeMode(config)
+      : config.availabilityProbeMode,
   };
 }
 
@@ -84,6 +99,14 @@ export function validateReservationConfig(config: ReservationConfig, nowMs: numb
   }
   if (!Number.isInteger(config.toggleIntervalMs) || config.toggleIntervalMs < 100 || config.toggleIntervalMs > 5_000) {
     errors.push("날짜 토글 간격은 100~5000ms여야 합니다.");
+  }
+  if (config.availabilityProbeMode !== undefined
+    && !AVAILABILITY_PROBE_MODES.has(config.availabilityProbeMode as AvailabilityProbeMode)) {
+    errors.push("XHR 응답 모드 설정을 확인하세요.");
+  }
+  if (config.availabilityProbeEnabled !== undefined
+    && typeof config.availabilityProbeEnabled !== "boolean") {
+    errors.push("XHR 응답 모드 설정을 확인하세요.");
   }
   return errors;
 }

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { OpenRunOrchestrator } from "../dist/content/orchestrator.js";
+import { CalendarAdapter } from "../dist/content/adapter/calendar.js";
+import { loadFixture } from "./fixture-helper.mjs";
 
 // Tier 1 fake for Dependencies.referenceClock. Defaults to a zero-uncertainty,
 // zero-RTT HIGH-confidence estimate so armLeadMs collapses to config.preOpenLeadMs
@@ -17,11 +19,14 @@ function fakeReferenceClock({ estimate = {}, bootstrapFails = false } = {}) {
   });
   let latest = bootstrapFails ? null : build(estimate);
   let onEstimate = null;
-  const calls = { started: 0, stopped: 0 };
+  const samples = [];
+  const calls = { started: 0, stopped: 0, drained: 0 };
+  const bootstrapSample = { t0: 10, t1: 50, serverDateMs: 1_000, rttMs: 40, lowerMs: 950, upperMs: 1_990, fromCache: false };
   const port = {
     get latest() { return latest; },
-    sampleOnce: async () => (bootstrapFails ? null : { t0: 0, t1: 0, serverDateMs: 0, rttMs: 0, lowerMs: 0, upperMs: 0, fromCache: false }),
-    ingest: () => { latest = build(estimate); return latest; },
+    sampleOnce: async () => (bootstrapFails ? null : bootstrapSample),
+    ingest: (sample) => { samples.push(sample); latest = build(estimate); return latest; },
+    drainSamples: () => { calls.drained += 1; return samples.splice(0); },
     start: (cb) => { calls.started += 1; onEstimate = cb; return new Promise(() => {}); },
     stop: () => { calls.stopped += 1; },
   };
@@ -59,6 +64,7 @@ function fakeAvailabilityShadow() {
   const calls = { started: 0, marked: 0, stopped: 0 };
   return {
     calls,
+    get marked() { return marker !== null; },
     port: {
       start: (_expiresAt, nextListener) => {
         calls.started += 1;
@@ -113,26 +119,41 @@ function harness({
   slotDomMutationWatch = null,
   targetSelectionDelayMs = 0,
   onTrace = null,
+  diagnostics = null,
   captureSnapshot = () => ({
     urlKind: "shop", headings: [], buttons: ["확인"], disabledButtons: [false],
     disabledButtonCount: 0, dialogLabel: "", dialogTitle: "", textSnippet: "", fingerprint: "ss-test",
   }),
+  capturePreparationContext = () => ({
+    visibilityState: "visible", hasFocus: true, viewportWidth: 1280, viewportHeight: 720,
+    visualViewportWidth: 1280, visualViewportHeight: 720,
+    activeElementTag: "button", activeElementRole: null, activeElementId: "reserve",
+    urlKind: "shop", fingerprint: "ss-preparation",
+  }),
+  calendarOverride = null,
+  onSleep = () => undefined,
 } = {}) {
   let now = 0;
   let monotonicNow = 0;
   let cycles = 0;
   let slotClicks = 0;
+  let preparationResets = 0;
   const dateClicks = [];
   const dateClickTimes = [];
   const events = [];
   const traces = [];
-  const calendar = {
+  const defaultCalendar = {
+    resetPreparation: () => {
+      preparationResets += 1;
+    },
     inspect: () => {
-      onCalendarInspect();
+      const selectedOverride = onCalendarInspect({ now, monotonicNow, cycles });
       const lastTargetClick = dateClickTimes.findLast((entry) => entry.date === "2026-07-30");
       return {
         targetAvailable: true,
-        targetSelected: lastTargetClick === undefined || now >= lastTargetClick.at + targetSelectionDelayMs,
+        targetSelected: typeof selectedOverride === "boolean"
+          ? selectedOverride
+          : lastTargetClick === undefined || now >= lastTargetClick.at + targetSelectionDelayMs,
         adjacentDate: "2026-07-29",
       };
     },
@@ -144,6 +165,7 @@ function harness({
       return true;
     },
   };
+  const calendar = calendarOverride ?? defaultCalendar;
   let arrivalCallback = null;
   const slotWatchCalls = { started: 0, stopped: 0 };
   const slotWatch = {
@@ -184,6 +206,7 @@ function harness({
       if (signal.aborted) return false;
       now += ms;
       monotonicNow += ms;
+      onSleep(ms);
       return true;
     },
     emit: (event) => events.push(event),
@@ -193,6 +216,8 @@ function harness({
     },
     flushTrace: async () => undefined,
     captureSnapshot,
+    capturePreparationContext,
+    ...(diagnostics ? { diagnostics } : {}),
     runId: () => "run-1",
   });
   return {
@@ -207,6 +232,7 @@ function harness({
     fireReferenceEstimate: reference.fire,
     get slotClicks() { return slotClicks; },
     get now() { return now; },
+    get preparationResets() { return preparationResets; },
     jumpWall(ms) { now += ms; },
   };
 }
@@ -224,6 +250,63 @@ test("clock metrics transition from bootstrap to armed and forward the offset vi
     assert.equal(metric.data.clockOffsetMs, 42);
     assert.equal(metric.data.clockOffsetCenterMs, 42);
   }
+});
+
+test("raw reference-clock samples freeze at arm and trace exactly once at terminal", async () => {
+  const h = harness();
+  await h.orchestrator.start(config());
+  const raw = h.traces.filter((trace) => trace.code === "CLOCK_SAMPLE");
+  assert.equal(raw.length, 1);
+  assert.equal(h.referenceClockCalls.stopped, 1);
+  assert.equal(h.referenceClockCalls.drained, 1);
+  assert.equal(raw[0].options.state, null);
+  assert.deepEqual(raw[0].options.attributes, {
+    clockSampleIndex: 1,
+    clockSampleTotal: 1,
+    clockSampleFreezeReason: "armed",
+    clockSampleT0MonoMs: 10,
+    clockSampleT1MonoMs: 50,
+    clockSampleServerDateMs: 1_000,
+    clockSampleRttMs: 40,
+    clockSampleOffsetLowerMs: 950,
+    clockSampleOffsetCenterMs: 1_470,
+    clockSampleOffsetUpperMs: 1_990,
+    clockSampleFromCache: false,
+  });
+});
+
+test("an early handoff freezes reference-clock samples as terminal without duplication", async () => {
+  const h = harness({
+    entry: {
+      inspect: () => ({ reservationOpen: false, ctaAvailable: false, waitingOnly: true }),
+      openReservation: () => false,
+    },
+  });
+  await h.orchestrator.start(config({ entryMode: "auto" }));
+  const raw = h.traces.filter((trace) => trace.code === "CLOCK_SAMPLE");
+  assert.equal(raw.length, 1);
+  assert.equal(raw[0].options.attributes.clockSampleFreezeReason, "terminal");
+  assert.equal(h.referenceClockCalls.stopped, 1);
+  assert.equal(h.referenceClockCalls.drained, 1);
+});
+
+test("a failed bootstrap produces no raw reference-clock trace", async () => {
+  const h = harness({ bootstrapFails: true });
+  await h.orchestrator.start(config());
+  assert.equal(h.traces.some((trace) => trace.code === "CLOCK_SAMPLE"), false);
+  assert.equal(h.referenceClockCalls.drained, 1);
+});
+
+test("a failing raw reference-clock trace cannot change the terminal result", async () => {
+  const h = harness({
+    onTrace: (code) => {
+      if (code === "CLOCK_SAMPLE") throw new Error("raw clock exporter failed");
+    },
+  });
+  const result = await h.orchestrator.start(config());
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(h.referenceClockCalls.stopped, 1);
+  assert.equal(h.referenceClockCalls.drained, 1);
 });
 
 test("availability shadow records body/DOM agreement without changing the slot control result", async () => {
@@ -304,6 +387,61 @@ test("an EXACT matching body wakes an immediate same-cycle DOM rescan", async ()
   assert.equal(wake?.options.attributes.wakeCandidateFound, true);
   assert.equal(wake?.options.attributes.wakeToDomMs, 0);
   assert.equal(detected?.data?.timingServerAtMs, emittedAt);
+});
+
+test("a wake that skips an in-flight sleep records the skipped baseline scan as wakeAdvanceMs", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emittedAt = null;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    readSlots: (ctx) => {
+      if (emittedAt === null) {
+        emittedAt = ctx.now;
+        shadow.emit({ atMonoMs: ctx.now });
+        return [];
+      }
+      return [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }];
+    },
+  });
+
+  const result = await h.orchestrator.start(config());
+  const wake = h.traces.find((trace) => trace.options.attributes.phase === "wake_result");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  // 첫 scan 도중 body가 도착해 pending으로 저장되고, 25ms sleep 대신 wait가
+  // 즉시 해제된다. baseline(= sleep 만료 시각)과의 차이가 계측된 전진분이다.
+  assert.equal(wake?.options.attributes.wakeAdvanceMs, 25);
+  assert.equal(
+    wake?.options.attributes.baselineNextScanAtMonoMs - wake?.options.attributes.wakeScanAtMonoMs,
+    25,
+  );
+});
+
+test("a wake consumed before the first scan records wakeAdvanceMs of zero", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emitted = false;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    onCalendarInspect: () => {
+      if (shadow.marked && !emitted) {
+        emitted = true;
+        shadow.emit();
+      }
+    },
+  });
+
+  const result = await h.orchestrator.start(config());
+  const wake = h.traces.find((trace) => trace.options.attributes.phase === "wake_result");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  // 목표 날짜 선택 확인 중 body가 도착하면 loop 시작 전에 소비된다. 첫 scan은
+  // wake와 무관하게 즉시 실행되므로 전진분은 0이어야 한다.
+  assert.equal(wake?.options.attributes.wakeCandidateFound, true);
+  assert.equal(wake?.options.attributes.wakeAdvanceMs, 0);
+  assert.equal(
+    wake?.options.attributes.baselineNextScanAtMonoMs,
+    wake?.options.attributes.wakeScanAtMonoMs,
+  );
 });
 
 test("a unique STRONG body can wake the current cycle without an explicit marker", async () => {
@@ -403,6 +541,156 @@ test("a trusted wake without a DOM candidate falls back and continues the next t
   assert.equal(wake?.options.attributes.wakeCandidateFound, false);
   assert.equal(wake?.options.attributes.wakeFallbackUsed, true);
   assert.deepEqual(cycles.map((trace) => trace.options.attributes.result), ["NO_SLOT", "SLOT_FOUND"]);
+});
+
+test("an EXACT EMPTY ends the active cycle before the existing detection deadline", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emitted = false;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    readSlots: (ctx) => {
+      if (!emitted) {
+        emitted = true;
+        shadow.emit({
+          atMonoMs: ctx.now,
+          classification: "EMPTY",
+          availableMinutes: [],
+        });
+      }
+      return ctx.cycles >= 2
+        ? [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }]
+        : [];
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ availabilityProbeMode: "empty_exit" }));
+  const cycles = h.traces.filter((trace) => trace.code === "DATE_TOGGLE_CYCLE");
+  const body = h.traces.find((trace) => trace.options.attributes.phase === "body");
+  const earlyExit = h.traces.find((trace) => trace.options.attributes.phase === "empty_early_exit");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.deepEqual(cycles.map((trace) => trace.options.attributes.result), ["EMPTY_EARLY_EXIT", "SLOT_FOUND"]);
+  assert.equal(body?.options.attributes.signalKind, "empty_exit");
+  assert.equal(earlyExit?.options.attributes.emptyEarlyExitApplied, true);
+  assert.equal(earlyExit?.options.attributes.targetStillSelected, true);
+  assert.equal(earlyExit?.options.attributes.finalDomCandidateFound, false);
+  assert.ok(h.dateClickTimes.filter((entry) => entry.date === "2026-07-30")[1].at <= 1_400);
+});
+
+test("a DOM candidate from the same scan wins over a pending EXACT EMPTY", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emitted = false;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    readSlots: (ctx) => {
+      if (!emitted) {
+        emitted = true;
+        shadow.emit({
+          atMonoMs: ctx.now,
+          classification: "EMPTY",
+          availableMinutes: [],
+        });
+      }
+      return [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }];
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ availabilityProbeMode: "empty_exit" }));
+  const cycles = h.traces.filter((trace) => trace.code === "DATE_TOGGLE_CYCLE");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.deepEqual(cycles.map((trace) => trace.options.attributes.result), ["SLOT_FOUND"]);
+  assert.equal(h.traces.some((trace) => trace.options.attributes.phase === "empty_early_exit"), false);
+});
+
+test("a DOM candidate rendered during the EMPTY selection guard wins before cycle exit", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emitted = false;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    onCalendarInspect: (ctx) => {
+      if (shadow.marked && !emitted) {
+        emitted = true;
+        shadow.emit({
+          atMonoMs: ctx.monotonicNow,
+          classification: "EMPTY",
+          availableMinutes: [],
+        });
+      }
+    },
+    readSlots: (ctx) => {
+      return ctx.scans >= 2
+        ? [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }]
+        : [];
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ availabilityProbeMode: "empty_exit" }));
+  const cycles = h.traces.filter((trace) => trace.code === "DATE_TOGGLE_CYCLE");
+  const earlyExit = h.traces.find((trace) => trace.options.attributes.phase === "empty_early_exit");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.deepEqual(cycles.map((trace) => trace.options.attributes.result), ["SLOT_FOUND"]);
+  assert.equal(earlyExit?.options.attributes.finalDomCandidateFound, true);
+  assert.equal(earlyExit?.options.attributes.emptyEarlyExitApplied, false);
+});
+
+test("EXACT EMPTY keeps the fallback when the target date is no longer selected", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emitted = false;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    onCalendarInspect: () => (emitted ? false : undefined),
+    readSlots: (ctx) => {
+      if (!emitted) {
+        emitted = true;
+        shadow.emit({
+          atMonoMs: ctx.now,
+          classification: "EMPTY",
+          availableMinutes: [],
+        });
+      }
+      return [];
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ availabilityProbeMode: "empty_exit" }));
+  const earlyExit = h.traces.find((trace) => trace.options.attributes.phase === "empty_early_exit");
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.equal(earlyExit?.options.attributes.emptyEarlyExitApplied, false);
+  assert.equal(earlyExit?.options.attributes.targetStillSelected, false);
+  assert.equal(h.traces.some((trace) => trace.options.attributes.result === "EMPTY_EARLY_EXIT"), false);
+});
+
+test("observe mode EMPTY preserves the existing NO_SLOT cycle", async () => {
+  const shadow = fakeAvailabilityShadow();
+  let emitted = false;
+  const h = harness({
+    availabilityShadow: shadow.port,
+    readSlots: (ctx) => {
+      if (!emitted) {
+        emitted = true;
+        shadow.emit({
+          atMonoMs: ctx.now,
+          classification: "EMPTY",
+          availableMinutes: [],
+        });
+      }
+      return ctx.cycles >= 2
+        ? [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }]
+        : [];
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ availabilityProbeMode: "observe" }));
+  const cycles = h.traces.filter((trace) => trace.code === "DATE_TOGGLE_CYCLE");
+  const body = h.traces.find((trace) => trace.options.attributes.phase === "body");
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.deepEqual(cycles.map((trace) => trace.options.attributes.result), ["NO_SLOT", "SLOT_FOUND"]);
+  assert.equal(body?.options.attributes.wakeAccepted, false);
+  assert.equal(body?.options.attributes.wakeDiscardReason, "no_matching_slot");
 });
 
 test("a trusted body preserves its bounded render window before the next toggle", async () => {
@@ -814,6 +1102,7 @@ test("auto entry opens the reservation, prepares date and person, then uses the 
 
   assert.equal(result.state, "DRY_RUN_COMPLETED");
   assert.deepEqual(actions, ["entry", "date", "person"]);
+  assert.equal(h.preparationResets, 1);
   assert.deepEqual(h.events.filter((event) => event.kind === "state").map((event) => event.data?.state).slice(0, 8), [
     "CONFIGURED",
     "VALIDATING",
@@ -824,6 +1113,46 @@ test("auto entry opens the reservation, prepares date and person, then uses the 
     "PREPARING_PAGE",
     "WAITING_FOR_OPEN",
   ]);
+});
+
+test("preparation trace correlates background context with change-based dispatch observations", async () => {
+  let reservationOpen = false;
+  let datePrepared = false;
+  let personSelected = false;
+  const h = harness({
+    entry: {
+      inspect: () => ({ reservationOpen, ctaAvailable: true, waitingOnly: false }),
+      openReservation: () => { reservationOpen = true; return true; },
+    },
+    prepareTarget: (_target, beforeDispatch) => {
+      if (datePrepared) return { status: "ready", message: "목표 날짜가 준비됐습니다." };
+      beforeDispatch?.({ kind: "date", target: "2026-07-30", attempt: 1 });
+      datePrepared = true;
+      return { status: "acted", message: "목표 날짜를 선택했습니다." };
+    },
+    person: {
+      inspect: () => ({ ready: true, targetAvailable: true, targetSelected: personSelected }),
+      select: () => { personSelected = true; return true; },
+    },
+  });
+  const executionContext = {
+    capturedAt: 99, tabId: 7, windowId: 11, tabActive: false, windowFocused: true,
+  };
+
+  await h.orchestrator.start(config({ entryMode: "auto" }), "run-context", executionContext);
+  const preparation = h.traces.filter((trace) => trace.code === "PREPARATION_OBSERVED");
+
+  assert.ok(preparation.some((trace) => trace.options.attributes.preparationPhase === "stage_start"));
+  assert.ok(preparation.some((trace) => trace.options.attributes.preparationAction === "open_reservation"
+    && trace.options.attributes.preparationPhase === "dispatch_before"));
+  assert.ok(preparation.some((trace) => trace.options.attributes.preparationAction === "select_date"
+    && trace.options.attributes.preparationPhase === "dispatch_after"));
+  assert.ok(preparation.some((trace) => trace.options.attributes.preparationAction === "select_person"
+    && trace.options.attributes.preparationPhase === "dispatch_after"));
+  assert.ok(preparation.every((trace) => trace.options.attributes.runTabId === 7));
+  assert.ok(preparation.every((trace) => trace.options.attributes.runWindowId === 11));
+  assert.ok(preparation.every((trace) => trace.options.attributes.pageVisibilityState === "visible"));
+  assert.ok(preparation.every((trace) => trace.options.attributes.pageFingerprint === "ss-preparation"));
 });
 
 test("auto entry dismisses the promo interstitial and re-clicks the CTA", async () => {
@@ -855,6 +1184,163 @@ test("auto entry dismisses the promo interstitial and re-clicks the CTA", async 
   assert.equal(result.state, "DRY_RUN_COMPLETED");
   assert.deepEqual(actions, ["entry", "promo", "entry"]);
   assert.equal(h.events.some((event) => event.kind === "action" && /홍보 안내/.test(event.message)), true);
+});
+
+test("auto entry retries a stalled CTA once and continues when the calendar opens", async () => {
+  let reservationOpen = false;
+  let attempts = 0;
+  const h = harness({
+    entry: {
+      inspect: () => ({ reservationOpen, ctaAvailable: true, waitingOnly: false }),
+      openReservation: () => {
+        attempts += 1;
+        if (attempts === 2) reservationOpen = true;
+        return true;
+      },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }));
+  const retries = h.traces.filter((trace) => trace.code === "PREPARATION_OBSERVED"
+    && trace.options.attributes.preparationAction === "open_reservation"
+    && trace.options.attributes.preparationAttempt === 2);
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(attempts, 2);
+  assert.equal(retries.length, 2);
+});
+
+test("auto entry hands off after two stalled CTA dispatches", async () => {
+  let attempts = 0;
+  const h = harness({
+    entry: {
+      inspect: () => ({ reservationOpen: false, ctaAvailable: true, waitingOnly: false }),
+      openReservation: () => { attempts += 1; return true; },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }));
+  const handoff = h.events.find((event) => event.data?.state === "HANDED_OFF");
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.equal(attempts, 2);
+  assert.equal(handoff?.data?.preparationErrorCode, "ENTRY_TRANSITION_STALLED");
+  assert.equal(handoff?.data?.preparationAttemptCount, 2);
+});
+
+test("auto date preparation carries a bounded stall code into the terminal handoff", async () => {
+  let calls = 0;
+  const h = harness({
+    prepareTarget: (_target, beforeDispatch) => {
+      calls += 1;
+      if (calls <= 2) {
+        beforeDispatch?.({ kind: "date", target: "2026-07-30", attempt: calls });
+        return {
+          status: "acted",
+          message: calls === 1 ? "날짜를 선택했습니다." : "날짜 선택을 재시도했습니다.",
+        };
+      }
+      return {
+        status: "blocked",
+        message: "목표 날짜 선택 전환을 확인할 수 없습니다.",
+        errorCode: "DATE_SELECTION_STALLED",
+      };
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }));
+  const handoff = h.events.find((event) => event.data?.state === "HANDED_OFF");
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.equal(handoff?.data?.preparationErrorCode, "DATE_SELECTION_STALLED");
+  assert.equal(handoff?.data?.preparationAttemptCount, 2);
+});
+
+test("consecutive same-tab runs reset the same CalendarAdapter before redispatching the same date", async () => {
+  const dom = await loadFixture("calendar-navigation.html");
+  const document = dom.window.document;
+  const section = document.querySelector("section");
+  const adjacent = document.createElement("div");
+  adjacent.setAttribute("role", "button");
+  adjacent.setAttribute("aria-label", "수요일, 7월 29, 2026");
+  adjacent.setAttribute("aria-pressed", "false");
+  section.append(adjacent);
+  const target = document.querySelector('[aria-label*="7월 30"]');
+  let adapterNow = 0;
+  let targetClicks = 0;
+  let run = 0;
+  let resets = 0;
+  const dispatchRuns = [];
+  target.addEventListener("click", () => {
+    targetClicks += 1;
+    if (targetClicks === 3) target.setAttribute("aria-pressed", "true");
+  });
+  const adapter = new CalendarAdapter(document, () => adapterNow);
+  const sharedCalendar = {
+    resetPreparation: () => {
+      run += 1;
+      resets += 1;
+      adapter.resetPreparation();
+    },
+    inspect: (targetDate) => adapter.inspect(targetDate),
+    prepareTarget: (targetDate, beforeDispatch) => adapter.prepareTarget(targetDate, (dispatch) => {
+      if (dispatch.kind === "date") dispatchRuns.push(run);
+      beforeDispatch?.(dispatch);
+    }),
+    clickDate: (date) => adapter.clickDate(date),
+  };
+  const h = harness({
+    calendarOverride: sharedCalendar,
+    onSleep: (ms) => { adapterNow += ms; },
+    readSlots: () => [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }],
+  });
+
+  const first = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }), "run-first");
+  const second = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }), "run-second");
+
+  assert.equal(first.state, "HANDED_OFF");
+  assert.equal(second.state, "DRY_RUN_COMPLETED");
+  assert.deepEqual(dispatchRuns, [1, 1, 2]);
+  assert.equal(resets, 2);
+  assert.equal(target.getAttribute("aria-pressed"), "true");
+});
+
+test("auto person preparation retries once and continues on the checked postcondition", async () => {
+  let selected = false;
+  let attempts = 0;
+  const h = harness({
+    person: {
+      inspect: () => ({ ready: true, targetAvailable: true, targetSelected: selected }),
+      select: () => {
+        attempts += 1;
+        if (attempts === 2) selected = true;
+        return true;
+      },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }));
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(attempts, 2);
+});
+
+test("auto person preparation hands off after two stalled dispatches", async () => {
+  let attempts = 0;
+  const h = harness({
+    person: {
+      inspect: () => ({ ready: true, targetAvailable: true, targetSelected: false }),
+      select: () => { attempts += 1; return true; },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }));
+  const handoff = h.events.find((event) => event.data?.state === "HANDED_OFF");
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.equal(attempts, 2);
+  assert.equal(handoff?.data?.preparationErrorCode, "PERSON_SELECTION_STALLED");
+  assert.equal(handoff?.data?.preparationAttemptCount, 2);
 });
 
 test("auto entry hands off safely when the restaurant is waiting-only", async () => {
@@ -1295,4 +1781,44 @@ test("a throwing captureSnapshot does not mask the give-up", async () => {
   const handoff = h.events.find((e) => e.data?.state === "HANDED_OFF");
   assert.equal(handoff?.data?.snapshotFingerprint, undefined);
   assert.equal(handoff?.data?.snapshotRunState, "ENTERING_RESERVATION");
+});
+
+test("diagnostic failures persist breadcrumbs and link the terminal event", async () => {
+  const calls = { breadcrumbs: [], failures: [], flushed: 0 };
+  const diagnostics = {
+    breadcrumb: (...args) => calls.breadcrumbs.push(args),
+    failure: (...args) => { calls.failures.push(args); return "ds-final"; },
+    forceFlush: async () => { calls.flushed += 1; },
+  };
+  const h = harness({
+    diagnostics,
+    entry: { inspect: () => ({ reservationOpen: false, ctaAvailable: false, waitingOnly: true }), openReservation: () => false },
+  });
+  const result = await h.orchestrator.start(config({ entryMode: "auto" }));
+  const handoff = h.events.find((event) => event.data?.state === "HANDED_OFF");
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.ok(calls.breadcrumbs.some(([stage, trigger]) => stage === "ENTERING_RESERVATION" && trigger === "state"));
+  assert.equal(calls.failures.length, 1);
+  assert.equal(calls.failures[0][0], "ENTERING_RESERVATION");
+  assert.equal(handoff?.data?.diagnosticSnapshotId, "ds-final");
+  assert.equal(calls.flushed, 1);
+});
+
+test("normal form hand-off keeps breadcrumbs in memory and stores no failure snapshot", async () => {
+  const calls = { breadcrumbs: [], failures: 0, flushed: 0 };
+  const diagnostics = {
+    breadcrumb: (stage) => calls.breadcrumbs.push(stage),
+    failure: () => { calls.failures += 1; return "unexpected"; },
+    forceFlush: async () => { calls.flushed += 1; },
+  };
+  const h = harness({ diagnostics, slotAfterCycles: 1 });
+  const result = await h.orchestrator.start(config({ dryRun: false }));
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.equal(calls.failures, 0);
+  assert.equal(calls.flushed, 1);
+  assert.ok(calls.breadcrumbs.includes("SLOT_CLICK_DISPATCHED"));
+  assert.ok(!calls.breadcrumbs.includes("REFRESHING_SLOTS"));
+  assert.ok(!calls.breadcrumbs.includes("SLOT_DETECTED"));
 });

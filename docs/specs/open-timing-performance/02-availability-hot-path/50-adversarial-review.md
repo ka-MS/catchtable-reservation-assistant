@@ -57,6 +57,16 @@ fixture를 먼저 추가해 실패를 재현한 뒤 selector를 `button[data-bus
 4. RT-05에서 MAIN XHR probe의 최종 운영 정책을 결정해야 Tier 2-2를 종료할 수 있다.
 5. 20/40/60ms는 실측 p95가 확보될 때까지 최적화 대상이 아니라 안전 상한으로 남는다.
 
-## 5. 최종 판정
+## 5. 실측 후 추가 레드팀 판정
 
-구현은 fallback 보존형으로 승인한다. 상태는 **RT-10M 재측정 대기**이며, 성능 완료 또는 Tier 2-2 최종 종료로 판정하지 않는다.
+1. wake 수락군이 inactive-cycle군보다 빠르거나 느리다는 단순 비교는 매장·설정·환경 confounding 때문에 금지한다.
+2. wake-to-DOM 0.3ms는 DOM이 wake 시점에 이미 존재했을 가능성을 포함하며, 25ms polling 대비 절감량이 아니다.
+3. `FORM_REACHED`를 최종 예약 성공으로 세지 않는다. 사용자 확인 성공은 별도 보조 라벨이다.
+4. 17건 nearest-rank p95는 최댓값이므로 성능 계약에 사용할 수 없다.
+5. 성공 표본이 모두 fallback이라는 사실은 probe 무효를 증명하지 않지만 운영 기본 활성의 근거가 없음을 보여준다.
+
+위 위험을 반영해 probe를 제거하지 않고 진단 전용 기본 비활성으로 제한했다. p95와 counterfactual 측정은 별도 backlog이며 Tier 2-2 종료를 무기한 막지 않는다.
+
+## 6. 최종 판정
+
+구현은 fallback 보존형으로 승인한다. RT-05 운영 격리까지 완료했으므로 Tier 2-2는 종료한다. **XHR wake 성능 이득과 공식 p95는 미입증**이며 body actuator 승격은 승인하지 않는다.

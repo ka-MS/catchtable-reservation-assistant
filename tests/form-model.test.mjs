@@ -21,6 +21,7 @@ function values(overrides = {}) {
     dryRun: true,
     preOpenLeadMs: "3000",
     toggleIntervalMs: "400",
+    availabilityProbeMode: "off",
     clockSampleCount: "5",
     ...overrides,
   };
@@ -37,7 +38,25 @@ test("sidepanel values produce an epoch-based configuration", () => {
   assert.equal(config.tablePreference, "bar");
   assert.equal(config.menuKeyword, "디너 오마카세");
   assert.equal(config.entryMode, "auto");
+  assert.equal(config.availabilityProbeMode, "off");
+  assert.equal("availabilityProbeEnabled" in config, false);
   assert.equal("clockSampleCount" in config, false);
+});
+
+test("XHR response mode is explicit", () => {
+  const config = configFromFormValues(
+    values({ availabilityProbeMode: "empty_exit" }),
+    new Date("2026-07-10T12:00").getTime(),
+  );
+  assert.equal(config.availabilityProbeMode, "empty_exit");
+});
+
+test("legacy XHR diagnostic drafts migrate to observe mode", () => {
+  const config = configFromFormValues(
+    values({ availabilityProbeMode: undefined, availabilityProbeEnabled: true }),
+    new Date("2026-07-10T12:00").getTime(),
+  );
+  assert.equal(config.availabilityProbeMode, "observe");
 });
 
 test("sidepanel model reports validation errors", () => {

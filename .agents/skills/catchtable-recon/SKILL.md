@@ -41,7 +41,7 @@ Use Chrome DevTools MCP for live Chrome and extension work. Read `docs/testing/c
 Do not confuse the two storage systems:
 
 - Reservation settings, jobs, favorites, history, drafts, and active-run state are in `chrome.storage.local`. Important keys include `scheduledJobs`, `reservationConfig`, `configHistory`, `configFavorites`, `activeRun`, and `draftForm`.
-- Execution telemetry is in IndexedDB database `catchtable-reserve-telemetry`, stores `runs` and `events`.
+- Execution telemetry is in IndexedDB database `catchtable-reserve-telemetry`, stores `runs`, `events`, and failure-only `snapshots`.
 
 Verify reservation-job persistence through `chrome.storage.local.scheduledJobs`, not IndexedDB. Verify a selected telemetry `runId` by comparing `runs.eventCount`, stored event count, continuous `seq`, `droppedCount`, `finalState`, and terminal event with the UI log.
 

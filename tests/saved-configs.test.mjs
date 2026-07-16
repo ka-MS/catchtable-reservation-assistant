@@ -36,6 +36,7 @@ test("fingerprint represents booking intent rather than run timestamps", () => {
     openAtMs: 9_000,
     stopAtMs: 609_000,
     menuKeyword: "디너 오마카세",
+    availabilityProbeMode: "empty_exit",
   }));
   assert.equal(first, rerun);
   assert.notEqual(first, configFingerprint(config({ personCount: 3 })));
@@ -91,4 +92,6 @@ test("sanitize accepts legacy payment settings and the current config shape", ()
   assert.deepEqual(result.map((item) => item.id), ["current", "legacy"]);
   assert.equal(result.find((item) => item.id === "legacy").config.paymentMethodAutoAdvance, true);
   assert.equal(result.find((item) => item.id === "legacy").config.paymentMethodPolicy, "selected_allowed");
+  assert.equal(result.find((item) => item.id === "legacy").config.availabilityProbeMode, "off");
+  assert.equal("availabilityProbeEnabled" in result.find((item) => item.id === "legacy").config, false);
 });

@@ -104,3 +104,7 @@ Catchtable 예약 drawer는 `main` 밖의 portal에 렌더될 수 있고, 이때
 - coordinator wait가 실패하면 같은 남은 시간으로 일반 sleep을 수행한다.
 - availability shadow와 mutation observer start/stop/snapshot 실패는 기존 terminal 결과를 바꾸지 않는다.
 - dry-run은 기존 `advanceFromSlot()` 경계에서 클릭 0회를 유지한다.
+
+## 8. 최종 운영 활성화
+
+probe와 wake coordinator는 코드에 유지하되 `availabilityProbeEnabled=true`인 진단 실행에서만 MAIN wrapper와 channel을 설치한다. 기본값과 구버전 누락값은 `false`다. 비활성 상태의 기존 DOM detector는 coordinator 신호 없이 동일한 bounded loop를 수행한다.

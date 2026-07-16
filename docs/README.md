@@ -5,12 +5,13 @@
 1. [제품 요구사항](specs/product-requirements.md)
 2. [자동화 경계](specs/automation-boundary.md)
 3. [실사이트 실측](analysis/site-behavior.md)
-4. [상태 머신](design/state-machine.md)
-5. [아키텍처](design/architecture.md)
-6. [테스트 전략](testing/test-strategy.md)
-7. [구현 계획](plans/mvp-implementation.md)
-8. [현재 HANDOFF](worklog/HANDOFF.md)
-9. HANDOFF에 blocking backlog가 지정된 경우 [Backlog](backlog/README.md)
+4. [실측 원본 증거](evidence/README.md)
+5. [상태 머신](design/state-machine.md)
+6. [아키텍처](design/architecture.md)
+7. [테스트 전략](testing/test-strategy.md)
+8. [구현 계획](plans/mvp-implementation.md)
+9. [현재 HANDOFF](worklog/HANDOFF.md)
+10. HANDOFF에 blocking backlog가 지정된 경우 [Backlog](backlog/README.md)
 
 ## 공식 기준
 
@@ -32,6 +33,7 @@
 | 기존 자산 분류 | [legacy-inventory.md](analysis/legacy-inventory.md) |
 | 기존 실패 원인 | [legacy-review.md](analysis/legacy-review.md) |
 | 실측 기준 | [site-behavior.md](analysis/site-behavior.md) |
+| 실측 원본 증거 | [evidence/](evidence/README.md) |
 | 이관 이력 | [source-migration-record.md](analysis/source-migration-record.md) |
 | 제품·UI·경계 | [specs/](specs/README.md) |
 | 아키텍처·ADR | [design/](design/architecture.md) |

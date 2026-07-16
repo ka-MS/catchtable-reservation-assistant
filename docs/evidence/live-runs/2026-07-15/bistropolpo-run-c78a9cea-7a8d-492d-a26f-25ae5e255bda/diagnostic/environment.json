@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "runId": "run-c78a9cea-7a8d-492d-a26f-25ae5e255bda",
+  "extensionVersion": "0.2.0",
+  "snapshots": [
+    {
+      "snapshotId": "37ac4b08-511b-4de2-85ff-83b12ffdcb0c",
+      "capturedAt": 1784113203650,
+      "stage": "ADVANCING_RESERVATION",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/bistropolpo",
+        "urlKind": "shop",
+        "title": "뽈뽀",
+        "readyState": "complete",
+        "visibilityState": "hidden",
+        "hasFocus": false,
+        "viewportWidth": 1067,
+        "viewportHeight": 783,
+        "visualViewportWidth": 1067.199951171875,
+        "visualViewportHeight": 783.2000122070312,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "div",
+          "role": "",
+          "text": "메뉴 선택코스 예약예약금 입니다.50,000원[필수] 메인 메뉴를 선택해주세요.취소다음",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "div",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 308.6,
+            "width": 1067.2,
+            "height": 474.6
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "05f8deab-8b76-4fd9-a219-be4e9535377c",
+      "capturedAt": 1784113204617,
+      "stage": "ADVANCING_RESERVATION",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/bistropolpo",
+        "urlKind": "shop",
+        "title": "뽈뽀",
+        "readyState": "complete",
+        "visibilityState": "hidden",
+        "hasFocus": false,
+        "viewportWidth": 1067,
+        "viewportHeight": 783,
+        "visualViewportWidth": 1067.199951171875,
+        "visualViewportHeight": 783.2000122070312,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "div",
+          "role": "",
+          "text": "메뉴 선택코스 예약예약금 입니다.50,000원50,000원 x 2명 = 총 결제 금액 100,000원취소다음",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "div",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 308.6,
+            "width": 1067.2,
+            "height": 474.6
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "38f3f722-fda8-41b0-825d-e959571fc8bc",
+      "capturedAt": 1784113205663,
+      "stage": "ADVANCING_RESERVATION",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/bistropolpo",
+        "urlKind": "shop",
+        "title": "뽈뽀",
+        "readyState": "complete",
+        "visibilityState": "hidden",
+        "hasFocus": false,
+        "viewportWidth": 1067,
+        "viewportHeight": 783,
+        "visualViewportWidth": 1067.199951171875,
+        "visualViewportHeight": 783.2000122070312,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "div",
+          "role": "",
+          "text": "예약금 결제 방법 선택예약금 0원 결제100,000원0원캐치페이로 결제 부담 없이 빠른 예약이미 카드 등록하셨네요! 3초만에 예약 가능해요* 방문 2일 전부터는 예약 취소/노쇼 시 수수료가 결제됩니다.예약금 결제100,000원총 메뉴 금액* 방문 2일 전부터는 예약 취소/노쇼 시 수수료",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "div",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 247,
+            "width": 1067.2,
+            "height": 536.2
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "e8666c57-dc55-4b82-8f88-239b089d9c0b",
+      "capturedAt": 1784113207601,
+      "stage": "ADVANCING_RESERVATION",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/reservation/form",
+        "urlKind": "reservation_form",
+        "title": "뽈뽀",
+        "readyState": "complete",
+        "visibilityState": "hidden",
+        "hasFocus": false,
+        "viewportWidth": 1067,
+        "viewportHeight": 783,
+        "visualViewportWidth": 1052,
+        "visualViewportHeight": 783.2000122070312,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "body",
+          "role": "",
+          "text": "You need to enable JavaScript to run this app.<br /> 자바스크립트를 활성화해주시기 바랍니다. !(function (f, b, e, v, n, t, s) { if (f.fbq) return; n = f.fbq = function () { n.cal",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "body",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 1052,
+            "height": 783.2
+          }
+        }
+      }
+    }
+  ]
+}

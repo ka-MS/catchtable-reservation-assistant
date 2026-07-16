@@ -7,6 +7,7 @@ function documentFixture() {
   return new JSDOM(`
     <select id="trace-run-select"></select>
     <button id="trace-run-export"></button>
+    <button id="trace-run-diagnostic"></button>
     <button id="trace-run-delete"></button>
     <span id="trace-event-count"></span>
     <ol id="trace-event-list"><li class="event-empty"></li></ol>
@@ -47,22 +48,28 @@ test("trace view renders run history and dispatches selection and deletion", () 
   const document = documentFixture();
   const selected = [];
   const downloaded = [];
+  const diagnosed = [];
   const removed = [];
   const view = new TraceHistoryView(document, {
     select: (runId) => selected.push(runId),
     download: (selectedRun) => downloaded.push(selectedRun.runId),
+    diagnostic: (selectedRun) => diagnosed.push(selectedRun.runId),
     remove: (runId) => removed.push(runId),
   });
   view.renderRuns([run("run-2", 2), run("run-1", 1, 3)]);
   assert.equal(document.querySelectorAll("#trace-run-select option").length, 2);
   assert.equal(document.querySelector("#trace-run-export").disabled, true);
+  assert.equal(document.querySelector("#trace-run-diagnostic").disabled, true);
   document.querySelector("#trace-run-select").value = "run-1";
   document.querySelector("#trace-run-select").dispatchEvent(new document.defaultView.Event("change"));
   assert.equal(document.querySelector("#trace-run-export").disabled, false);
+  assert.equal(document.querySelector("#trace-run-diagnostic").disabled, false);
   document.querySelector("#trace-run-export").click();
+  document.querySelector("#trace-run-diagnostic").click();
   document.querySelector("#trace-run-delete").click();
   assert.deepEqual(selected, ["run-1"]);
   assert.deepEqual(downloaded, ["run-1"]);
+  assert.deepEqual(diagnosed, ["run-1"]);
   assert.deepEqual(removed, ["run-1"]);
 });
 
@@ -77,6 +84,20 @@ test("trace view appends live batches incrementally and caps the DOM at one hund
   assert.equal(document.querySelectorAll("#trace-event-list > li").length, 100);
   assert.match(document.querySelector("#trace-event-list > li")?.textContent ?? "", /event 101/);
   assert.equal(document.querySelector("#trace-event-count").textContent, "100개");
+});
+
+test("raw clock samples stay export-only and do not replace operational trace rows", () => {
+  const document = documentFixture();
+  const view = new TraceHistoryView(document, { select: () => undefined, download: () => undefined, diagnostic: () => undefined, remove: () => undefined });
+  const operational = event("run-clock", 1);
+  const raw = event("run-clock", 2, "CLOCK_SAMPLE");
+  view.renderRuns([run("run-clock", 1)]);
+  view.renderEvents([operational, raw]);
+  assert.equal(document.querySelectorAll("#trace-event-list > li").length, 1);
+  assert.match(document.querySelector("#trace-event-list > li")?.textContent ?? "", /event 1/);
+  view.appendLive({ type: "TRACE_LIVE_BATCH", run: run("run-clock"), events: [raw] });
+  assert.equal(document.querySelectorAll("#trace-event-list > li").length, 1);
+  assert.equal(document.querySelector("#trace-event-count").textContent, "1개");
 });
 
 test("clock sync detail shows phase, offset, uncertainty, confidence, and RTT/sample stats", () => {

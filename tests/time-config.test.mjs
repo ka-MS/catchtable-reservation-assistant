@@ -6,7 +6,12 @@ import {
   parseKoreanTime,
   parseTimeInput,
 } from "../dist/shared/time.js";
-import { defaultStopAt, validateReservationConfig } from "../dist/shared/config.js";
+import {
+  defaultStopAt,
+  normalizeReservationConfig,
+  resolveAvailabilityProbeMode,
+  validateReservationConfig,
+} from "../dist/shared/config.js";
 
 test("Korean slot labels are parsed strictly", () => {
   assert.equal(parseKoreanTime("오전 12:00"), 0);
@@ -59,6 +64,25 @@ test("valid open-run configuration is accepted", () => {
     .some((error) => error.includes("50ms")));
 });
 
+test("availability probe modes normalize legacy settings without retaining the boolean", () => {
+  const missing = normalizeReservationConfig(validConfig());
+  const disabled = normalizeReservationConfig({ ...validConfig(), availabilityProbeEnabled: false });
+  const enabled = normalizeReservationConfig({ ...validConfig(), availabilityProbeEnabled: true });
+  const current = normalizeReservationConfig({
+    ...validConfig(),
+    availabilityProbeMode: "empty_exit",
+    availabilityProbeEnabled: true,
+  });
+
+  assert.equal(missing.availabilityProbeMode, "off");
+  assert.equal(disabled.availabilityProbeMode, "off");
+  assert.equal(enabled.availabilityProbeMode, "observe");
+  assert.equal(current.availabilityProbeMode, "empty_exit");
+  assert.equal("availabilityProbeEnabled" in missing, false);
+  assert.equal("availabilityProbeEnabled" in enabled, false);
+  assert.equal(resolveAvailabilityProbeMode(current), "empty_exit");
+});
+
 test("invalid time relationships and unsafe settings are rejected", () => {
   const config = validConfig();
   config.targetUrl = "https://example.com/ct/shop/kea";
@@ -71,6 +95,7 @@ test("invalid time relationships and unsafe settings are rejected", () => {
   config.postSlotEnabled = "yes";
   config.paymentMethodAutoAdvance = "yes";
   config.paymentMethodPolicy = "anything";
+  config.availabilityProbeMode = "yes";
 
   const errors = validateReservationConfig(config, 1_000_000);
   assert.ok(errors.length >= 6);
@@ -79,4 +104,5 @@ test("invalid time relationships and unsafe settings are rejected", () => {
   assert.ok(errors.some((error) => error.includes("준비 방식")));
   assert.ok(errors.some((error) => error.includes("결제 방식")));
   assert.ok(errors.some((error) => error.includes("결제 방식 정책")));
+  assert.ok(errors.some((error) => error.includes("XHR 응답 모드")));
 });

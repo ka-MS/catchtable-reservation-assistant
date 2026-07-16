@@ -25,6 +25,7 @@ export type RunState =
 export type TablePreference = "any" | "hall" | "bar" | "room";
 export type EntryMode = "auto" | "prepared";
 export type PaymentMethodPolicy = "zero_only" | "selected_allowed";
+export type AvailabilityProbeMode = "off" | "observe" | "empty_exit";
 
 export interface ReservationConfig {
   targetUrl: string;
@@ -43,6 +44,9 @@ export interface ReservationConfig {
   dryRun: boolean;
   preOpenLeadMs: number;
   toggleIntervalMs: number;
+  availabilityProbeMode?: AvailabilityProbeMode;
+  /** @deprecated Legacy persisted setting. Normalize before use. */
+  availabilityProbeEnabled?: boolean;
 }
 
 export type SavedConfigList = "history" | "favorites";
@@ -100,9 +104,24 @@ export interface ActiveRun {
   scheduledJobId?: string;
 }
 
+export interface RunExecutionContext {
+  capturedAt: number;
+  tabId: number;
+  windowId: number | null;
+  tabActive: boolean;
+  windowFocused: boolean | null;
+}
+
 export type ContentCommand =
   | { type: "PING" }
-  | { type: "START"; runId: string; scheduledJobId?: string; shadowChannelId?: string; config: ReservationConfig }
+  | {
+    type: "START";
+    runId: string;
+    scheduledJobId?: string;
+    shadowChannelId?: string;
+    executionContext?: RunExecutionContext;
+    config: ReservationConfig;
+  }
   | { type: "STOP" };
 
 export type PanelCommand =
@@ -116,6 +135,7 @@ export type PanelCommand =
   | { type: "LIST_RUN_HISTORY" }
   | { type: "GET_RUN_TRACE"; runId: string; limit?: number }
   | { type: "EXPORT_RUN_TRACE"; runId: string }
+  | { type: "EXPORT_RUN_DIAGNOSTIC"; runId: string }
   | { type: "DELETE_RUN_TRACE"; runId: string };
 
 export interface RunEventMessage {

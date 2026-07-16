@@ -134,6 +134,63 @@ test("calendar preparation selects a rendered target and blocks a disabled targe
   assert.equal(adapter.prepareTarget("2026-07-30").status, "blocked");
 });
 
+test("calendar preparation reset isolates the same target across consecutive runs", async () => {
+  const dom = await loadFixture("calendar-navigation.html");
+  const adapter = new CalendarAdapter(dom.window.document);
+  const target = dom.window.document.querySelector('[aria-label*="7월 30"]');
+  let clicks = 0;
+  target.addEventListener("click", () => { clicks += 1; });
+
+  assert.equal(adapter.prepareTarget("2026-07-30").status, "acted");
+  assert.equal(adapter.prepareTarget("2026-07-30").status, "waiting");
+  adapter.resetPreparation();
+  assert.equal(adapter.prepareTarget("2026-07-30").status, "acted");
+  assert.equal(clicks, 2);
+});
+
+test("calendar preparation retries a stalled date once and then blocks", async () => {
+  const dom = await loadFixture("calendar-navigation.html");
+  const target = dom.window.document.querySelector('[aria-label*="7월 30"]');
+  let clicks = 0;
+  let now = 0;
+  target.addEventListener("click", () => { clicks += 1; });
+  const adapter = new CalendarAdapter(dom.window.document, () => now);
+
+  assert.equal(adapter.prepareTarget("2026-07-30").status, "acted");
+  now = 999;
+  assert.equal(adapter.prepareTarget("2026-07-30").status, "waiting");
+  now = 1_000;
+  assert.deepEqual(adapter.prepareTarget("2026-07-30"), {
+    status: "acted",
+    message: "2026-07-30 날짜 선택을 재시도했습니다.",
+  });
+  now = 2_000;
+  assert.deepEqual(adapter.prepareTarget("2026-07-30"), {
+    status: "blocked",
+    message: "목표 날짜 선택 전환을 확인할 수 없습니다.",
+    errorCode: "DATE_SELECTION_STALLED",
+  });
+  assert.equal(clicks, 2);
+});
+
+test("calendar preparation accepts the selected postcondition after a date retry", async () => {
+  const dom = await loadFixture("calendar-navigation.html");
+  const target = dom.window.document.querySelector('[aria-label*="7월 30"]');
+  let now = 0;
+  let clicks = 0;
+  target.addEventListener("click", () => {
+    clicks += 1;
+    if (clicks === 2) target.setAttribute("aria-pressed", "true");
+  });
+  const adapter = new CalendarAdapter(dom.window.document, () => now);
+
+  assert.equal(adapter.prepareTarget("2026-07-30").status, "acted");
+  now = 1_000;
+  assert.equal(adapter.prepareTarget("2026-07-30").status, "acted");
+  assert.equal(adapter.prepareTarget("2026-07-30").status, "ready");
+  assert.equal(clicks, 2);
+});
+
 test("Mobiscroll calendar inspection uses only the active grid", async () => {
   const dom = await loadFixture("calendar-mobiscroll.html");
   const adapter = new CalendarAdapter(dom.window.document);

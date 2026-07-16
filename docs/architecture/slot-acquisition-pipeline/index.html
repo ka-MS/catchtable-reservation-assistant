@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>폴링 기준 하이브리드 슬롯 획득 파이프라인</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="page-header">
+    <div class="header-inner">
+      <p class="eyebrow">Catchtable Reserve Architecture</p>
+      <h1>폴링 기준 하이브리드 슬롯 획득 파이프라인</h1>
+      <p class="lede">서버 응답, 브라우저 렌더, 확장 프로그램 신호와 최종 클릭이 실제로 어떤 순서로 이동하는지 단계별로 확인합니다.</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="visualizer" aria-labelledby="visualizer-title">
+      <div class="section-heading">
+        <div>
+          <p class="section-kicker">Communication simulator</p>
+          <h2 id="visualizer-title">통신 이동 경로</h2>
+        </div>
+        <div class="view-tabs" role="tablist" aria-label="아키텍처 선택">
+          <button type="button" class="view-tab is-active" role="tab" aria-selected="true" data-view-tab="current">현재 구조</button>
+          <button type="button" class="view-tab" role="tab" aria-selected="false" data-view-tab="three">3신호 구조</button>
+        </div>
+      </div>
+
+      <div class="control-bar">
+        <label class="field-label" for="scenarioSelect">시나리오
+          <select id="scenarioSelect"></select>
+        </label>
+        <label class="field-label speed-field" for="speedRange">재생 속도 <output id="speedOutput" for="speedRange">1.0×</output>
+          <input id="speedRange" type="range" min="0.5" max="2" step="0.25" value="1">
+        </label>
+        <div class="transport" aria-label="재생 제어">
+          <button type="button" id="resetButton" class="icon-button" aria-label="처음으로" title="처음으로">↺</button>
+          <button type="button" id="playButton" class="icon-button primary" aria-label="재생" title="재생">▶</button>
+          <button type="button" id="stepButton" class="icon-button" aria-label="한 단계 실행" title="한 단계 실행">›</button>
+        </div>
+      </div>
+
+      <div class="status-strip" aria-live="polite">
+        <div class="status-item">
+          <span>Cycle</span>
+          <strong id="cycleStatus">대기</strong>
+        </div>
+        <div class="status-item">
+          <span>서버 응답</span>
+          <strong id="serverStatus">없음</strong>
+        </div>
+        <div class="status-item">
+          <span>제어 결과</span>
+          <strong id="actionStatus">대기</strong>
+        </div>
+      </div>
+
+      <div id="diagramCanvas" class="diagram-canvas">
+        <div class="lane-dividers" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="lane-headings" aria-hidden="true">
+          <span>Extension control</span>
+          <span>Catchtable UI / DOM</span>
+          <span>Observation / bridge</span>
+          <span>Catchtable server</span>
+        </div>
+        <svg id="edgeLayer" class="edge-layer" aria-hidden="true"></svg>
+        <div id="packetLayer" class="packet-layer" aria-hidden="true"></div>
+
+        <div id="nodeGrid" class="node-grid">
+          <button class="arch-node" data-view="current" data-node="reference-clock" style="--col:1;--row:1">
+            <span class="node-type">Clock</span><strong>ReferenceClock</strong><small>서버 시각 앵커</small>
+          </button>
+          <button class="arch-node" data-view="current" data-node="toggle-plan" style="--col:1;--row:2">
+            <span class="node-type">Schedule</span><strong>nextTogglePlan()</strong><small>다음 합법적 grid</small>
+          </button>
+          <button class="arch-node" data-view="current" data-node="run-cycle" style="--col:1;--row:3">
+            <span class="node-type">Orchestrator</span><strong>runToggleCycle(N)</strong><small>cycle 소유권</small>
+          </button>
+          <button class="arch-node ui-node" data-view="current" data-node="adjacent-date" style="--col:2;--row:3">
+            <span class="node-type">UI action</span><strong>인접 날짜 클릭</strong><small>캐시된 슬롯 제거</small>
+          </button>
+          <button class="arch-node server-node" data-view="current" data-node="server-api" style="--col:4;--row:3">
+            <span class="node-type">API</span><strong>time-slots endpoint</strong><small>EMPTY / POPULATED</small>
+          </button>
+          <button class="arch-node ui-node" data-view="current" data-node="target-date" style="--col:2;--row:4">
+            <span class="node-type">UI action</span><strong>목표 날짜 클릭</strong><small>cycle marker 발행</small>
+          </button>
+          <button class="arch-node observe-node" data-view="current" data-node="xhr-probe" style="--col:3;--row:4">
+            <span class="node-type">MAIN world</span><strong>XHR probe</strong><small>body 안전 분류</small>
+          </button>
+          <button class="arch-node observe-node" data-view="current" data-node="content-bridge" style="--col:3;--row:5">
+            <span class="node-type">Boundary</span><strong>Content bridge</strong><small>검증·수신 시각</small>
+          </button>
+          <button class="arch-node" data-view="current" data-node="correlation" style="--col:1;--row:5">
+            <span class="node-type">Correlation</span><strong>cycle / request</strong><small>EXACT · active 검사</small>
+          </button>
+          <button class="arch-node signal-node" data-view="current" data-node="availability-wake" style="--col:1;--row:6">
+            <span class="node-type">Signal gate</span><strong>AvailabilityDomWake</strong><small>wake 또는 early exit</small>
+          </button>
+          <button class="arch-node ui-node" data-view="current" data-node="app-renderer" style="--col:2;--row:6">
+            <span class="node-type">Catchtable app</span><strong>UI renderer</strong><small>응답을 DOM으로 반영</small>
+          </button>
+          <button class="arch-node muted-node" data-view="current" data-node="mutation-telemetry" style="--col:3;--row:6">
+            <span class="node-type">Telemetry only</span><strong>MutationObserver</strong><small>현재 제어하지 않음</small>
+          </button>
+          <button class="arch-node" data-view="current" data-node="scan-loop" style="--col:1;--row:7">
+            <span class="node-type">Detector</span><strong>DOM scan loop</strong><small>25ms / burst 10ms</small>
+          </button>
+          <button class="arch-node ui-node" data-view="current" data-node="slot-dom" style="--col:2;--row:7">
+            <span class="node-type">Rendered state</span><strong>Slot DOM</strong><small>클릭 가능한 후보</small>
+          </button>
+          <button class="arch-node ui-node" data-view="current" data-node="slot-adapter" style="--col:2;--row:8">
+            <span class="node-type">Authority</span><strong>SlotAdapter</strong><small>후보 판정·재조회</small>
+          </button>
+          <button class="arch-node claim-node" data-view="current" data-node="click-claim" style="--col:1;--row:9">
+            <span class="node-type">Single owner</span><strong>clickSlot()</strong><small>최종 1회 클릭</small>
+          </button>
+
+          <button class="arch-node server-node" data-view="three" data-node="three-server" style="--col:4;--row:2" hidden>
+            <span class="node-type">API</span><strong>time-slots endpoint</strong><small>가용성 응답</small>
+          </button>
+          <button class="arch-node observe-node" data-view="three" data-node="three-xhr" style="--col:3;--row:3" hidden>
+            <span class="node-type">Signal 1</span><strong>XHR POPULATED</strong><small>서버에 슬롯 있음</small>
+          </button>
+          <button class="arch-node ui-node" data-view="three" data-node="three-renderer" style="--col:2;--row:3" hidden>
+            <span class="node-type">Catchtable app</span><strong>UI renderer</strong><small>DOM 생성·교체</small>
+          </button>
+          <button class="arch-node signal-node" data-view="three" data-node="three-mutation" style="--col:2;--row:4" hidden>
+            <span class="node-type">Signal 2</span><strong>Narrow MutationObserver</strong><small>DOM 변경 알림</small>
+          </button>
+          <button class="arch-node" data-view="three" data-node="three-polling" style="--col:1;--row:4" hidden>
+            <span class="node-type">Signal 3</span><strong>25ms polling</strong><small>항상 남는 fallback</small>
+          </button>
+          <button class="arch-node signal-node" data-view="three" data-node="three-coordinator" style="--col:1;--row:5" hidden>
+            <span class="node-type">Single coordinator</span><strong>SlotDetectionCoordinator</strong><small>신호 병합·single-flight</small>
+          </button>
+          <button class="arch-node" data-view="three" data-node="three-scan" style="--col:2;--row:6" hidden>
+            <span class="node-type">One detector</span><strong>DOM scan</strong><small>동시에 최대 1회</small>
+          </button>
+          <button class="arch-node ui-node" data-view="three" data-node="three-slot-dom" style="--col:2;--row:7" hidden>
+            <span class="node-type">Rendered state</span><strong>Slot DOM</strong><small>후보가 생긴 실제 화면</small>
+          </button>
+          <button class="arch-node ui-node" data-view="three" data-node="three-adapter" style="--col:2;--row:8" hidden>
+            <span class="node-type">Authority</span><strong>SlotAdapter</strong><small>후보 재검증</small>
+          </button>
+          <button class="arch-node claim-node" data-view="three" data-node="three-claim" style="--col:1;--row:9" hidden>
+            <span class="node-type">Single owner</span><strong>single-click claim</strong><small>중복 클릭 차단</small>
+          </button>
+        </div>
+      </div>
+
+      <div class="live-readout">
+        <div class="event-readout" aria-live="polite">
+          <span id="stepCounter">0 / 0</span>
+          <strong id="eventTitle">시나리오를 재생하세요.</strong>
+          <p id="eventDescription">패킷이 이동하면서 각 구성요소가 맡는 역할을 표시합니다.</p>
+        </div>
+        <div class="server-readout">
+          <span>Catchtable server / browser state</span>
+          <pre id="payloadReadout"><code>대기 중</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="details-section" aria-labelledby="component-title">
+      <div class="section-heading compact">
+        <div>
+          <p class="section-kicker">Component map</p>
+          <h2 id="component-title">구성요소와 책임</h2>
+        </div>
+      </div>
+      <div id="selectedComponent" class="selected-component" aria-live="polite">
+        <span>선택한 구성요소</span>
+        <strong>ReferenceClock</strong>
+        <p>서버 시각을 performance.now() 기반 단조 시계에 앵커링해 실행 계획의 기준을 제공합니다.</p>
+      </div>
+      <div id="componentTableWrap"></div>
+    </section>
+
+    <section class="rules-section" aria-labelledby="rules-title">
+      <div class="section-heading compact">
+        <div>
+          <p class="section-kicker">Safety contract</p>
+          <h2 id="rules-title">절대 바뀌지 않는 규칙</h2>
+        </div>
+      </div>
+      <ol id="invariantList" class="invariant-list"></ol>
+    </section>
+  </main>
+
+  <footer>
+    <p>실선은 제어 경로, 점선은 관측 전용 경로입니다. 3신호 구조는 설계 후보이며 현재 운영 코드가 아닙니다.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

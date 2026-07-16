@@ -47,7 +47,7 @@ Chrome에서 `chrome://inspect/#remote-debugging`을 열고 `Allow remote debugg
 | Side Panel | `chrome-extension://olbclnjiehfelpfmgmdphfmenapmpaal/sidepanel/sidepanel.html` |
 | 로드 디렉터리 | `\\wsl.localhost\Ubuntu\home\developer\source\catchtable-reserve\dist` |
 | Telemetry DB | `catchtable-reserve-telemetry` |
-| Object stores | `runs`, `events` |
+| Object stores | `runs`, `events`, `snapshots` |
 
 ID와 버전은 재설치나 manifest 변경으로 달라질 수 있다. 실행 전에 관리 화면과 `dist/manifest.json`을 우선 확인한다.
 
@@ -220,6 +220,7 @@ async () => {
 
 - `runs`: keyPath `runId`, index `startedAt`
 - `events`: compound keyPath `[runId, seq]`, index `runId`
+- `snapshots`: keyPath `snapshotId`, index `runId`; 예기치 않은 실패의 저빈도 DOM 진단
 
 ### run과 event 대조
 
