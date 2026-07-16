@@ -17,6 +17,7 @@ import type { TraceCode } from "../shared/telemetry/codes.js";
 import type { TraceAttributes, TraceSeverity } from "../shared/telemetry/types.js";
 import type { CalendarInspection } from "./adapter/calendar.js";
 import type { CalendarFacts, EntryFacts, PersonFacts } from "../shared/run-control/facts.js";
+import type { PreparationCause } from "../shared/run-control/causes.js";
 import { runEntryPreparation } from "./preparation/entry-coordinator.js";
 import { runCalendarPreparation } from "./preparation/calendar-coordinator.js";
 import { runPersonPreparation } from "./preparation/person-coordinator.js";
@@ -92,6 +93,8 @@ interface Dependencies {
   flushTrace?(): Promise<boolean>;
   captureSnapshot?(): StageSnapshot | null;
   capturePreparationContext?(): PreparationPageContext;
+  /** attempt 제어 신호(Control Plane) — 준비 완료 후 실행영역 진입을 알린다. */
+  attemptPhase?(phase: "EXECUTING"): void;
   diagnostics?: DiagnosticsPort;
   slotWatch?: SlotRefreshWatchPort;
   slotDomMutationWatch?: SlotDomMutationWatchPort;
@@ -102,6 +105,10 @@ interface Dependencies {
 export interface RunResult {
   runId: string;
   state: RunState;
+  /** terminal 전이 사유 원문 — attempt 제어(ATTEMPT_FINISHED)가 그대로 싣는다. */
+  message: string;
+  /** 준비 단계 handoff에서만 채워진다. */
+  preparation?: { cause: PreparationCause; attempts: number };
 }
 
 // 실측(site-behavior §8.1): 클릭→XHR 발사 217~379ms + 왕복 ~60ms → 도착은
@@ -188,6 +195,8 @@ class RunSession {
   private targetTiming: { actualAt: number; scheduledAt: number; phase: string } | null = null;
   private toggleCycle = 0;
   private adjacentDate: string | null = null;
+  private terminalReason = "실행이 종료됐습니다.";
+  private preparationFailure: { cause: PreparationCause; attempts: number } | null = null;
   private watchLive = false;
   private lastArrivalAt: number | null = null;
   private referenceClockPort: ReferenceClockPort | null = null;
@@ -303,6 +312,7 @@ class RunSession {
     extra: { error?: string; userStopped?: boolean; data?: RunEvent["data"] } = {},
   ): void {
     this.machine.transition(state, reason, { error: extra.error, userStopped: extra.userStopped });
+    if (TERMINAL.has(state)) this.terminalReason = reason;
     this.emit("state", reason, { state, ...extra.data });
     // REFRESHING_SLOTS and SLOT_DETECTED are the pre-click hot path. Early
     // configuration states also add no useful DOM evidence, so only selected
@@ -317,7 +327,12 @@ class RunSession {
   }
 
   private finish(): RunResult {
-    return { runId: this.runId, state: this.machine.state };
+    return {
+      runId: this.runId,
+      state: this.machine.state,
+      message: this.terminalReason,
+      ...(this.preparationFailure === null ? {} : { preparation: this.preparationFailure }),
+    };
   }
 
   private finishStopped(): RunResult {
@@ -393,6 +408,7 @@ class RunSession {
         ?? await this.prepareDate()
         ?? await this.preparePerson()
         ?? this.confirmPageReady()
+        ?? this.markExecuting()
         ?? await this.waitForOpen()
         ?? await this.searchAndReserve()
         ?? this.finishStopped();
@@ -761,6 +777,7 @@ class RunSession {
     if (result.kind === "ready") return null;
     if (result.kind === "stopped") return this.finishStopped();
     if (result.kind === "timed_out") return this.timedOut(result.message);
+    this.preparationFailure = { cause: result.cause, attempts: result.attempts };
     return this.diagnosticHandOff(result.message, {
       preparationErrorCode: result.cause,
       preparationAttemptCount: result.attempts,
@@ -803,6 +820,15 @@ class RunSession {
     const result = await runPersonPreparation(this.deps.person, this.config.personCount,
       this.stepOptions(PERSON_DISCOVERY_TIMEOUT_MS, this.config.stopAtMs));
     return this.resolvePreparation(result);
+  }
+
+  private markExecuting(): RunResult | null {
+    try {
+      this.deps.attemptPhase?.("EXECUTING");
+    } catch {
+      // attempt 제어 신호는 예약 결과를 바꾸지 않는다.
+    }
+    return null;
   }
 
   private confirmPageReady(): RunResult | null {
