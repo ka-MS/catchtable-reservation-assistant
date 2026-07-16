@@ -128,7 +128,8 @@ RT-16 오픈 전 준비 복원력을 `DONE`으로 종료했다.
 - CTA discovery deadline과 클릭 후 confirmation deadline을 분리해 늦은 CTA 클릭 직후 즉시 인계되던 경계를 수정했다.
 - Tier 2 slot loop, wake, EMPTY 조기 종료와 claim 정책은 변경하지 않았다.
 - 실제 `CalendarAdapter`와 동일 `OpenRunOrchestrator`를 재사용한 두 연속 실행에서 첫 bounded handoff 뒤 두 번째 실행이 독립 날짜 dispatch를 거쳐 `DRY_RUN_COMPLETED`에 도달했다.
-- Chrome 원격 디버깅 미연결로 live 재현은 미실행이며 비차단 운영 확인으로 남긴다. 코드·통합 회귀·전체 자동 gate·적대적 검토 기준으로 RT-16은 `DONE`이다.
+- Chrome 동일 탭에서 날짜 click 2회를 차단한 첫 실행은 attempt 2 `DATE_SELECTION_STALLED`로 인계됐고, 달력만 닫은 뒤 무새로고침 재시작은 독립 날짜 dispatch로 8/20을 선택해 `DRY_RUN_COMPLETED`에 도달했다.
+- 두 live run은 같은 tabId/windowId를 공유하고 IndexedDB eventCount 일치, seq 연속, dropped 0이며 준비 event의 focus/visibility 문맥도 확인했다. RT-16은 `DONE`이다.
 
 ## 검증 근거
 
@@ -138,6 +139,7 @@ RT-16 오픈 전 준비 복원력을 `DONE`으로 종료했다.
 - RT-14 전체 `npm run check`: 315/315 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - RT-15 전체 `npm run check`: 323/323 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - RT-16 전체 `npm run check`: 336/336 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
+- RT-16 Chrome live: `run-e2a5c932` HANDED_OFF(33 events, DATE_SELECTION_STALLED attempt 2) → 같은 탭 무새로고침 `run-40f9f982` DRY_RUN_COMPLETED(42 events), 양쪽 dropped 0
 - RT-14 Chrome live: 3상태 radio 표시, `empty_exit` 저장·재로드 복원, `off` 원복, Side Panel 런타임 오류 없음
 - probe 정책 Chrome live: 확장 재로드 후 `XHR 응답 진단` 기본 꺼짐, 토글 동작, Side Panel 재로드 후 꺼짐 복원, 경고·오류 없음 확인
 - 실행 진단 Chrome live: IndexedDB v2에서 기존 runs 20/events 740 보존, snapshots store 생성, 실제 ZIP 다운로드와 Windows 기본 압축 해제 통과

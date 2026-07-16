@@ -33,8 +33,8 @@ CalendarAdapter의 `pendingDate`는 목표 날짜가 같으면 실행 경계에�
 3. 구조 fingerprint 캡처는 준비 단계의 저빈도 DOM scan이다. 슬롯 hot path에는 없지만 매우 큰 준비 DOM에서는 소량의 사전 비용이 생길 수 있다.
 4. 인증·대기열의 일반 분류기는 아직 없다. 현재 확인된 waiting-only와 명시적 blocked 이외의 unknown은 자동 복구하지 않고 기존 진단 handoff로 남는다.
 5. 자동 새로고침, 탭 강제 focus와 Service Worker reconcile은 별도 Tier 3 패키지다.
-6. 실제 동일 탭 Chrome 재현은 원격 디버깅 미연결로 아직 수행하지 못했다. 코드상 동일 문서 경계는 실제 `CalendarAdapter`와 동일 `OpenRunOrchestrator`를 재사용하는 통합 테스트로 고정했고, Chrome 확인은 비차단 운영 검증으로 남긴다.
+6. 실제 동일 탭 Chrome E2E에서 날짜 click 2회를 차단해 `DATE_SELECTION_STALLED`를 재현했다. 달력만 닫고 차단을 제거한 무새로고침 재시작은 같은 tabId에서 독립 날짜 dispatch로 복구됐다. 실제 사이트 변화로 자연 발생한 정체 표본은 아니므로 retry 1초의 운영 p95 근거로 사용하지 않는다.
 
 ## 판정
 
-코드, 동일 탭 반복 실행 통합 회귀, 전체 자동 gate를 수용한다. RT-16을 `DONE`으로 종료한다. 실제 확장 reload 확인은 구현 판정을 뒤집지 않는 운영 후속 검증이다.
+코드, 동일 탭 반복 실행 통합 회귀, 전체 자동 gate와 확장 reload 후 Chrome live E2E를 수용한다. RT-16을 `DONE`으로 종료한다.

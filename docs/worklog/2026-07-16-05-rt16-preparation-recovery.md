@@ -23,8 +23,10 @@
 - 실제 `CalendarAdapter`와 동일 `OpenRunOrchestrator`를 재사용한 두 연속 실행에서 첫 handoff 상태가 다음 실행에 누출되지 않고 `DRY_RUN_COMPLETED`까지 진행
 - 전체 `npm run check`: typecheck, `336/336` tests, dist, MAIN/ISOLATED independence 통과
 - `git diff --check` 통과
-- Chrome DevTools는 원격 디버깅 미응답, 대체 Chrome 제어는 확장 관리 URL 보안 차단으로 live 미실행
+- Chrome에서 같은 tabId `494281626`에 날짜 click 정체를 주입해 `run-e2a5c932`가 attempt 2 `DATE_SELECTION_STALLED`로 인계되는 것을 확인
+- 달력만 닫고 무새로고침 재시작한 `run-40f9f982`가 독립 날짜 dispatch로 8/20을 선택하고 `DRY_RUN_COMPLETED`에 도달
+- 두 run 모두 IndexedDB eventCount 일치, seq 연속, dropped 0이며 준비 event의 tab/window/focus/visibility 필드 확인
 
-## 비차단 운영 확인
+## Chrome live 판정
 
-원격 디버깅을 활성화할 수 있을 때 확장을 reload한 뒤 같은 매장 탭에서 달력을 닫고 동일 설정을 반복 실행한다. 독립 날짜 dispatch, 준비 trace 필드, retry 상한과 정상 `WAITING_FOR_OPEN` 진입을 운영 환경에서 재확인한다. 이 확인은 RT-16 종료를 막지 않는다.
+확장 `0.2.0`을 최신 `dist`에서 reload한 동일 탭 E2E를 통과했다. 첫 실행의 bounded handoff, 두 번째 실행의 상태 격리와 정상 슬롯 탐색, Side Panel 표시, IndexedDB 정합성, Console 무오류를 확인했다. 날짜 정체는 의도적으로 주입한 표본이므로 1초 retry의 성능 근거로는 사용하지 않는다.

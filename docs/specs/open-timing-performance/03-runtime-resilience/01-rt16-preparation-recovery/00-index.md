@@ -25,4 +25,4 @@ Tier 2 슬롯 탐색 hot path의 interval, wake, EMPTY 조기 종료와 click cl
 - 인증·대기열·알 수 없는 DOM은 자동 반복하거나 새로고침하지 않는다.
 - Tier 2 hot-path 회귀 테스트와 전체 프로젝트 gate를 통과한다.
 
-동일 탭 반복 실행 gate는 실제 `CalendarAdapter`와 동일 `OpenRunOrchestrator` 인스턴스를 두 실행에서 재사용하는 통합 테스트로 고정했다. Chrome live는 운영 환경 확인용 비차단 후속 검증으로 남긴다.
+동일 탭 반복 실행 gate는 실제 `CalendarAdapter`와 동일 `OpenRunOrchestrator` 인스턴스를 두 실행에서 재사용하는 통합 테스트로 고정했다. 같은 Chrome tabId에서 날짜 전환 정체를 주입한 뒤 달력만 닫고 무새로고침 재시작하는 live E2E도 통과했다.

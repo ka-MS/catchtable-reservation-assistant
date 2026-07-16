@@ -40,15 +40,22 @@ git diff --check
 
 ## Chrome live 운영 확인
 
-확장 reload와 동일 탭 반복 실행을 시도했으나 현재 Chrome DevTools 원격 디버깅 endpoint가 응답하지 않았다. 대체 Chrome 제어 경로는 보안 정책상 `chrome://extensions` 접근이 차단돼 최신 `dist` reload를 검증할 수 없었다.
+2026-07-16 Chrome 원격 디버깅을 허용한 뒤 최신 `dist`를 reload하고 목란에서 안전 점검 모드로 검증했다.
 
-따라서 Chrome live는 실패가 아니라 **미실행**이다. 동일 탭 상태 누출의 코드 경계는 실제 Adapter와 동일 Orchestrator를 재사용한 통합 회귀 테스트로 검증했으므로 RT-16 종료를 막지 않는다. 다음 운영 확인에서는 원격 디버깅을 활성화한 뒤 확장을 reload하고 같은 매장 탭에서 달력을 닫은 채 동일 설정을 두 번 실행해 다음을 확인한다.
+- 확장 ID: `olbclnjiehfelpfmgmdphfmenapmpaal`
+- 버전: `0.2.0`
+- load path: `\\wsl.localhost\Ubuntu\home\developer\source\catchtable-reserve\dist`
+- 공통 tab/window: `494281626` / `494281386`
+- 설정: 목란, `2026-08-20`, 3명, 17:00–21:00, `dryRun=true`, 자동 페이지 준비
 
-1. 두 실행 모두 날짜 dispatch가 독립적으로 발생한다.
-2. `PREPARATION_OBSERVED`에 runTabId/runWindowId와 클릭 시점 page visibility/focus가 존재한다.
-3. 정체를 주입하면 attempt 2에서 종료하고 자동 새로고침하지 않는다.
-4. 정상 실행은 `WAITING_FOR_OPEN` 또는 이후 상태로 진행한다.
+첫 실행은 선택값 8/19를 유지하도록 목표 8/20 날짜 click을 capture 단계에서 두 번 차단했다. `run-e2a5c932-aafe-422b-8201-e82b87283238`은 날짜 dispatch attempt 1·2를 모두 기록하고 `DATE_SELECTION_STALLED`, attempt 2, `HANDED_OFF`로 종료했다. IndexedDB run eventCount와 실제 event 수는 `33=33`, seq는 연속이고 dropped는 0이다.
+
+그 상태에서 페이지를 reload하지 않고 달력의 `닫기`만 눌렀다. click 차단을 제거하고 동일 tabId로 즉시 재시작한 `run-40f9f982-75bf-42b8-9dd3-077f8e2e19f8`은 독립적인 날짜 dispatch attempt 1로 8/20을 선택했다. 인원 3명 확인, `WAITING_FOR_OPEN`, 슬롯 탐색을 거쳐 오후 5:00 슬롯을 감지했고 실제 클릭 없이 `DRY_RUN_COMPLETED`로 종료했다. URL과 DOM 선택값은 각각 `date=260820&personCount=3`, 8/20, 3명이었다. IndexedDB는 `42=42`, seq 연속, dropped 0이다.
+
+두 실행의 모든 준비 event에 같은 runTabId/runWindowId와 START active/focused, event 시점 `visibilityState=visible`, `hasFocus=true`가 기록됐다. Side Panel 실행 선택에는 실패 run과 복구 run이 각각 `HANDED_OFF`, `DRY_RUN_COMPLETED`로 표시됐다. 페이지 Console의 error/warn/issue는 없었고 예약 calendar/time-slot/near-full 요청은 200이었다. 초기 페이지의 비예약 `collections/count` 401 한 건은 실행 흐름에 영향을 주지 않았다.
+
+테스트 후 예약 설정은 기존 8/19·실행 모드로 복원했고 저장된 예약 작업 22개는 변경하지 않았다.
 
 ## 판정
 
-구현·자동 gate와 적대적 검토를 통과했다. RT-16 backlog 상태를 `DONE`으로 전환한다. Chrome live는 비차단 운영 확인으로 남긴다.
+구현·자동 gate·적대적 검토·동일 탭 무새로고침 Chrome live E2E를 모두 통과했다. RT-16은 `DONE`이다.
