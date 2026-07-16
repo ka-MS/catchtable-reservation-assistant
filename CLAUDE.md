@@ -41,7 +41,7 @@ Side Panel
                       -> SlotAdapter / PostSlotAdapter
 ```
 
-- `src/background/`: 탭 확인·이동, PING 후 단일 스크립트 주입, 설정/실행/이벤트 storage, 알림, IndexedDB 텔레메트리 수집.
+- `src/background/`: 탭 확인·이동, PING 후 단일 스크립트 주입, 설정/실행/이벤트 storage, 알림, IndexedDB 텔레메트리 수집, `chrome.alarms` 기반 예약 실행 스케줄러(오픈 75초 전 알람으로 자동 시작, 점유 시간창이 겹치는 job은 등록 거부).
 - `src/content/`: 한 런(run)의 오케스트레이션과 실제 DOM 접근. esbuild로 IIFE 단일 번들로 만들어지며 정적 `import`가 남아있으면 빌드 검증에서 실패한다 (Content Script는 MV3에서 module을 지원하지 않음).
 - `src/content/adapter/`: 실측된 CSS 선택자와 DOM 클릭만 소유하는 계층. **adapter 외의 모듈은 `querySelector`를 호출하지 않는다.**
 - `src/shared/`: 설정 검증, 시간/슬롯 선택, 상태 머신 등 순수 로직. `chrome.*`, `window`, `document`를 참조하지 않으며 Chrome/DOM 없이 테스트 가능해야 한다.
@@ -57,13 +57,13 @@ Side Panel
 
 ### 상태 머신
 
-`IDLE -> CONFIGURED -> VALIDATING -> SYNCING_CLOCK -> (entryMode=auto인 경우 ENTERING_RESERVATION -> SELECTING_DATE -> SELECTING_PERSON) -> PREPARING_PAGE -> WAITING_FOR_OPEN -> REFRESHING_SLOTS -> SLOT_DETECTED -> SLOT_CLICK_DISPATCHED -> SLOT_TRANSITION_CONFIRMED -> (설정에 따라 HANDED_OFF 또는 ADVANCING_RESERVATION) -> HANDED_OFF`
+`IDLE -> (entryMode=auto이고 탭이 목표 매장이 아니면 NAVIGATING ->) CONFIGURED -> VALIDATING -> SYNCING_CLOCK -> (entryMode=auto인 경우 ENTERING_RESERVATION -> SELECTING_DATE -> SELECTING_PERSON) -> PREPARING_PAGE -> WAITING_FOR_OPEN -> REFRESHING_SLOTS -> SLOT_DETECTED -> SLOT_CLICK_DISPATCHED -> SLOT_TRANSITION_CONFIRMED -> (설정에 따라 HANDED_OFF 또는 ADVANCING_RESERVATION) -> HANDED_OFF`
 
 종료 상태(`DRY_RUN_COMPLETED`, `HANDED_OFF`, `COMPLETED`, `STOPPED`, `TIMED_OUT`, `FAILED`)에 진입한 런은 다시 전이하지 않으며, `SLOT_CLICK_DISPATCHED`/`SLOT_TRANSITION_CONFIRMED`는 런당 최대 1회만 진입한다. 무기한 pause 상태는 존재하지 않는다 — 모든 대기는 감시 종료 시각(`stopAtMs`)까지만 유효하다. 전체 전이표는 `docs/design/state-machine.md`.
 
 ### 저장 모델
 
-Background가 `chrome.storage.local`의 `schemaVersion`, `reservationConfig`, `activeRun`, `runEvents`(최대 300 링버퍼), `configHistory`/`configFavorites`(각 최대 20개)를 단독 소유한다. 상세 실행 추적(trace)은 별도로 IndexedDB `catchtable-reserve-telemetry`의 `runs`/`events`/`snapshots` store에 저장되며, Content Script가 250ms 또는 20건 단위 Port batch로 Background에 보내면 Background가 순서대로 저장 후 ACK한다.
+Background가 `chrome.storage.local`의 `reservationConfig`, `activeRun`, `runEvents`(최대 300 링버퍼), `configHistory`/`configFavorites`(각 최대 20개), `scheduledJobs`(활성 최대 10개, 종료분 최대 20개 보관)를 단독 소유한다. 상세 실행 추적(trace)은 별도로 IndexedDB `catchtable-reserve-telemetry`의 `runs`/`events`/`snapshots` store에 저장되며, Content Script가 250ms 또는 20건 단위 Port batch로 Background에 보내면 Background가 순서대로 저장 후 ACK한다.
 
 ## 테스트
 
