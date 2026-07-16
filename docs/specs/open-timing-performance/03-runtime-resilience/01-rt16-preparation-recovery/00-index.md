@@ -1,6 +1,6 @@
 # RT-16 — 오픈 전 준비 복원력
 
-**상태:** 구현·자동 검증 완료, Chrome live 재현 대기
+**상태:** DONE — 구현·자동 검증·적대적 검토 완료
 **부모:** `../10-analysis.md`
 
 ## 목표
@@ -24,3 +24,5 @@ Tier 2 슬롯 탐색 hot path의 interval, wake, EMPTY 조기 종료와 click cl
 - CTA·날짜·인원 retry 횟수와 전체 준비 시간이 제한된다.
 - 인증·대기열·알 수 없는 DOM은 자동 반복하거나 새로고침하지 않는다.
 - Tier 2 hot-path 회귀 테스트와 전체 프로젝트 gate를 통과한다.
+
+동일 탭 반복 실행 gate는 실제 `CalendarAdapter`와 동일 `OpenRunOrchestrator` 인스턴스를 두 실행에서 재사용하는 통합 테스트로 고정했다. Chrome live는 운영 환경 확인용 비차단 후속 검증으로 남긴다.

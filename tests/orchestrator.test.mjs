@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { OpenRunOrchestrator } from "../dist/content/orchestrator.js";
+import { CalendarAdapter } from "../dist/content/adapter/calendar.js";
+import { loadFixture } from "./fixture-helper.mjs";
 
 // Tier 1 fake for Dependencies.referenceClock. Defaults to a zero-uncertainty,
 // zero-RTT HIGH-confidence estimate so armLeadMs collapses to config.preOpenLeadMs
@@ -128,6 +130,8 @@ function harness({
     activeElementTag: "button", activeElementRole: null, activeElementId: "reserve",
     urlKind: "shop", fingerprint: "ss-preparation",
   }),
+  calendarOverride = null,
+  onSleep = () => undefined,
 } = {}) {
   let now = 0;
   let monotonicNow = 0;
@@ -138,8 +142,10 @@ function harness({
   const dateClickTimes = [];
   const events = [];
   const traces = [];
-  const calendar = {
-    resetPreparation: () => { preparationResets += 1; },
+  const defaultCalendar = {
+    resetPreparation: () => {
+      preparationResets += 1;
+    },
     inspect: () => {
       const selectedOverride = onCalendarInspect({ now, monotonicNow, cycles });
       const lastTargetClick = dateClickTimes.findLast((entry) => entry.date === "2026-07-30");
@@ -159,6 +165,7 @@ function harness({
       return true;
     },
   };
+  const calendar = calendarOverride ?? defaultCalendar;
   let arrivalCallback = null;
   const slotWatchCalls = { started: 0, stopped: 0 };
   const slotWatch = {
@@ -199,6 +206,7 @@ function harness({
       if (signal.aborted) return false;
       now += ms;
       monotonicNow += ms;
+      onSleep(ms);
       return true;
     },
     emit: (event) => events.push(event),
@@ -1246,6 +1254,55 @@ test("auto date preparation carries a bounded stall code into the terminal hando
   assert.equal(result.state, "HANDED_OFF");
   assert.equal(handoff?.data?.preparationErrorCode, "DATE_SELECTION_STALLED");
   assert.equal(handoff?.data?.preparationAttemptCount, 2);
+});
+
+test("consecutive same-tab runs reset the same CalendarAdapter before redispatching the same date", async () => {
+  const dom = await loadFixture("calendar-navigation.html");
+  const document = dom.window.document;
+  const section = document.querySelector("section");
+  const adjacent = document.createElement("div");
+  adjacent.setAttribute("role", "button");
+  adjacent.setAttribute("aria-label", "수요일, 7월 29, 2026");
+  adjacent.setAttribute("aria-pressed", "false");
+  section.append(adjacent);
+  const target = document.querySelector('[aria-label*="7월 30"]');
+  let adapterNow = 0;
+  let targetClicks = 0;
+  let run = 0;
+  let resets = 0;
+  const dispatchRuns = [];
+  target.addEventListener("click", () => {
+    targetClicks += 1;
+    if (targetClicks === 3) target.setAttribute("aria-pressed", "true");
+  });
+  const adapter = new CalendarAdapter(document, () => adapterNow);
+  const sharedCalendar = {
+    resetPreparation: () => {
+      run += 1;
+      resets += 1;
+      adapter.resetPreparation();
+    },
+    inspect: (targetDate) => adapter.inspect(targetDate),
+    prepareTarget: (targetDate, beforeDispatch) => adapter.prepareTarget(targetDate, (dispatch) => {
+      if (dispatch.kind === "date") dispatchRuns.push(run);
+      beforeDispatch?.(dispatch);
+    }),
+    clickDate: (date) => adapter.clickDate(date),
+  };
+  const h = harness({
+    calendarOverride: sharedCalendar,
+    onSleep: (ms) => { adapterNow += ms; },
+    readSlots: () => [{ key: "slot:1140", minutes: 1140, label: "오후 7:00" }],
+  });
+
+  const first = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }), "run-first");
+  const second = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }), "run-second");
+
+  assert.equal(first.state, "HANDED_OFF");
+  assert.equal(second.state, "DRY_RUN_COMPLETED");
+  assert.deepEqual(dispatchRuns, [1, 1, 2]);
+  assert.equal(resets, 2);
+  assert.equal(target.getAttribute("aria-pressed"), "true");
 });
 
 test("auto person preparation retries once and continues on the checked postcondition", async () => {

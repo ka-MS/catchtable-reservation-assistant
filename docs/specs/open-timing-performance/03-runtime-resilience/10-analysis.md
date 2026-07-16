@@ -1,6 +1,6 @@
 # Tier 3 — 런타임 견고성 분석 (개요)
 
-**상태:** RT-16 구현·자동 검증 완료. 동일 탭 Chrome live 재현 검증 대기.
+**상태:** RT-16 DONE. 동일 탭 Chrome live는 비차단 운영 확인으로 유지.
 **우산 분석:** `../open-timing-performance-analysis.md` §4 Tier 3.
 **관련 backlog:** RT-08, RT-09, RT-16. RT-11은 Tier 2 공식 p95·wake counterfactual 측정에만 사용한다.
 

@@ -11,7 +11,7 @@ git diff --check
 
 결과:
 
-- 전체 테스트 `335/335`
+- 전체 테스트 `336/336`
 - TypeScript typecheck 통과
 - dist 검증 통과
 - MAIN/ISOLATED 독립성 검증 통과
@@ -27,6 +27,7 @@ git diff --check
 
 - 날짜 준비 시작 시 CalendarAdapter의 pending month/date, 요청 시각과 attempt를 초기화한다.
 - 동일 Adapter·동일 목표 날짜를 연속 사용해도 reset 뒤 두 번째 독립 클릭이 발생한다.
+- 실제 `CalendarAdapter`와 동일 `OpenRunOrchestrator`를 두 실행에서 재사용하는 통합 테스트에서 첫 실행의 bounded handoff 뒤, 새로고침 없이 두 번째 실행이 독립 날짜 dispatch를 거쳐 `DRY_RUN_COMPLETED`에 도달한다.
 - Tier 2에서 사용하는 `inspect()`와 `clickDate()` 계약은 유지한다.
 
 ## RT-16C
@@ -37,11 +38,11 @@ git diff --check
 - 계속 정체되면 `ENTRY_TRANSITION_STALLED`, `DATE_SELECTION_STALLED`, `PERSON_SELECTION_STALLED`와 attempt 수를 terminal handoff에 남긴다.
 - `stopAt`, waiting-only, 인원 unavailable과 기존 blocked 판정을 우선한다.
 
-## Chrome live 상태
+## Chrome live 운영 확인
 
 확장 reload와 동일 탭 반복 실행을 시도했으나 현재 Chrome DevTools 원격 디버깅 endpoint가 응답하지 않았다. 대체 Chrome 제어 경로는 보안 정책상 `chrome://extensions` 접근이 차단돼 최신 `dist` reload를 검증할 수 없었다.
 
-따라서 live gate는 미통과가 아니라 **미실행**이다. 다음 검증에서는 원격 디버깅을 활성화한 뒤 확장을 reload하고 같은 매장 탭에서 달력을 닫은 채 동일 설정을 두 번 실행해 다음을 확인한다.
+따라서 Chrome live는 실패가 아니라 **미실행**이다. 동일 탭 상태 누출의 코드 경계는 실제 Adapter와 동일 Orchestrator를 재사용한 통합 회귀 테스트로 검증했으므로 RT-16 종료를 막지 않는다. 다음 운영 확인에서는 원격 디버깅을 활성화한 뒤 확장을 reload하고 같은 매장 탭에서 달력을 닫은 채 동일 설정을 두 번 실행해 다음을 확인한다.
 
 1. 두 실행 모두 날짜 dispatch가 독립적으로 발생한다.
 2. `PREPARATION_OBSERVED`에 runTabId/runWindowId와 클릭 시점 page visibility/focus가 존재한다.
@@ -50,4 +51,4 @@ git diff --check
 
 ## 판정
 
-구현·자동 gate는 통과했다. Chrome live 재현 전까지 RT-16 backlog 상태는 `PROMOTED`를 유지한다.
+구현·자동 gate와 적대적 검토를 통과했다. RT-16 backlog 상태를 `DONE`으로 전환한다. Chrome live는 비차단 운영 확인으로 남긴다.

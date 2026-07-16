@@ -119,7 +119,7 @@ RT-15 기준시계 원시 표본 trace 구현과 자동 검증을 완료했다.
 - raw event의 `state=null` 계약으로 기존 run finalState와 finishedAt을 보존한다.
 - terminal 전 Content context 강제 종료와 trace queue overflow에서는 일부 raw 표본이 유실될 수 있으며 진단 best-effort 정책으로 수용했다.
 
-RT-16 오픈 전 준비 복원력 구현과 자동 검증을 완료했다.
+RT-16 오픈 전 준비 복원력을 `DONE`으로 종료했다.
 
 - RT-16A는 START 시점 tab/window 문맥과 준비 event 시점 visibility/focus/viewport/fingerprint를 `PREPARATION_OBSERVED`로 결합한다.
 - RT-16B는 auto run마다 CalendarAdapter preparation state를 reset해 동일 날짜 `pendingDate` 누출을 제거한다.
@@ -127,7 +127,8 @@ RT-16 오픈 전 준비 복원력 구현과 자동 검증을 완료했다.
 - 계속 정체되면 단계별 error code, attempt count와 recovery decision을 terminal handoff에 남긴다.
 - CTA discovery deadline과 클릭 후 confirmation deadline을 분리해 늦은 CTA 클릭 직후 즉시 인계되던 경계를 수정했다.
 - Tier 2 slot loop, wake, EMPTY 조기 종료와 claim 정책은 변경하지 않았다.
-- 자동 gate는 통과했지만 Chrome 원격 디버깅 미연결로 동일 탭 live 재현은 미실행이다. RT-16은 `PROMOTED`를 유지한다.
+- 실제 `CalendarAdapter`와 동일 `OpenRunOrchestrator`를 재사용한 두 연속 실행에서 첫 bounded handoff 뒤 두 번째 실행이 독립 날짜 dispatch를 거쳐 `DRY_RUN_COMPLETED`에 도달했다.
+- Chrome 원격 디버깅 미연결로 live 재현은 미실행이며 비차단 운영 확인으로 남긴다. 코드·통합 회귀·전체 자동 gate·적대적 검토 기준으로 RT-16은 `DONE`이다.
 
 ## 검증 근거
 
@@ -136,7 +137,7 @@ RT-16 오픈 전 준비 복원력 구현과 자동 검증을 완료했다.
 - 전체 `npm run check`: 303/303 tests(wakeAdvanceMs 계측 2건 포함), typecheck, dist validation, MAIN/ISOLATED independence 통과
 - RT-14 전체 `npm run check`: 315/315 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - RT-15 전체 `npm run check`: 323/323 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
-- RT-16 전체 `npm run check`: 335/335 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
+- RT-16 전체 `npm run check`: 336/336 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - RT-14 Chrome live: 3상태 radio 표시, `empty_exit` 저장·재로드 복원, `off` 원복, Side Panel 런타임 오류 없음
 - probe 정책 Chrome live: 확장 재로드 후 `XHR 응답 진단` 기본 꺼짐, 토글 동작, Side Panel 재로드 후 꺼짐 복원, 경고·오류 없음 확인
 - 실행 진단 Chrome live: IndexedDB v2에서 기존 runs 20/events 740 보존, snapshots store 생성, 실제 ZIP 다운로드와 Windows 기본 압축 해제 통과
@@ -170,11 +171,11 @@ RT-16 오픈 전 준비 복원력 구현과 자동 검증을 완료했다.
 
 목란 실제 오픈으로 `EMPTY → EMPTY_EARLY_EXIT → 후속 cycle 슬롯 발견` 기능·안전 경로는 확인했다. 다음 비중요 실오픈에서는 동일 매장·유사 환경의 `off` 또는 반복 `empty_exit` 표본을 추가해 cycle·요청 증가량과 실제 지연 차이를 비교한다. 이 비교 전에는 `empty_exit`을 기본값으로 승격하지 않는다. 성능 비교는 다른 안정화 작업을 막지 않는다.
 
-## 다음 작업 1 - 실행 환경 진단
+## 완료 작업 - RT-16 실행 환경 진단과 준비 복구
 
-중요 예약 전에는 hot path 상수나 cycle 정책을 변경하지 않는다. 최소화·작은 4분할 실행과 목란 준비 전환 실패의 원인을 분리하기 위해 run 시작, CTA·날짜·인원 클릭 전후, 후조건 변화, 종료 경계에 `document.visibilityState`, `document.hasFocus()`, viewport, 선택값과 fingerprint를 change-based event로 남기는 설계를 검토한다. Background의 tabId/windowId·active/focused는 runId로 결합한다. 좁은 화면의 대체 CTA는 실제 DOM을 확보하기 전까지 추측으로 지원하지 않는다.
+중요 예약 전에는 hot path 상수나 cycle 정책을 변경하지 않는다. run 시작과 CTA·날짜·인원 준비 경계에 `document.visibilityState`, `document.hasFocus()`, viewport, 선택값과 fingerprint를 change-based event로 남기고 Background의 tabId/windowId·active/focused를 runId로 결합했다. 좁은 화면의 대체 CTA는 실제 DOM을 확보하기 전까지 추측으로 지원하지 않는다.
 
-준비 단계 복구는 `dispatch -> confirm -> classify -> bounded recovery -> handoff` 순서로 설계한다. CTA·날짜·인원별 retry budget과 자동 새로고침 승격 조건은 아직 미확정이다. 인증·대기열·알 수 없는 DOM은 자동 반복하지 않으며, 이 작업은 슬롯 탐색 hot path와 분리한다.
+준비 단계 복구는 `dispatch -> confirm -> classify -> bounded recovery -> handoff` 순서로 구현했다. CTA·날짜·인원은 총 2회 dispatch로 제한하고 인증·대기열·알 수 없는 DOM은 자동 반복하지 않는다. 자동 새로고침은 범위에서 제외했으며 슬롯 탐색 hot path와 분리했다.
 
 운영 시에는 예약 페이지를 정상 크기의 보이는 창으로 유지하고 최소화하지 않으며, 실행은 오픈 최소 60초 전에 시작한다(관측 20초 미만 실행들이 동결 clock uncertainty 상위였던 실측 기반 권고, 절대 조건 아님). 즉시 실행에서 사용자가 모달·날짜·인원을 준비할 수 있으면 `entryMode=prepared`로 자동 진입 단계를 생략할 수 있다.
 
