@@ -10,6 +10,7 @@ export interface CalendarInspection {
 export interface CalendarPreparationResult {
   status: "ready" | "acted" | "waiting" | "blocked";
   message: string;
+  errorCode?: "DATE_SELECTION_STALLED";
 }
 
 export interface CalendarPreparationDispatch {
@@ -20,6 +21,8 @@ export interface CalendarPreparationDispatch {
 
 const MONTH_TRANSITION_RETRY_DELAY_MS = 750;
 const MONTH_TRANSITION_MAX_ATTEMPTS = 3;
+const DATE_SELECTION_RETRY_DELAY_MS = 1_000;
+const DATE_SELECTION_MAX_ATTEMPTS = 2;
 
 export class CalendarAdapter {
   private preparingTarget: string | null = null;
@@ -27,6 +30,8 @@ export class CalendarAdapter {
   private pendingMonthRequestedAt: number | null = null;
   private pendingMonthAttempts = 0;
   private pendingDate: string | null = null;
+  private pendingDateRequestedAt: number | null = null;
+  private pendingDateAttempts = 0;
 
   constructor(
     private readonly document: Document,
@@ -39,6 +44,8 @@ export class CalendarAdapter {
     this.pendingMonthRequestedAt = null;
     this.pendingMonthAttempts = 0;
     this.pendingDate = null;
+    this.pendingDateRequestedAt = null;
+    this.pendingDateAttempts = 0;
   }
 
   inspect(targetDate: string): CalendarInspection {
@@ -98,18 +105,45 @@ export class CalendarAdapter {
       if (!target.available) return { status: "blocked", message: "목표 날짜를 선택할 수 없습니다." };
       if (target.selected) {
         this.pendingDate = null;
+        this.pendingDateRequestedAt = null;
+        this.pendingDateAttempts = 0;
         return { status: "ready", message: "목표 날짜가 준비됐습니다." };
       }
       if (this.pendingDate === targetDate) {
-        return { status: "waiting", message: "목표 날짜 선택 상태를 기다립니다." };
+        const requestedAt = this.pendingDateRequestedAt;
+        if (requestedAt === null) {
+          return { status: "blocked", message: "목표 날짜 선택 상태가 올바르지 않습니다." };
+        }
+        if (this.monotonicNow() - requestedAt < DATE_SELECTION_RETRY_DELAY_MS) {
+          return { status: "waiting", message: "목표 날짜 선택 상태를 기다립니다." };
+        }
+        if (this.pendingDateAttempts >= DATE_SELECTION_MAX_ATTEMPTS) {
+          return {
+            status: "blocked",
+            message: "목표 날짜 선택 전환을 확인할 수 없습니다.",
+            errorCode: "DATE_SELECTION_STALLED",
+          };
+        }
+        this.pendingDate = null;
+        this.pendingDateRequestedAt = null;
       }
-      beforeDispatch?.({ kind: "date", target: targetDate, attempt: 1 });
+      const attempt = this.pendingDateAttempts + 1;
+      beforeDispatch?.({ kind: "date", target: targetDate, attempt });
       target.element.click();
       this.pendingDate = targetDate;
-      return { status: "acted", message: `${targetDate} 날짜를 선택했습니다.` };
+      this.pendingDateRequestedAt = this.monotonicNow();
+      this.pendingDateAttempts = attempt;
+      return {
+        status: "acted",
+        message: attempt === 1
+          ? `${targetDate} 날짜를 선택했습니다.`
+          : `${targetDate} 날짜 선택을 재시도했습니다.`,
+      };
     }
 
     this.pendingDate = null;
+    this.pendingDateRequestedAt = null;
+    this.pendingDateAttempts = 0;
     const targetMonth = targetDate.slice(0, 7);
     if (!displayedMonth) return { status: "waiting", message: "달력의 현재 월을 확인합니다." };
     if (displayedMonth === targetMonth) {

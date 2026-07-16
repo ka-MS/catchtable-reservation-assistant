@@ -1178,6 +1178,114 @@ test("auto entry dismisses the promo interstitial and re-clicks the CTA", async 
   assert.equal(h.events.some((event) => event.kind === "action" && /홍보 안내/.test(event.message)), true);
 });
 
+test("auto entry retries a stalled CTA once and continues when the calendar opens", async () => {
+  let reservationOpen = false;
+  let attempts = 0;
+  const h = harness({
+    entry: {
+      inspect: () => ({ reservationOpen, ctaAvailable: true, waitingOnly: false }),
+      openReservation: () => {
+        attempts += 1;
+        if (attempts === 2) reservationOpen = true;
+        return true;
+      },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }));
+  const retries = h.traces.filter((trace) => trace.code === "PREPARATION_OBSERVED"
+    && trace.options.attributes.preparationAction === "open_reservation"
+    && trace.options.attributes.preparationAttempt === 2);
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(attempts, 2);
+  assert.equal(retries.length, 2);
+});
+
+test("auto entry hands off after two stalled CTA dispatches", async () => {
+  let attempts = 0;
+  const h = harness({
+    entry: {
+      inspect: () => ({ reservationOpen: false, ctaAvailable: true, waitingOnly: false }),
+      openReservation: () => { attempts += 1; return true; },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }));
+  const handoff = h.events.find((event) => event.data?.state === "HANDED_OFF");
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.equal(attempts, 2);
+  assert.equal(handoff?.data?.preparationErrorCode, "ENTRY_TRANSITION_STALLED");
+  assert.equal(handoff?.data?.preparationAttemptCount, 2);
+});
+
+test("auto date preparation carries a bounded stall code into the terminal handoff", async () => {
+  let calls = 0;
+  const h = harness({
+    prepareTarget: (_target, beforeDispatch) => {
+      calls += 1;
+      if (calls <= 2) {
+        beforeDispatch?.({ kind: "date", target: "2026-07-30", attempt: calls });
+        return {
+          status: "acted",
+          message: calls === 1 ? "날짜를 선택했습니다." : "날짜 선택을 재시도했습니다.",
+        };
+      }
+      return {
+        status: "blocked",
+        message: "목표 날짜 선택 전환을 확인할 수 없습니다.",
+        errorCode: "DATE_SELECTION_STALLED",
+      };
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }));
+  const handoff = h.events.find((event) => event.data?.state === "HANDED_OFF");
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.equal(handoff?.data?.preparationErrorCode, "DATE_SELECTION_STALLED");
+  assert.equal(handoff?.data?.preparationAttemptCount, 2);
+});
+
+test("auto person preparation retries once and continues on the checked postcondition", async () => {
+  let selected = false;
+  let attempts = 0;
+  const h = harness({
+    person: {
+      inspect: () => ({ ready: true, targetAvailable: true, targetSelected: selected }),
+      select: () => {
+        attempts += 1;
+        if (attempts === 2) selected = true;
+        return true;
+      },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }));
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(attempts, 2);
+});
+
+test("auto person preparation hands off after two stalled dispatches", async () => {
+  let attempts = 0;
+  const h = harness({
+    person: {
+      inspect: () => ({ ready: true, targetAvailable: true, targetSelected: false }),
+      select: () => { attempts += 1; return true; },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }));
+  const handoff = h.events.find((event) => event.data?.state === "HANDED_OFF");
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.equal(attempts, 2);
+  assert.equal(handoff?.data?.preparationErrorCode, "PERSON_SELECTION_STALLED");
+  assert.equal(handoff?.data?.preparationAttemptCount, 2);
+});
+
 test("auto entry hands off safely when the restaurant is waiting-only", async () => {
   const h = harness({
     entry: {
