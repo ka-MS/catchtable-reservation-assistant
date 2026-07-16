@@ -1,10 +1,10 @@
 # Tier 3 — 런타임 견고성 분석 (개요)
 
-**상태:** RT-16 DONE. 동일 탭 무새로고침 Chrome live E2E 완료.
+**상태:** RT-16 부분 구현, 구조화 미완료. 동일 탭 무새로고침 수동 재시작 E2E 완료.
 **우산 분석:** `../open-timing-performance-analysis.md` §4 Tier 3.
 **관련 backlog:** RT-08, RT-09, RT-16. RT-11은 Tier 2 공식 p95·wake counterfactual 측정에만 사용한다.
 
-RT-16 상세 구현은 [오픈 전 준비 복원력 패키지](01-rt16-preparation-recovery/00-index.md)를 따른다. 탭 focus 정책, Service Worker reconcile과 페이지 새로고침 재주입은 RT-16 범위에 포함하지 않았다.
+RT-16 상세 구현은 [오픈 전 준비 복원력 패키지](01-rt16-preparation-recovery/00-index.md)를 따른다. 현행 bounded retry와 상태 격리는 보존한다. Adapter·실패 분류·복구 정책·행동 실행·telemetry 책임 분리와 페이지 URL 재진입은 후속 구조화에서 완료한다.
 
 ## 범위 (개요)
 

@@ -119,7 +119,7 @@ RT-15 기준시계 원시 표본 trace 구현과 자동 검증을 완료했다.
 - raw event의 `state=null` 계약으로 기존 run finalState와 finishedAt을 보존한다.
 - terminal 전 Content context 강제 종료와 trace queue overflow에서는 일부 raw 표본이 유실될 수 있으며 진단 best-effort 정책으로 수용했다.
 
-RT-16 오픈 전 준비 복원력을 `DONE`으로 종료했다.
+RT-16 오픈 전 준비 복원력은 부분 구현 상태이며 책임 구조화가 남아 있다.
 
 - RT-16A는 START 시점 tab/window 문맥과 준비 event 시점 visibility/focus/viewport/fingerprint를 `PREPARATION_OBSERVED`로 결합한다.
 - RT-16B는 auto run마다 CalendarAdapter preparation state를 reset해 동일 날짜 `pendingDate` 누출을 제거한다.
@@ -129,7 +129,8 @@ RT-16 오픈 전 준비 복원력을 `DONE`으로 종료했다.
 - Tier 2 slot loop, wake, EMPTY 조기 종료와 claim 정책은 변경하지 않았다.
 - 실제 `CalendarAdapter`와 동일 `OpenRunOrchestrator`를 재사용한 두 연속 실행에서 첫 bounded handoff 뒤 두 번째 실행이 독립 날짜 dispatch를 거쳐 `DRY_RUN_COMPLETED`에 도달했다.
 - Chrome 동일 탭에서 날짜 click 2회를 차단한 첫 실행은 attempt 2 `DATE_SELECTION_STALLED`로 인계됐고, 달력만 닫은 뒤 무새로고침 재시작은 독립 날짜 dispatch로 8/20을 선택해 `DRY_RUN_COMPLETED`에 도달했다.
-- 두 live run은 같은 tabId/windowId를 공유하고 IndexedDB eventCount 일치, seq 연속, dropped 0이며 준비 event의 focus/visibility 문맥도 확인했다. RT-16은 `DONE`이다.
+- 두 live run은 같은 tabId/windowId를 공유하고 IndexedDB eventCount 일치, seq 연속, dropped 0이며 준비 event의 focus/visibility 문맥도 확인했다.
+- 현행 bounded retry와 상태 초기화는 보존해 후속 준비 행동 구현체로 이동한다. Adapter 사실 반환, 실패 분류, 복구 정책, 행동 실행, telemetry 책임 분리와 동일 탭 URL 재진입은 미구현이므로 RT-16 전체는 완료가 아니다.
 
 ## 검증 근거
 
@@ -173,11 +174,11 @@ RT-16 오픈 전 준비 복원력을 `DONE`으로 종료했다.
 
 목란 실제 오픈으로 `EMPTY → EMPTY_EARLY_EXIT → 후속 cycle 슬롯 발견` 기능·안전 경로는 확인했다. 다음 비중요 실오픈에서는 동일 매장·유사 환경의 `off` 또는 반복 `empty_exit` 표본을 추가해 cycle·요청 증가량과 실제 지연 차이를 비교한다. 이 비교 전에는 `empty_exit`을 기본값으로 승격하지 않는다. 성능 비교는 다른 안정화 작업을 막지 않는다.
 
-## 완료 작업 - RT-16 실행 환경 진단과 준비 복구
+## 진행 작업 - RT-16 실행 환경 진단과 준비 복구
 
 중요 예약 전에는 hot path 상수나 cycle 정책을 변경하지 않는다. run 시작과 CTA·날짜·인원 준비 경계에 `document.visibilityState`, `document.hasFocus()`, viewport, 선택값과 fingerprint를 change-based event로 남기고 Background의 tabId/windowId·active/focused를 runId로 결합했다. 좁은 화면의 대체 CTA는 실제 DOM을 확보하기 전까지 추측으로 지원하지 않는다.
 
-준비 단계 복구는 `dispatch -> confirm -> classify -> bounded recovery -> handoff` 순서로 구현했다. CTA·날짜·인원은 총 2회 dispatch로 제한하고 인증·대기열·알 수 없는 DOM은 자동 반복하지 않는다. 자동 새로고침은 범위에서 제외했으며 슬롯 탐색 hot path와 분리했다.
+현행 준비 단계 복구는 CTA·날짜·인원의 동일 행동을 총 2회 dispatch로 제한하고 인증·대기열·알 수 없는 DOM은 handoff한다. 책임 구조화 후 이 코드를 준비 행동 구현체로 이동하고, 동일 탭 URL 재진입을 복구 정책의 `RESET_PAGE` 행동으로 연결한다. 슬롯 탐색 hot path는 변경하지 않는다.
 
 운영 시에는 예약 페이지를 정상 크기의 보이는 창으로 유지하고 최소화하지 않으며, 실행은 오픈 최소 60초 전에 시작한다(관측 20초 미만 실행들이 동결 clock uncertainty 상위였던 실측 기반 권고, 절대 조건 아님). 즉시 실행에서 사용자가 모달·날짜·인원을 준비할 수 있으면 `entryMode=prepared`로 자동 진입 단계를 생략할 수 있다.
 

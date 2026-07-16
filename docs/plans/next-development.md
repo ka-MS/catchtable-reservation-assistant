@@ -39,9 +39,13 @@
 - 진단 fixture 변환 도구
 - Adapter strategy/fingerprint 변화 감지
 
-## 6. 런타임 오류 분류와 복구 정책 — RT-16 완료 (2026-07-16)
+## 6. 런타임 오류 분류와 복구 정책 — 부분 구현, 구조화 미완료 (2026-07-16)
 
 오류를 하나의 `FAILED` 메시지로 처리하지 않고 원인과 허용된 복구 행동을 구조화한다.
+
+현행 RT-16은 준비 상태 관측, 실행 간 CalendarAdapter 상태 초기화, CTA·날짜·인원의 1초 뒤 1회 재시도(총 2회)와 구조화 handoff까지 구현했다. 이 코드는 폐기하지 않고 후속 책임 구조화에서 준비 행동 구현체로 이동한다.
+
+Adapter 사실 반환, 실패 원인 분류, 복구 정책, 행동 실행, telemetry 책임 분리와 동일 탭 URL 재진입은 아직 구현하지 않았다. 따라서 RT-16 전체는 완료로 판정하지 않는다.
 
 - 인증 만료: 자동 재로그인하지 않고 사용자에게 인계
 - 대기열·rate limit: 서버 지시를 존중해 제한된 backoff 또는 중지
@@ -66,7 +70,7 @@
 - 실행마다 `RunSession`은 새로 생성되지만 동일 문서의 `CalendarAdapter`는 재사용된다. 같은 목표 날짜에서는 `pendingDate`가 초기화되지 않아 첫 실패의 대기 상태가 후속 수동 실행으로 누출될 수 있다.
 - 종료 스냅샷의 visible/focused는 캡처 순간의 값이다. 클릭 전후와 준비 구간 전체를 설명하지 않으므로 focus를 직접 원인으로 확정하지 않는다.
 
-세 준비 동작은 공통적으로 `dispatch -> 후조건 확인 -> 오류 분류 -> bounded recovery -> handoff`로 모델링한다. 동일 탭 새로고침은 최종 복구 후보지만 런 재구성·세션 보존 설계 전에는 자동 적용하지 않는다. 상세 분석은 `docs/specs/open-timing-performance/03-runtime-resilience/10-analysis.md`를 기준으로 한다.
+세 준비 동작은 공통적으로 `dispatch -> 후조건 확인 -> 오류 분류 -> bounded recovery -> handoff`로 모델링한다. 책임 구조화 후 동일 탭 URL 재진입을 복구 정책의 `RESET_PAGE` 행동으로 연결한다. 상세 분석은 `docs/specs/open-timing-performance/03-runtime-resilience/10-analysis.md`를 기준으로 한다.
 
 오류 분류 code, 사용자 메시지, trace attributes와 recovery decision을 분리한다. 이 항목은 현재 Tier 2-2 성능 판정을 막지 않으며 Tier 3 runtime resilience에서 상세 분석한다.
 
