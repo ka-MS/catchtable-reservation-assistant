@@ -235,11 +235,11 @@ test("recovery lapse는 TERMINAL로 전환하고 recovery를 제거한다", () =
     { status: "TERMINAL", recovery: undefined });
 });
 
-test("background terminal은 현재 attempt에 TERMINAL 기록으로 종결한다", () => {
+test("background terminal은 종결 기록을 남기되 decision은 찍지 않는다(재ACK할 content 메시지가 없다)", () => {
   const r = applyBackgroundTerminal(run(), "STOPPED", "실행 탭이 닫혔습니다.", 20_000);
   const a1 = r.attempts.find((a) => a.runId === "run-a1");
   assert.deepEqual({ status: r.status, state: a1.finalState, decision: a1.decision, message: a1.message },
-    { status: "TERMINAL", state: "STOPPED", decision: "TERMINAL", message: "실행 탭이 닫혔습니다." });
+    { status: "TERMINAL", state: "STOPPED", decision: undefined, message: "실행 탭이 닫혔습니다." });
 });
 
 test("이미 TERMINAL인 run에 도착한 늦은 outcome은 재decide 없이 TERMINAL로 기록한다", () => {
@@ -470,7 +470,9 @@ export function applyRecoveryLapse(run: LogicalRun, nowMs: number): LogicalRun {
   return { ...run, status: "TERMINAL", updatedAt: nowMs, recovery: undefined };
 }
 
-/** stop·탭 닫힘·식당 이탈 등 background 종결 ingress. */
+/** stop·탭 닫힘·식당 이탈 등 background 종결 ingress.
+ * decision은 찍지 않는다 — 재ACK할 content 메시지가 없고, 늦게 도착한 content
+ * outcome은 status TERMINAL 분기에서 decision TERMINAL로 접수돼야 한다. */
 export function applyBackgroundTerminal(
   run: LogicalRun,
   state: TerminalRunState,
@@ -483,7 +485,7 @@ export function applyBackgroundTerminal(
     updatedAt: nowMs,
     recovery: undefined,
     attempts: run.attempts.map((attempt) => (attempt.runId === run.currentAttemptId && attempt.decision === undefined
-      ? { ...attempt, finalState: state, message, finishedAt: nowMs, decision: "TERMINAL", decidedAt: nowMs }
+      ? { ...attempt, finalState: state, message, finishedAt: nowMs }
       : attempt)),
   };
 }
