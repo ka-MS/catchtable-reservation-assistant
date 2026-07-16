@@ -133,11 +133,13 @@ function harness({
   let monotonicNow = 0;
   let cycles = 0;
   let slotClicks = 0;
+  let preparationResets = 0;
   const dateClicks = [];
   const dateClickTimes = [];
   const events = [];
   const traces = [];
   const calendar = {
+    resetPreparation: () => { preparationResets += 1; },
     inspect: () => {
       const selectedOverride = onCalendarInspect({ now, monotonicNow, cycles });
       const lastTargetClick = dateClickTimes.findLast((entry) => entry.date === "2026-07-30");
@@ -222,6 +224,7 @@ function harness({
     fireReferenceEstimate: reference.fire,
     get slotClicks() { return slotClicks; },
     get now() { return now; },
+    get preparationResets() { return preparationResets; },
     jumpWall(ms) { now += ms; },
   };
 }
@@ -1091,6 +1094,7 @@ test("auto entry opens the reservation, prepares date and person, then uses the 
 
   assert.equal(result.state, "DRY_RUN_COMPLETED");
   assert.deepEqual(actions, ["entry", "date", "person"]);
+  assert.equal(h.preparationResets, 1);
   assert.deepEqual(h.events.filter((event) => event.kind === "state").map((event) => event.data?.state).slice(0, 8), [
     "CONFIGURED",
     "VALIDATING",

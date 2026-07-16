@@ -33,6 +33,14 @@ export class CalendarAdapter {
     private readonly monotonicNow: () => number = () => performance.now(),
   ) {}
 
+  resetPreparation(): void {
+    this.preparingTarget = null;
+    this.pendingMonth = null;
+    this.pendingMonthRequestedAt = null;
+    this.pendingMonthAttempts = 0;
+    this.pendingDate = null;
+  }
+
   inspect(targetDate: string): CalendarInspection {
     const cells = this.readCells();
     const target = cells.find((cell) => cell.date === targetDate);
@@ -59,11 +67,8 @@ export class CalendarAdapter {
     beforeDispatch?: (dispatch: CalendarPreparationDispatch) => void,
   ): CalendarPreparationResult {
     if (this.preparingTarget !== targetDate) {
+      this.resetPreparation();
       this.preparingTarget = targetDate;
-      this.pendingMonth = null;
-      this.pendingMonthRequestedAt = null;
-      this.pendingMonthAttempts = 0;
-      this.pendingDate = null;
     }
     const displayedMonth = readDisplayedCalendarMonth(this.document);
     if (this.pendingMonth !== null) {

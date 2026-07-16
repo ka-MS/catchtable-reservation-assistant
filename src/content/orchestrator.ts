@@ -29,6 +29,7 @@ import type { PreparationPageContext } from "./preparation-observation.js";
 
 interface CalendarPort {
   inspect(targetDate: string): CalendarInspection;
+  resetPreparation(): void;
   prepareTarget(targetDate: string, beforeDispatch?: (dispatch: CalendarPreparationDispatch) => void): CalendarPreparationResult;
   clickDate(date: string): boolean;
 }
@@ -801,6 +802,7 @@ class RunSession {
     const controller = this.controller;
     const serverClock = this.serverClock;
     this.transition("SELECTING_DATE", "목표 월과 예약 날짜를 준비합니다.");
+    this.deps.calendar.resetPreparation();
     this.tracePreparation("stage_start", { preparationTarget: config.reservationDate });
     const dateDeadline = Math.min(serverClock.now() + 10_000, config.stopAtMs);
     let lastCondition = "";

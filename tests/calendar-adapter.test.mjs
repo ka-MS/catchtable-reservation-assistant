@@ -134,6 +134,20 @@ test("calendar preparation selects a rendered target and blocks a disabled targe
   assert.equal(adapter.prepareTarget("2026-07-30").status, "blocked");
 });
 
+test("calendar preparation reset isolates the same target across consecutive runs", async () => {
+  const dom = await loadFixture("calendar-navigation.html");
+  const adapter = new CalendarAdapter(dom.window.document);
+  const target = dom.window.document.querySelector('[aria-label*="7월 30"]');
+  let clicks = 0;
+  target.addEventListener("click", () => { clicks += 1; });
+
+  assert.equal(adapter.prepareTarget("2026-07-30").status, "acted");
+  assert.equal(adapter.prepareTarget("2026-07-30").status, "waiting");
+  adapter.resetPreparation();
+  assert.equal(adapter.prepareTarget("2026-07-30").status, "acted");
+  assert.equal(clicks, 2);
+});
+
 test("Mobiscroll calendar inspection uses only the active grid", async () => {
   const dom = await loadFixture("calendar-mobiscroll.html");
   const adapter = new CalendarAdapter(dom.window.document);
