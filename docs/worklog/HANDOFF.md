@@ -1,7 +1,7 @@
 # HANDOFF
 
 **갱신:** 2026-07-16
-**브랜치:** `codex/rt14-exact-empty-early-exit`
+**브랜치:** `main`
 **최신 작업 로그:** `docs/worklog/2026-07-16-05-rt16-preparation-recovery.md`
 **최신 Tier 3 구현:** `docs/specs/open-timing-performance/03-runtime-resilience/01-rt16-preparation-recovery/`
 **최신 기준시계 구현:** `docs/specs/open-timing-performance/01-reference-clock-reliability/01-raw-sample-trace/`
