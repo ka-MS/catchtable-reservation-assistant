@@ -38,6 +38,15 @@ test("ingest caps the rolling buffer at bufferSize, dropping the oldest", () => 
   assert.equal(sampler.latest.sampleCount, 3); // only the last 3 remain
 });
 
+test("drainSamples returns the bounded ring in order, clears it, and preserves latest", () => {
+  const sampler = makeSampler({ bufferSize: 3 });
+  for (const sample of CLEAN_POOL) sampler.ingest(sample);
+  const latest = sampler.latest;
+  assert.deepEqual(sampler.drainSamples(), CLEAN_POOL.slice(-3));
+  assert.deepEqual(sampler.drainSamples(), []);
+  assert.equal(sampler.latest, latest);
+});
+
 test("observationSpanMs reflects the spread of buffered samples", () => {
   const sampler = makeSampler();
   for (const sample of CLEAN_POOL) sampler.ingest(sample);

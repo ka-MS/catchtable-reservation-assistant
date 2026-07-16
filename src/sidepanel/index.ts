@@ -1,9 +1,9 @@
-import { defaultStopAt } from "../shared/config.js";
+import { defaultStopAt, resolveAvailabilityProbeMode } from "../shared/config.js";
 import { MonotonicEpochClock } from "../shared/monotonic-clock.js";
 import { sanitizeSavedConfigs } from "../shared/saved-configs.js";
 import { sanitizeScheduledJobs } from "../shared/scheduled-jobs.js";
 import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
-import type { ActiveRun, CommandResponse, EntryMode, PanelCommand, PaymentMethodPolicy, ReservationConfig, RunEvent, RunState, ScheduledJob, TablePreference } from "../shared/types.js";
+import type { ActiveRun, AvailabilityProbeMode, CommandResponse, EntryMode, PanelCommand, PaymentMethodPolicy, ReservationConfig, RunEvent, RunState, ScheduledJob, TablePreference } from "../shared/types.js";
 import { countdownModel } from "./countdown.js";
 import { formatEventDetail, formatEventTime } from "./event-format.js";
 import { configFromFormValues, configSnapshotFromFormValues, type FormValues } from "./form-model.js";
@@ -12,6 +12,8 @@ import { jobListModel, miniLogModel } from "./job-list-model.js";
 import { SavedConfigsView } from "./saved-configs-view.js";
 import type { TraceEvent, TraceLiveBatch, TraceRunRecord } from "../shared/telemetry/types.js";
 import { traceCsv, traceCsvFilename } from "./telemetry/trace-csv.js";
+import type { DiagnosticSnapshot } from "../shared/diagnostics/types.js";
+import { diagnosticBundle, diagnosticBundleFilename } from "./diagnostics/bundle.js";
 import { TraceHistoryView } from "./telemetry/trace-view.js";
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -74,6 +76,9 @@ const paymentMethodPolicyFieldset = byId<HTMLFieldSetElement>("payment-method-po
 const paymentMethodPolicyOptions = Array.from(
   document.querySelectorAll<HTMLInputElement>('input[name="payment-method-policy"]'),
 );
+const availabilityProbeModeOptions = Array.from(
+  document.querySelectorAll<HTMLInputElement>('input[name="availability-probe-mode"]'),
+);
 
 function selectedPaymentMethodPolicy(): PaymentMethodPolicy {
   const selected = paymentMethodPolicyOptions.find((option) => option.checked)?.value;
@@ -84,6 +89,19 @@ function selectPaymentMethodPolicy(policy: PaymentMethodPolicy | undefined): voi
   const normalized = policy === "zero_only" ? "zero_only" : "selected_allowed";
   paymentMethodPolicyOptions.forEach((option) => {
     option.checked = option.value === normalized;
+  });
+}
+
+function selectedAvailabilityProbeMode(): AvailabilityProbeMode {
+  const selected = availabilityProbeModeOptions.find((option) => option.checked)?.value;
+  if (selected === "observe" || selected === "empty_exit") return selected;
+  return "off";
+}
+
+function selectAvailabilityProbeMode(values: Pick<FormValues, "availabilityProbeMode" | "availabilityProbeEnabled">): void {
+  const mode = resolveAvailabilityProbeMode(values);
+  availabilityProbeModeOptions.forEach((option) => {
+    option.checked = option.value === mode;
   });
 }
 
@@ -226,6 +244,7 @@ function readValues(): FormValues {
     dryRun: fields.dryRun.checked,
     preOpenLeadMs: fields.preOpenLeadMs.value,
     toggleIntervalMs: fields.toggleIntervalMs.value,
+    availabilityProbeMode: selectedAvailabilityProbeMode(),
   };
 }
 
@@ -246,6 +265,7 @@ function applyValues(values: FormValues): void {
   fields.dryRun.checked = values.dryRun;
   fields.preOpenLeadMs.value = values.preOpenLeadMs;
   fields.toggleIntervalMs.value = values.toggleIntervalMs;
+  selectAvailabilityProbeMode(values);
   priorityTimes = [...values.priorityTimes];
   syncPostSlotFields();
   renderPriorities();
@@ -277,6 +297,7 @@ function valuesFromConfig(config: ReservationConfig): FormValues {
     dryRun: config.dryRun,
     preOpenLeadMs: String(config.preOpenLeadMs),
     toggleIntervalMs: String(config.toggleIntervalMs),
+    availabilityProbeMode: resolveAvailabilityProbeMode(config),
   };
 }
 
@@ -576,7 +597,8 @@ async function send(command: PanelCommand): Promise<CommandResponse> {
 }
 
 async function readTraceEvents(runId: string): Promise<TraceEvent[]> {
-  const response = await send({ type: "GET_RUN_TRACE", runId, limit: 100 });
+  // RT-15 raw clock events(max 64)는 화면에서 숨기므로 운영 로그 100건을 보존할 여유를 둔다.
+  const response = await send({ type: "GET_RUN_TRACE", runId, limit: 200 });
   if (!response.ok) throw new Error(response.error ?? "실행 로그를 읽을 수 없습니다.");
   return Array.isArray(response.data) ? response.data as TraceEvent[] : [];
 }
@@ -587,11 +609,36 @@ async function exportTraceEvents(runId: string): Promise<TraceEvent[]> {
   return Array.isArray(response.data) ? response.data as TraceEvent[] : [];
 }
 
+async function exportRunDiagnostic(runId: string): Promise<{ events: TraceEvent[]; snapshots: DiagnosticSnapshot[] }> {
+  const response = await send({ type: "EXPORT_RUN_DIAGNOSTIC", runId });
+  if (!response.ok) throw new Error(response.error ?? "실행 진단을 내보낼 수 없습니다.");
+  const data = response.data as { events?: unknown; snapshots?: unknown } | undefined;
+  if (!Array.isArray(data?.events) || !Array.isArray(data?.snapshots)) {
+    throw new Error("실행 진단 응답이 올바르지 않습니다.");
+  }
+  return { events: data.events as TraceEvent[], snapshots: data.snapshots as DiagnosticSnapshot[] };
+}
+
 function downloadTraceCsv(run: TraceRunRecord, events: TraceEvent[]): void {
   const url = URL.createObjectURL(new Blob([traceCsv(run, events)], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
   link.download = traceCsvFilename(run);
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function downloadDiagnosticBundle(run: TraceRunRecord, events: TraceEvent[], snapshots: DiagnosticSnapshot[]): void {
+  const bytes = diagnosticBundle(run, events, snapshots);
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  const url = URL.createObjectURL(new Blob([buffer], { type: "application/zip" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = diagnosticBundleFilename(run.runId);
   link.hidden = true;
   document.body.append(link);
   link.click();
@@ -608,6 +655,13 @@ const traceView = new TraceHistoryView(document, {
   download: (run) => {
     void exportTraceEvents(run.runId).then((events) => downloadTraceCsv(run, events)).catch((error) => {
       formError.textContent = error instanceof Error ? error.message : "실행 로그를 내보낼 수 없습니다.";
+    });
+  },
+  diagnostic: (run) => {
+    void exportRunDiagnostic(run.runId).then(({ events, snapshots }) => {
+      downloadDiagnosticBundle(run, events, snapshots);
+    }).catch((error) => {
+      formError.textContent = error instanceof Error ? error.message : "실행 진단을 내보낼 수 없습니다.";
     });
   },
   remove: (runId) => {

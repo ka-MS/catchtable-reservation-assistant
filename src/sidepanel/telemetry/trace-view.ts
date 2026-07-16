@@ -3,7 +3,12 @@ import type { TraceEvent, TraceLiveBatch, TraceRunRecord } from "../../shared/te
 interface TraceViewActions {
   select(runId: string): void;
   download(run: TraceRunRecord): void;
+  diagnostic(run: TraceRunRecord): void;
   remove(runId: string): void;
+}
+
+function visibleEvents(events: TraceEvent[]): TraceEvent[] {
+  return events.filter((event) => event.code !== "CLOCK_SAMPLE");
 }
 
 function byId<T extends HTMLElement>(document: Document, id: string): T {
@@ -116,6 +121,7 @@ function eventItem(document: Document, event: TraceEvent): HTMLLIElement {
 export class TraceHistoryView {
   private readonly select: HTMLSelectElement;
   private readonly download: HTMLButtonElement;
+  private readonly diagnostic: HTMLButtonElement;
   private readonly remove: HTMLButtonElement;
   private readonly list: HTMLOListElement;
   private readonly count: HTMLElement;
@@ -124,6 +130,7 @@ export class TraceHistoryView {
   constructor(private readonly document: Document, actions: TraceViewActions) {
     this.select = byId(document, "trace-run-select");
     this.download = byId(document, "trace-run-export");
+    this.diagnostic = byId(document, "trace-run-diagnostic");
     this.remove = byId(document, "trace-run-delete");
     this.list = byId(document, "trace-event-list");
     this.count = byId(document, "trace-event-count");
@@ -134,6 +141,10 @@ export class TraceHistoryView {
     this.download.addEventListener("click", () => {
       const selected = this.runs.find((run) => run.runId === this.select.value);
       if (selected) actions.download(selected);
+    });
+    this.diagnostic.addEventListener("click", () => {
+      const selected = this.runs.find((run) => run.runId === this.select.value);
+      if (selected) actions.diagnostic(selected);
     });
     this.remove.addEventListener("click", () => {
       if (this.select.value) actions.remove(this.select.value);
@@ -165,7 +176,7 @@ export class TraceHistoryView {
   }
 
   renderEvents(events: TraceEvent[]): void {
-    const visible = events.slice(-100).reverse();
+    const visible = visibleEvents(events).slice(-100).reverse();
     const fragment = this.document.createDocumentFragment();
     visible.forEach((event) => fragment.append(eventItem(this.document, event)));
     this.list.replaceChildren(fragment);
@@ -186,9 +197,11 @@ export class TraceHistoryView {
     if (previousSelection !== null && previousSelection !== batch.run.runId) this.list.replaceChildren();
     this.select.value = batch.run.runId;
     this.syncActionState();
+    const events = visibleEvents(batch.events);
+    if (events.length === 0) return;
     if (this.list.querySelector(".event-empty")) this.list.replaceChildren();
     const fragment = this.document.createDocumentFragment();
-    [...batch.events].reverse().forEach((event) => fragment.append(eventItem(this.document, event)));
+    [...events].reverse().forEach((event) => fragment.append(eventItem(this.document, event)));
     this.list.prepend(fragment);
     while (this.list.children.length > 100) this.list.lastElementChild?.remove();
     this.count.textContent = `${this.list.children.length}개`;
@@ -198,6 +211,7 @@ export class TraceHistoryView {
     const selected = this.runs.find((run) => run.runId === this.select.value);
     const disabled = !selected || selected.finishedAt === null;
     this.download.disabled = disabled;
+    this.diagnostic.disabled = disabled;
     this.remove.disabled = disabled;
   }
 }

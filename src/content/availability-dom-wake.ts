@@ -1,4 +1,5 @@
 import type { Sleep } from "../shared/scheduler.js";
+import type { AvailabilityClassification } from "../shared/availability-shadow.js";
 import type { CorrelationQuality } from "./availability-correlation.js";
 
 export type AvailabilityWakeDiscardReason =
@@ -14,6 +15,8 @@ export interface AvailabilityWakeOffer {
   requestSequence: number;
   quality: CorrelationQuality;
   stale: boolean;
+  classification: AvailabilityClassification;
+  allowEmptyExit: boolean;
   selectedMinutes: number | null;
   responseCompletedMonoMs: number;
   payloadClassifiedMonoMs: number;
@@ -21,16 +24,27 @@ export interface AvailabilityWakeOffer {
   wakeAtMonoMs: number;
 }
 
-export interface AvailabilityWakeSignal {
+interface AvailabilityWakeSignalBase {
   cycle: number;
   requestSequence: number;
-  quality: "EXACT" | "STRONG";
-  selectedMinutes: number;
   responseCompletedMonoMs: number;
   payloadClassifiedMonoMs: number;
   bridgeReceivedMonoMs: number;
   wakeAtMonoMs: number;
 }
+
+export type AvailabilityWakeSignal = AvailabilityWakeSignalBase & (
+  | {
+      kind: "scan_wake";
+      quality: "EXACT" | "STRONG";
+      selectedMinutes: number;
+    }
+  | {
+      kind: "empty_exit";
+      quality: "EXACT";
+      selectedMinutes: null;
+    }
+);
 
 export interface AvailabilityWakeDecision {
   accepted: boolean;
@@ -59,6 +73,8 @@ function malformed(input: AvailabilityWakeOffer): boolean {
     || input.requestSequence < 1
     || input.selectedMinutes !== null
       && (!Number.isInteger(input.selectedMinutes) || input.selectedMinutes < 0 || input.selectedMinutes >= 1_440)
+    || typeof input.allowEmptyExit !== "boolean"
+    || input.classification === "EMPTY" && input.selectedMinutes !== null
     || !finiteMonotonic(input.responseCompletedMonoMs)
     || !finiteMonotonic(input.payloadClassifiedMonoMs)
     || !finiteMonotonic(input.bridgeReceivedMonoMs)
@@ -107,19 +123,37 @@ export class AvailabilityDomWake {
     if (input.quality !== "EXACT" && input.quality !== "STRONG") return reject("untrusted_quality");
     if (input.stale) return reject("stale_sequence");
     if (input.cycle === null || input.cycle !== this.activeCycle) return reject("inactive_cycle");
-    if (input.selectedMinutes === null) return reject("no_matching_slot");
     if (input.requestSequence <= this.lastSequence) return reject("duplicate_sequence");
 
-    const signal: AvailabilityWakeSignal = {
+    const timing = {
       cycle: input.cycle,
       requestSequence: input.requestSequence,
-      quality: input.quality,
-      selectedMinutes: input.selectedMinutes,
       responseCompletedMonoMs: input.responseCompletedMonoMs,
       payloadClassifiedMonoMs: input.payloadClassifiedMonoMs,
       bridgeReceivedMonoMs: input.bridgeReceivedMonoMs,
       wakeAtMonoMs: input.wakeAtMonoMs,
     };
+    let signal: AvailabilityWakeSignal;
+    if (input.classification === "EMPTY") {
+      if (!input.allowEmptyExit) return reject("no_matching_slot");
+      if (input.quality !== "EXACT") return reject("untrusted_quality");
+      signal = {
+        ...timing,
+        kind: "empty_exit",
+        quality: "EXACT",
+        selectedMinutes: null,
+      };
+    } else {
+      if (input.classification !== "POPULATED" || input.selectedMinutes === null) {
+        return reject("no_matching_slot");
+      }
+      signal = {
+        ...timing,
+        kind: "scan_wake",
+        quality: input.quality,
+        selectedMinutes: input.selectedMinutes,
+      };
+    }
     this.lastSequence = input.requestSequence;
     this.pending = signal;
     if (this.waiter?.cycle === input.cycle) this.waiter.resolve();

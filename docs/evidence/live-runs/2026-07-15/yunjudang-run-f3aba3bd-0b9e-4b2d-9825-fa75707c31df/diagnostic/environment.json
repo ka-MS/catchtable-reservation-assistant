@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "runId": "run-f3aba3bd-0b9e-4b2d-9825-fa75707c31df",
+  "extensionVersion": "0.2.0",
+  "snapshots": [
+    {
+      "snapshotId": "44ffdbbb-6ffd-4490-8568-5de2ac871821",
+      "capturedAt": 1784109528858,
+      "stage": "PREPARING_PAGE",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/yunjudang_",
+        "urlKind": "shop",
+        "title": "윤주당",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": false,
+        "viewportWidth": 1067,
+        "viewportHeight": 783,
+        "visualViewportWidth": 1067.199951171875,
+        "visualViewportHeight": 783.2000122070312,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "div",
+          "role": "button",
+          "text": "1",
+          "ariaLabel": "토요일, 8월 1, 2026",
+          "ariaPressed": "true",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "div[role=\"button\"][aria-label=\"토요일, 8월 1, 2026\"]",
+          "attributes": {},
+          "rect": {
+            "x": 515.7,
+            "y": 288.8,
+            "width": 34.7,
+            "height": 34.7
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "531ed7fd-c366-4ffd-887b-9f5b9aa6e1de",
+      "capturedAt": 1784109528876,
+      "stage": "WAITING_FOR_OPEN",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/yunjudang_",
+        "urlKind": "shop",
+        "title": "윤주당",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": false,
+        "viewportWidth": 1067,
+        "viewportHeight": 783,
+        "visualViewportWidth": 1067.199951171875,
+        "visualViewportHeight": 783.2000122070312,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "div",
+          "role": "button",
+          "text": "1",
+          "ariaLabel": "토요일, 8월 1, 2026",
+          "ariaPressed": "true",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "div[role=\"button\"][aria-label=\"토요일, 8월 1, 2026\"]",
+          "attributes": {},
+          "rect": {
+            "x": 515.7,
+            "y": 288.8,
+            "width": 34.7,
+            "height": 34.7
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "79a4d9eb-9c47-421e-9cf5-3cc4c9430df8",
+      "capturedAt": 1784109601113,
+      "stage": "SLOT_CLICK_DISPATCHED",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/yunjudang_",
+        "urlKind": "shop",
+        "title": "윤주당",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": false,
+        "viewportWidth": 1067,
+        "viewportHeight": 783,
+        "visualViewportWidth": 1067.199951171875,
+        "visualViewportHeight": 783.2000122070312,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "div",
+          "role": "button",
+          "text": "1",
+          "ariaLabel": "토요일, 8월 1, 2026",
+          "ariaPressed": "true",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "div[role=\"button\"][aria-label=\"토요일, 8월 1, 2026\"]",
+          "attributes": {},
+          "rect": {
+            "x": 697.9,
+            "y": 287.2,
+            "width": 34.7,
+            "height": 34.7
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "4c576c76-5ee9-49bb-9801-8a75597197c5",
+      "capturedAt": 1784109606144,
+      "stage": "SLOT_CLICK_DISPATCHED",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/yunjudang_",
+        "urlKind": "shop",
+        "title": "윤주당",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": false,
+        "viewportWidth": 1067,
+        "viewportHeight": 783,
+        "visualViewportWidth": 1052,
+        "visualViewportHeight": 783.2000122070312,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "body",
+          "role": "",
+          "text": "You need to enable JavaScript to run this app.<br /> 자바스크립트를 활성화해주시기 바랍니다. !(function (f, b, e, v, n, t, s) { if (f.fbq) return; n = f.fbq = function () { n.cal",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "body",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 1052,
+            "height": 783.2
+          }
+        }
+      }
+    }
+  ]
+}

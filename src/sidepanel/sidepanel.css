@@ -329,6 +329,74 @@ select:focus {
   font-weight: 400;
 }
 
+.probe-mode {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+}
+
+.probe-mode legend {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.probe-mode > small {
+  color: #68736d;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #c8d2cc;
+  border-radius: 7px;
+}
+
+.segmented-control label {
+  min-width: 0;
+  border-right: 1px solid #c8d2cc;
+}
+
+.segmented-control label:last-child {
+  border-right: 0;
+}
+
+.segmented-control input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.segmented-control span {
+  display: grid;
+  place-items: center;
+  min-height: 38px;
+  padding: 5px 4px;
+  color: #56615b;
+  background: #fff;
+  font-size: 11px;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.segmented-control input:checked + span {
+  color: #fff;
+  background: #176b4c;
+  font-weight: 700;
+}
+
+.segmented-control input:focus-visible + span {
+  outline: 2px solid #126344;
+  outline-offset: -3px;
+}
+
 .dependent-options {
   margin-top: 12px;
 }

@@ -3,4 +3,5 @@ dist/
 coverage/
 *.log
 .DS_Store
+*:Zone.Identifier
 .claude/settings.local.json

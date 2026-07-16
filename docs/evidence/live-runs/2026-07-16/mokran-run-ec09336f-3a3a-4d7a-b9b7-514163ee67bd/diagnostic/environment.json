@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "runId": "run-ec09336f-3a3a-4d7a-b9b7-514163ee67bd",
+  "extensionVersion": "0.2.0",
+  "snapshots": [
+    {
+      "snapshotId": "13309294-5818-4281-a90a-184b029e64de",
+      "capturedAt": 1784165327822,
+      "stage": "ENTERING_RESERVATION",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/mokran",
+        "urlKind": "shop",
+        "title": "목란",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": true,
+        "viewportWidth": 982,
+        "viewportHeight": 762,
+        "visualViewportWidth": 967.2000122070312,
+        "visualViewportHeight": 761.5999755859375,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "body",
+          "role": "",
+          "text": "You need to enable JavaScript to run this app.<br /> 자바스크립트를 활성화해주시기 바랍니다. !(function (f, b, e, v, n, t, s) { if (f.fbq) return; n = f.fbq = function () { n.cal",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "body",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 967.2,
+            "height": 761.6
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "d2fed75a-a804-41a8-8e50-5b9def5640ec",
+      "capturedAt": 1784165328907,
+      "stage": "SELECTING_DATE",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/mokran",
+        "urlKind": "shop",
+        "title": "목란",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": true,
+        "viewportWidth": 982,
+        "viewportHeight": 762,
+        "visualViewportWidth": 982.4000244140625,
+        "visualViewportHeight": 761.5999755859375,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "div",
+          "role": "",
+          "text": "오늘2026년8월일월화수목금토###12 13 14 15 16오늘17마감18마감19마감20 21 22 23 24 25마감26마감27 28 29 30 31 1마감2마감3 4 5 6 7 8마감일월화수목금토26마감27 28 29 30 31 1마감2마감3 4 5 6 7 8마감9마감10 11 12",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "div",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 111.4,
+            "width": 982.4,
+            "height": 650.2
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "37f9db1e-483d-49e2-af23-e632d06192eb",
+      "capturedAt": 1784165329011,
+      "stage": "SELECTING_DATE",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/mokran",
+        "urlKind": "shop",
+        "title": "목란",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": true,
+        "viewportWidth": 982,
+        "viewportHeight": 762,
+        "visualViewportWidth": 982.4000244140625,
+        "visualViewportHeight": 761.5999755859375,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "div",
+          "role": "",
+          "text": "오늘2026년8월일월화수목금토###12 13 14 15 16오늘17마감18마감19마감20 21 22 23 24 25마감26마감27 28 29 30 31 1마감2마감3 4 5 6 7 8마감일월화수목금토26마감27 28 29 30 31 1마감2마감3 4 5 6 7 8마감9마감10 11 12",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "div",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 111.4,
+            "width": 982.4,
+            "height": 650.2
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "d4cbe8c4-27b4-4178-9d2e-0fff7646e762",
+      "capturedAt": 1784165340289,
+      "stage": "SELECTING_DATE",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/mokran",
+        "urlKind": "shop",
+        "title": "목란",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": true,
+        "viewportWidth": 982,
+        "viewportHeight": 762,
+        "visualViewportWidth": 982.4000244140625,
+        "visualViewportHeight": 761.5999755859375,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "div",
+          "role": "",
+          "text": "오늘2026년8월일월화수목금토###12 13 14 15 16오늘17마감18마감19마감20 21 22 23 24 25마감26마감27 28 29 30 31 1마감2마감3 4 5 6 7 8마감일월화수목금토26마감27 28 29 30 31 1마감2마감3 4 5 6 7 8마감9마감10 11 12",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "div",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 111.4,
+            "width": 982.4,
+            "height": 650.2
+          }
+        }
+      }
+    }
+  ]
+}

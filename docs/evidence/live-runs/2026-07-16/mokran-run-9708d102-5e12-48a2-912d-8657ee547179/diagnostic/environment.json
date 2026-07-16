@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "runId": "run-9708d102-5e12-48a2-912d-8657ee547179",
+  "extensionVersion": "0.2.0",
+  "snapshots": [
+    {
+      "snapshotId": "6f2f13f7-6c0d-4917-ae52-ef973f9255b2",
+      "capturedAt": 1784165367718,
+      "stage": "ENTERING_RESERVATION",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/mokran",
+        "urlKind": "shop",
+        "title": "목란",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": true,
+        "viewportWidth": 982,
+        "viewportHeight": 762,
+        "visualViewportWidth": 982.4000244140625,
+        "visualViewportHeight": 761.5999755859375,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "div",
+          "role": "",
+          "text": "오늘2026년8월일월화수목금토###12 13 14 15 16오늘17마감18마감19마감20 21 22 23 24 25마감26마감27 28 29 30 31 1마감2마감3 4 5 6 7 8마감일월화수목금토26마감27 28 29 30 31 1마감2마감3 4 5 6 7 8마감9마감10 11 12",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "div",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 111.4,
+            "width": 982.4,
+            "height": 650.2
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "8e51366d-776b-4082-8c05-7aa6102c89ee",
+      "capturedAt": 1784165367728,
+      "stage": "SELECTING_DATE",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/mokran",
+        "urlKind": "shop",
+        "title": "목란",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": true,
+        "viewportWidth": 982,
+        "viewportHeight": 762,
+        "visualViewportWidth": 982.4000244140625,
+        "visualViewportHeight": 761.5999755859375,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "div",
+          "role": "",
+          "text": "오늘2026년8월일월화수목금토###12 13 14 15 16오늘17마감18마감19마감20 21 22 23 24 25마감26마감27 28 29 30 31 1마감2마감3 4 5 6 7 8마감일월화수목금토26마감27 28 29 30 31 1마감2마감3 4 5 6 7 8마감9마감10 11 12",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "div",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 111.4,
+            "width": 982.4,
+            "height": 650.2
+          }
+        }
+      }
+    },
+    {
+      "snapshotId": "d02bcea3-9a52-424b-acf6-69a5f24be743",
+      "capturedAt": 1784165377468,
+      "stage": "SELECTING_DATE",
+      "environment": {
+        "url": "https://app.catchtable.co.kr/ct/shop/mokran",
+        "urlKind": "shop",
+        "title": "목란",
+        "readyState": "complete",
+        "visibilityState": "visible",
+        "hasFocus": true,
+        "viewportWidth": 982,
+        "viewportHeight": 762,
+        "visualViewportWidth": 982.4000244140625,
+        "visualViewportHeight": 761.5999755859375,
+        "devicePixelRatio": 1.25,
+        "scrollX": 0,
+        "scrollY": 0,
+        "activeElement": {
+          "tag": "div",
+          "role": "",
+          "text": "오늘2026년8월일월화수목금토###12 13 14 15 16오늘17마감18마감19마감20 21 22 23 24 25마감26마감27 28 29 30 31 1마감2마감3 4 5 6 7 8마감일월화수목금토26마감27 28 29 30 31 1마감2마감3 4 5 6 7 8마감9마감10 11 12",
+          "ariaLabel": "",
+          "ariaPressed": "",
+          "ariaChecked": "",
+          "ariaSelected": "",
+          "disabled": false,
+          "checked": null,
+          "selected": null,
+          "selectorHint": "div",
+          "attributes": {},
+          "rect": {
+            "x": 0,
+            "y": 111.4,
+            "width": 982.4,
+            "height": 650.2
+          }
+        }
+      }
+    }
+  ]
+}

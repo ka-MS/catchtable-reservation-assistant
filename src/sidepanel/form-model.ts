@@ -1,6 +1,6 @@
-import { validateReservationConfig } from "../shared/config.js";
+import { resolveAvailabilityProbeMode, validateReservationConfig } from "../shared/config.js";
 import { localInputToEpoch, parseTimeInput } from "../shared/time.js";
-import type { EntryMode, PaymentMethodPolicy, ReservationConfig, TablePreference } from "../shared/types.js";
+import type { AvailabilityProbeMode, EntryMode, PaymentMethodPolicy, ReservationConfig, TablePreference } from "../shared/types.js";
 
 export interface FormValues {
   targetUrl: string;
@@ -21,6 +21,8 @@ export interface FormValues {
   dryRun: boolean;
   preOpenLeadMs: string;
   toggleIntervalMs: string;
+  availabilityProbeMode?: AvailabilityProbeMode;
+  availabilityProbeEnabled?: boolean;
 }
 
 function parseConfig(values: FormValues): ReservationConfig {
@@ -47,6 +49,7 @@ function parseConfig(values: FormValues): ReservationConfig {
     dryRun: values.dryRun,
     preOpenLeadMs: Number(values.preOpenLeadMs),
     toggleIntervalMs: Number(values.toggleIntervalMs),
+    availabilityProbeMode: resolveAvailabilityProbeMode(values),
   };
   return config;
 }

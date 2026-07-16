@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "bundleType": "catchtable-run-diagnostic",
+  "generatedAt": 1784166369504,
+  "run": {
+    "schemaVersion": 1,
+    "runId": "run-9708d102-5e12-48a2-912d-8657ee547179",
+    "startedAt": 1784165367647,
+    "config": {
+      "targetUrl": "https://app.catchtable.co.kr/ct/shop/mokran",
+      "openAtMs": 1784165400000,
+      "reservationDate": "2026-08-20",
+      "personCount": 2,
+      "timeRange": {
+        "startMinutes": 300,
+        "endMinutes": 1260
+      },
+      "priorityTimes": [],
+      "postSlotEnabled": true,
+      "paymentMethodAutoAdvance": true,
+      "paymentMethodPolicy": "selected_allowed",
+      "tablePreference": "any",
+      "menuKeyword": "",
+      "stopAtMs": 1784166000000,
+      "entryMode": "auto",
+      "dryRun": false,
+      "preOpenLeadMs": 300,
+      "toggleIntervalMs": 100,
+      "availabilityProbeMode": "empty_exit"
+    },
+    "finishedAt": 1784165377469,
+    "finalState": "HANDED_OFF",
+    "eventCount": 8,
+    "droppedCount": 0,
+    "extensionVersion": "0.2.0"
+  },
+  "eventCount": 8,
+  "snapshotCount": 3,
+  "fragmentCount": 1
+}

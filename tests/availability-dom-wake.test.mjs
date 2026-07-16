@@ -8,6 +8,8 @@ function offer(overrides = {}) {
     requestSequence: 7,
     quality: "EXACT",
     stale: false,
+    classification: "POPULATED",
+    allowEmptyExit: false,
     selectedMinutes: 1140,
     responseCompletedMonoMs: 1_020,
     payloadClassifiedMonoMs: 1_023,
@@ -23,6 +25,7 @@ test("current-cycle EXACT and STRONG matching bodies become wake signals", () =>
 
   const exact = wake.offer(offer());
   assert.equal(exact.accepted, true);
+  assert.equal(exact.signal?.kind, "scan_wake");
   assert.equal(exact.signal?.requestSequence, 7);
   assert.equal(wake.consume(3)?.quality, "EXACT");
 
@@ -55,13 +58,61 @@ test("stale, duplicate, and old-cycle bodies are discarded", () => {
   assert.equal(wake.offer(offer({ requestSequence: 6 })).discardReason, "duplicate_sequence");
 });
 
-test("missing matching slots and malformed timing use the fallback path", () => {
+test("observe mode EMPTY and missing matching slots use the fallback path", () => {
   const wake = new AvailabilityDomWake();
   wake.beginCycle(3);
 
-  assert.equal(wake.offer(offer({ selectedMinutes: null })).discardReason, "no_matching_slot");
+  assert.equal(wake.offer(offer({
+    classification: "EMPTY",
+    selectedMinutes: null,
+  })).discardReason, "no_matching_slot");
+  assert.equal(wake.offer(offer({
+    classification: "POPULATED",
+    selectedMinutes: null,
+  })).discardReason, "no_matching_slot");
   assert.equal(wake.offer(offer({ wakeAtMonoMs: Number.NaN })).discardReason, "malformed_signal");
   assert.equal(wake.offer(offer({ selectedMinutes: 2_000 })).discardReason, "malformed_signal");
+  assert.equal(wake.consume(3), null);
+});
+
+test("current-cycle EXACT EMPTY becomes an early-exit signal only when enabled", () => {
+  const wake = new AvailabilityDomWake();
+  wake.beginCycle(3);
+
+  const decision = wake.offer(offer({
+    classification: "EMPTY",
+    allowEmptyExit: true,
+    selectedMinutes: null,
+  }));
+
+  assert.equal(decision.accepted, true);
+  assert.deepEqual(decision.signal, {
+    kind: "empty_exit",
+    cycle: 3,
+    requestSequence: 7,
+    quality: "EXACT",
+    selectedMinutes: null,
+    responseCompletedMonoMs: 1_020,
+    payloadClassifiedMonoMs: 1_023,
+    bridgeReceivedMonoMs: 1_025,
+    wakeAtMonoMs: 1_026,
+  });
+  assert.equal(wake.consume(3)?.kind, "empty_exit");
+});
+
+test("STRONG EMPTY never enters the control path", () => {
+  const wake = new AvailabilityDomWake();
+  wake.beginCycle(3);
+
+  const decision = wake.offer(offer({
+    classification: "EMPTY",
+    allowEmptyExit: true,
+    quality: "STRONG",
+    selectedMinutes: null,
+  }));
+
+  assert.equal(decision.accepted, false);
+  assert.equal(decision.discardReason, "untrusted_quality");
   assert.equal(wake.consume(3), null);
 });
 
@@ -86,6 +137,29 @@ test("an accepted body interrupts an in-flight fallback sleep", async () => {
   assert.equal(result.kind, "wake");
   assert.equal(result.signal.requestSequence, 7);
   assert.equal(sleepResolved, false);
+  resolveSleep();
+});
+
+test("an accepted EMPTY interrupts an in-flight fallback sleep", async () => {
+  const wake = new AvailabilityDomWake();
+  wake.beginCycle(3);
+  const controller = new AbortController();
+  let resolveSleep;
+  const sleep = () => new Promise((resolve) => {
+    resolveSleep = () => resolve(true);
+  });
+
+  const waiting = wake.wait(3, 25, sleep, controller.signal);
+  const decision = wake.offer(offer({
+    classification: "EMPTY",
+    allowEmptyExit: true,
+    selectedMinutes: null,
+  }));
+  const result = await waiting;
+
+  assert.equal(decision.accepted, true);
+  assert.equal(result.kind, "wake");
+  assert.equal(result.signal.kind, "empty_exit");
   resolveSleep();
 });
 

@@ -167,6 +167,24 @@
                   <small class="field-help">목표 날짜 재클릭 주기 · 정밀 구간 최대 150ms</small>
                 </label>
               </div>
+              <fieldset class="probe-mode">
+                <legend>XHR 응답 모드</legend>
+                <div class="segmented-control">
+                  <label>
+                    <input type="radio" name="availability-probe-mode" value="off" checked />
+                    <span>사용 안 함</span>
+                  </label>
+                  <label>
+                    <input type="radio" name="availability-probe-mode" value="observe" />
+                    <span>진단만</span>
+                  </label>
+                  <label>
+                    <input type="radio" name="availability-probe-mode" value="empty_exit" />
+                    <span>EMPTY 조기 종료</span>
+                  </label>
+                </div>
+                <small>실오픈 성능 측정용 실험 기능입니다. 일반 실행에서는 끄는 것을 권장합니다.</small>
+              </fieldset>
             </details>
           </section>
 
@@ -228,8 +246,9 @@
             <span id="trace-event-count" class="event-count">0개</span>
           </div>
           <div class="runtime-tools">
-            <button id="trace-run-export" class="filter-button" type="button" title="선택 실행 CSV 내보내기" disabled>CSV</button>
-            <button id="trace-run-delete" class="filter-button" type="button" disabled>삭제</button>
+              <button id="trace-run-export" class="filter-button" type="button" title="선택 실행 CSV 내보내기" disabled>CSV</button>
+              <button id="trace-run-diagnostic" class="filter-button" type="button" title="선택 실행 진단 ZIP 내보내기" disabled>진단</button>
+              <button id="trace-run-delete" class="filter-button" type="button" disabled>삭제</button>
           </div>
         </div>
         <label class="field wide trace-run-field">
