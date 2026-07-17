@@ -117,12 +117,16 @@ export type ContentCommand =
   | {
     type: "START";
     runId: string;
+    logicalRunId?: string;
+    attemptIndex?: number;
+    resetCause?: string;
     scheduledJobId?: string;
     shadowChannelId?: string;
     executionContext?: RunExecutionContext;
     config: ReservationConfig;
   }
-  | { type: "STOP" };
+  | { type: "STOP" }
+  | { type: "GET_ATTEMPT_STATUS"; attemptId: string };
 
 export type PanelCommand =
   | { type: "PANEL_START"; config: ReservationConfig }

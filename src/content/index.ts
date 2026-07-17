@@ -1,4 +1,7 @@
 import { abortableSleep } from "../shared/scheduler.js";
+import type {
+  AttemptControlMessage, AttemptOutcome, AttemptStatusResponse, TerminalRunState,
+} from "../shared/run-control/protocol.js";
 import type { ContentCommand, RunEventMessage } from "../shared/types.js";
 import { CalendarAdapter } from "./adapter/calendar.js";
 import { EntryAdapter } from "./adapter/entry.js";
@@ -39,6 +42,39 @@ if (!window.__ctReserveInjected) {
     new RuntimeDiagnosticTransport(),
   );
   const availabilityShadow = createAvailabilityShadowBridge(window);
+
+  interface AttemptControlState {
+    logicalRunId: string;
+    attemptId: string;
+    phase: "PREPARING" | "EXECUTING" | "FINISHING";
+    pendingOutcome?: AttemptOutcome;
+  }
+  let attempt: AttemptControlState | null = null;
+
+  const sendControl = (message: AttemptControlMessage): Promise<unknown> =>
+    chrome.runtime.sendMessage(message);
+
+  // flush 완료 뒤에만 전송하고, ACK 없으면 제한 재시도, {ok:false}는 중단(§5.4).
+  // 끝내 ACK가 없으면 reset 없이 현재 terminal을 유지한다 — GET_ATTEMPT_STATUS가 겸수신.
+  async function deliverOutcome(state: AttemptControlState, outcome: AttemptOutcome, flushOk: boolean): Promise<void> {
+    state.pendingOutcome = outcome;
+    for (let retry = 0; retry < 3; retry += 1) {
+      try {
+        const ack = await sendControl({
+          type: "ATTEMPT_FINISHED",
+          logicalRunId: state.logicalRunId,
+          attemptId: state.attemptId,
+          outcome,
+          flush: { ok: flushOk },
+        }) as { ok?: boolean } | undefined;
+        if (ack && typeof ack.ok === "boolean") return;
+      } catch {
+        // SW 재기동 등 전송 실패 — 제한 재시도.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+
   const orchestrator = new OpenRunOrchestrator({
     clock,
     monotonicClock,
@@ -70,6 +106,16 @@ if (!window.__ctReserveInjected) {
       }
     },
     capturePreparationContext: () => capturePreparationPageContext(document),
+    attemptPhase: (phase) => {
+      if (!attempt) return;
+      attempt.phase = phase;
+      void sendControl({
+        type: "ATTEMPT_PHASE_CHANGED",
+        logicalRunId: attempt.logicalRunId,
+        attemptId: attempt.attemptId,
+        phase,
+      }).catch(() => undefined);
+    },
     runId: () => crypto.randomUUID(),
   });
   let running = false;
@@ -82,19 +128,87 @@ if (!window.__ctReserveInjected) {
     }
     if (message.type === "START") {
       if (running) {
-        sendResponse({ ok: false, error: "이미 실행 중입니다." });
+        // 동일 attemptId 재수신은 멱등 재응답한다(§5.4 nextAttempt 전이 원자성).
+        sendResponse(attempt?.attemptId === message.runId
+          ? { ok: true }
+          : { ok: false, error: "이미 실행 중입니다." });
         return;
       }
       running = true;
+      const control: AttemptControlState | null = message.logicalRunId === undefined
+        ? null
+        : { logicalRunId: message.logicalRunId, attemptId: message.runId, phase: "PREPARING" };
+      attempt = control;
       availabilityShadow.configure(message.shadowChannelId ?? null);
       diagnosticRecorder.start(message.runId);
-      traceLogger.start(message.runId, message.config, message.scheduledJobId);
-      void orchestrator.start(message.config, message.runId, message.executionContext).finally(() => {
-        availabilityShadow.configure(null);
-        diagnosticRecorder.reset();
-        running = false;
-      });
+      traceLogger.start(message.runId, message.config, message.scheduledJobId,
+        message.logicalRunId === undefined ? undefined : {
+          logicalRunId: message.logicalRunId,
+          attemptIndex: message.attemptIndex ?? 0,
+          ...(message.resetCause === undefined ? {} : { resetCause: message.resetCause }),
+        });
+      if (control) {
+        void sendControl({
+          type: "ATTEMPT_PHASE_CHANGED",
+          logicalRunId: control.logicalRunId,
+          attemptId: control.attemptId,
+          phase: "PREPARING",
+        }).catch(() => undefined);
+      }
+      void orchestrator.start(message.config, message.runId, message.executionContext)
+        .then(async (result) => {
+          if (!control) return;
+          control.phase = "FINISHING";
+          const outcome: AttemptOutcome = result.preparation !== undefined && result.state === "HANDED_OFF"
+            ? {
+              kind: "preparation_failed",
+              state: "HANDED_OFF",
+              cause: result.preparation.cause,
+              attempts: result.preparation.attempts,
+              message: result.message,
+              finishedAt: Date.now(),
+            }
+            : {
+              kind: "terminal",
+              state: result.state as TerminalRunState,
+              message: result.message,
+              finishedAt: Date.now(),
+            };
+          let flushOk = false;
+          try {
+            flushOk = await traceLogger.forceFlush();
+          } catch {
+            flushOk = false;
+          }
+          if (!flushOk) {
+            // durable 실패 시 1회 재flush(§5.4) — 복구 진행은 결과와 무관하다.
+            try {
+              flushOk = await traceLogger.forceFlush();
+            } catch {
+              flushOk = false;
+            }
+          }
+          await deliverOutcome(control, outcome, flushOk);
+        })
+        .finally(() => {
+          availabilityShadow.configure(null);
+          diagnosticRecorder.reset();
+          running = false;
+        });
       sendResponse({ ok: true });
+      return;
+    }
+    if (message.type === "GET_ATTEMPT_STATUS") {
+      if (!attempt || attempt.attemptId !== message.attemptId) {
+        sendResponse({ attemptId: message.attemptId, running: false, phase: null } satisfies AttemptStatusResponse);
+        return;
+      }
+      sendResponse({
+        attemptId: attempt.attemptId,
+        running: running && attempt.phase !== "FINISHING",
+        phase: attempt.phase,
+        ...(attempt.pendingOutcome === undefined ? {} : { pendingOutcome: attempt.pendingOutcome }),
+      } satisfies AttemptStatusResponse);
       return;
     }
     if (message.type === "STOP") {

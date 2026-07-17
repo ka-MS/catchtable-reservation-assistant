@@ -54,6 +54,39 @@ export class TraceIngestor {
     await this.repository.prune(20);
   }
 
+  /** supervisor의 복구 결정·실행 관측 — 제어에 사용하지 않는 background trace. */
+  async recordRecovery(
+    runId: string,
+    config: ReservationConfig,
+    code: "RECOVERY_DECIDED" | "RECOVERY_DISPATCHED",
+    message: string,
+    attributes: TraceEvent["attributes"],
+    scheduledJobId?: string,
+  ): Promise<void> {
+    const previous = await this.repository.readEvents(runId, 1);
+    const seq = (previous.at(-1)?.seq ?? 0) + 1;
+    const now = Date.now();
+    const event: TraceEvent = {
+      schemaVersion: 1,
+      runId,
+      seq,
+      code,
+      severity: "info",
+      component: "background",
+      localAt: now,
+      serverAt: null,
+      state: null,
+      message: message.slice(0, 1_000),
+      attributes,
+    };
+    const run = await this.repository.append(
+      this.descriptor(runId, now, config, scheduledJobId),
+      [event],
+      this.extensionVersion(),
+    );
+    this.live.publish({ type: "TRACE_LIVE_BATCH", run, events: [event] });
+  }
+
   async recordBackgroundTerminal(
     runId: string,
     startedAt: number,

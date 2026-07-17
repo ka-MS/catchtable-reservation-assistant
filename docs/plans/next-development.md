@@ -39,13 +39,13 @@
 - 진단 fixture 변환 도구
 - Adapter strategy/fingerprint 변화 감지
 
-## 6. 런타임 오류 분류와 복구 정책 — 준비영역 책임 분리 완료, supervisor·URL 재진입은 Phase 2 (2026-07-17)
+## 6. 런타임 오류 분류와 복구 정책 — run-control-plane Phase 1·2 완료 (2026-07-17)
 
 오류를 하나의 `FAILED` 메시지로 처리하지 않고 원인과 허용된 복구 행동을 구조화한다.
 
 run-control-plane Phase 1(`docs/specs/run-control-plane/`)로 준비영역 책임 분리를 완료했다: Adapter 사실 반환, 실패 원인 분류(classifier 단독 소유), 복구 정책(decide 타입·테스트 고정), 기계 루프(BoundedStepRunner)와 단계 의미(coordinator), telemetry reporter 수렴. RT-16의 bounded retry 상수는 그대로 이식했고 재시도 상태는 run-scoped가 되어 실행 간 상태 누출이 구조적으로 사라졌다.
 
-background RunSupervisor, `AttemptControlMessage` 배선, 동일 탭 URL 재진입(`RESET_PAGE` 실행)과 reconcile은 Phase 2(`31-control-plane-implementation.md`)로 명시한다. RT-16 전체는 Phase 2 완료 시점에 종결 판정한다.
+background RunSupervisor, `AttemptControlMessage` 배선, 동일 탭 URL 재진입(`RESET_PAGE` 실행)과 reconcile을 Phase 2(`31-control-plane-implementation.md`)로 구현·라이브 검증했다. **RT-16 전체를 종결로 판정한다** (`docs/worklog/2026-07-17-02-run-control-plane-phase2.md`). 실행영역(슬롯 이후) 원인 분류와 ExecutionPhase 분해는 Phase 3 범위로 남는다.
 
 - 인증 만료: 자동 재로그인하지 않고 사용자에게 인계
 - 대기열·rate limit: 서버 지시를 존중해 제한된 backoff 또는 중지

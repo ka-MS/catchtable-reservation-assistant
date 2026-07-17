@@ -42,3 +42,23 @@ test("trace logger strips URL query and bounds error and attribute data", () => 
   assert.equal(batches[0].events.at(-1).error.stack.length, 8_192);
   ack("run-1", batches[0].lastSeq);
 });
+
+test("start의 attempt 인자는 RUN_STARTED attributes로 기록된다", () => {
+  const batches = [];
+  const processor = new BatchTraceProcessor({
+    send: (batch) => batches.push(batch),
+    setAckHandler: () => undefined,
+  }, () => "batch", { set: () => 1, clear: () => undefined });
+  const logger = new TraceLogger(processor, () => 1_000);
+  logger.start("run-a2", config, undefined, {
+    logicalRunId: "lr-1",
+    attemptIndex: 1,
+    resetCause: "DATE_SELECTION_STALLED",
+  });
+  processor.flush();
+
+  const started = batches[0].events.find((item) => item.code === "RUN_STARTED");
+  assert.equal(started.attributes.logicalRunId, "lr-1");
+  assert.equal(started.attributes.attemptIndex, 1);
+  assert.equal(started.attributes.resetCause, "DATE_SELECTION_STALLED");
+});

@@ -18,17 +18,22 @@ export type AttemptOutcome =
   }
   | { kind: "terminal"; state: TerminalRunState; message: string; finishedAt: number };
 
-// content → background
+// content → background. flush: durable flush 결과 동반 — 복구 진행은 결과와 무관, 유실 사실만 기록.
 export type AttemptControlMessage =
   | { type: "ATTEMPT_PHASE_CHANGED"; logicalRunId: string; attemptId: string; phase: AttemptPhase }
-  | { type: "ATTEMPT_FINISHED"; logicalRunId: string; attemptId: string; outcome: AttemptOutcome };
+  | {
+    type: "ATTEMPT_FINISHED"; logicalRunId: string; attemptId: string;
+    outcome: AttemptOutcome; flush: { ok: boolean };
+  };
 
 /** sendResponse = ACK. ACK = "결정이 영속 접수됨"(행동 완료 아님).
  * 같은 attempt의 재전송에는 영속된 decision을 그대로 재ACK한다.
  * stale/missing은 침묵이 아니라 {ok:false, reason}으로 응답한다 — content가 재시도 중단을 판단. */
-export type AttemptAckFailureReason = "unknown_logical_run" | "stale_attempt";
+export type AttemptAckFailureReason =
+  | "unknown_logical_run" | "stale_attempt" | "outcome_conflict" | "phase_regression";
 export type AttemptFinishedAck =
-  | { ok: true; decision: "RESET_PAGE" | "HANDOFF" }
+  // TERMINAL = 일반 종결(COMPLETED/STOPPED/FAILED 등) 접수 — 복구 결정이 아니다.
+  | { ok: true; decision: "RESET_PAGE" | "HANDOFF" | "TERMINAL" }
   | { ok: false; reason: AttemptAckFailureReason };
 export type AttemptPhaseChangedAck =
   | { ok: true }
@@ -36,4 +41,11 @@ export type AttemptPhaseChangedAck =
 
 // background → content (SW bootstrap reconcile 전용 — PING은 주입 여부만 증명한다)
 export interface AttemptStatusRequest { type: "GET_ATTEMPT_STATUS"; attemptId: string; }
-export interface AttemptStatusResponse { attemptId: string; running: boolean; phase: AttemptPhase | null; }
+// FINISHING = terminal 도달 후 ATTEMPT_FINISHED 전송 중 — reconcile 오판 방지.
+export interface AttemptStatusResponse {
+  attemptId: string;
+  running: boolean;
+  phase: AttemptPhase | "FINISHING" | null;
+  /** FINISHING이면 상태 응답이 outcome 수신 경로를 겸한다. */
+  pendingOutcome?: AttemptOutcome;
+}

@@ -132,6 +132,7 @@ function harness({
   }),
   calendarOverride = null,
   onSleep = () => undefined,
+  attemptPhase = null,
 } = {}) {
   let now = 0;
   let monotonicNow = 0;
@@ -215,6 +216,7 @@ function harness({
     captureSnapshot,
     capturePreparationContext,
     ...(diagnostics ? { diagnostics } : {}),
+    ...(attemptPhase ? { attemptPhase } : {}),
     runId: () => "run-1",
   });
   return {
@@ -1873,4 +1875,37 @@ test("normal form hand-off keeps breadcrumbs in memory and stores no failure sna
   assert.ok(calls.breadcrumbs.includes("SLOT_CLICK_DISPATCHED"));
   assert.ok(!calls.breadcrumbs.includes("REFRESHING_SLOTS"));
   assert.ok(!calls.breadcrumbs.includes("SLOT_DETECTED"));
+});
+
+test("terminal RunResult는 message와 preparation 실패 상세를 싣는다", async () => {
+  const phases = [];
+  const h = harness({
+    calendarOverride: {
+      inspect: () => ({ targetAvailable: true, targetSelected: false, adjacentDate: "2026-07-29" }),
+      inspectPreparation: () => ({ displayedMonth: "2026-07", target: { available: true, selected: false }, monthNavigation: null }),
+      clickMonth: () => true,
+      clickDate: () => true,
+    },
+    attemptPhase: (phase) => phases.push(phase),
+  });
+  const result = await h.orchestrator.start(config({ entryMode: "auto", stopAtMs: 5_000 }));
+  assert.equal(result.state, "HANDED_OFF");
+  assert.equal(result.message, "목표 날짜 선택 전환을 확인할 수 없습니다.");
+  assert.deepEqual(result.preparation, { cause: "DATE_SELECTION_STALLED", attempts: 2 });
+  assert.deepEqual(phases, []); // 준비 실패 — EXECUTING 신호 없음
+});
+
+test("attemptPhase는 준비 완료 후 WAITING_FOR_OPEN 전에 1회 EXECUTING을 신호한다", async () => {
+  const phases = [];
+  let sawWaiting = false;
+  const h = harness({
+    attemptPhase: (phase) => phases.push({ phase, beforeWaiting: !sawWaiting }),
+    onTrace: (code, _s, _m, options) => {
+      if (options?.state === "WAITING_FOR_OPEN") sawWaiting = true;
+    },
+  });
+  const result = await h.orchestrator.start(config());
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  assert.equal(result.message.length > 0, true);
+  assert.deepEqual(phases, [{ phase: "EXECUTING", beforeWaiting: true }]);
 });
