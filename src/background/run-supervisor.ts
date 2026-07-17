@@ -447,9 +447,11 @@ export class RunSupervisor {
         dispatched, recovery.nextAttemptId, dispatched.attempts.length, cause, shadowChannelId, executionContext));
       if (!response.ok) throw new Error(response.error ?? "재시도 실행을 시작할 수 없습니다.");
       await this.commitNextAttempt(dispatched);
-      void this.deps.trace.recovery(recovery.nextAttemptId, dispatched.config, "RECOVERY_DISPATCHED",
+      // source attempt의 닫힌 이벤트 스트림에 기록한다 — next attempt 밑에 쓰면
+      // 병행 실행 중인 content의 seq와 충돌해 유실된다(E2E 관측).
+      void this.deps.trace.recovery(recovery.sourceAttemptId, dispatched.config, "RECOVERY_DISPATCHED",
         "같은 탭 재진입으로 재시도 attempt를 시작했습니다.", {
-          sourceAttemptId: recovery.sourceAttemptId,
+          nextAttemptId: recovery.nextAttemptId,
           resetCause: cause,
         }, dispatched.origin.kind === "scheduled" ? dispatched.origin.jobId : undefined,
       ).catch((error) => console.error("복구 실행 추적을 저장하지 못했습니다.", error));
