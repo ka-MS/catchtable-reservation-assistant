@@ -2,8 +2,8 @@
 
 **갱신:** 2026-07-17
 **브랜치:** `main`
-**최신 작업 로그:** `docs/worklog/2026-07-17-01-run-control-plane-phase1.md`
-**최신 제어 평면 구현:** `docs/specs/run-control-plane/` (Phase 1 완료, Phase 2 계획 대기)
+**최신 작업 로그:** `docs/worklog/2026-07-17-02-run-control-plane-phase2.md`
+**최신 제어 평면 구현:** `docs/specs/run-control-plane/` (Phase 1·2 완료 — RT-16 종결)
 **최신 Tier 3 구현:** `docs/specs/open-timing-performance/03-runtime-resilience/01-rt16-preparation-recovery/`
 **최신 기준시계 구현:** `docs/specs/open-timing-performance/01-reference-clock-reliability/01-raw-sample-trace/`
 **최신 Tier 3 분석:** `docs/specs/open-timing-performance/03-runtime-resilience/10-analysis.md`
@@ -139,7 +139,16 @@ run-control-plane Phase 1(Data Plane 순수화)을 완료했다 (`docs/worklog/2
 - RT-16C 상수(2회·1초, 월 750ms×3, 날짜 1s×2)는 그대로 이식했고, 재시도 상태가 run-scoped가 되어 RT-16B의 `resetPreparation`은 구조적으로 대체됐다.
 - 구 `DATE_PREPARATION_BLOCKED`는 메시지 불변으로 4개 코드로 세분화했다(의도된 계약 변경, orchestrator 테스트로 고정).
 - hot path(`waitForOpen` 이후)는 diff 0이며 실행 단계 테스트는 무수정 통과했다.
-- supervisor·`AttemptControlMessage` 배선·동일 탭 URL 재진입(RESET_PAGE 실행)·reconcile은 Phase 2(`31-control-plane-implementation.md` 계획 작성부터) 범위다. RT-16 전체는 Phase 2 완료 시점에 종결 판정한다. blocking backlog는 아니다.
+- supervisor·`AttemptControlMessage` 배선·동일 탭 URL 재진입(RESET_PAGE 실행)·reconcile은 Phase 2로 구현했다.
+
+run-control-plane Phase 2(Control Plane)를 완료했다 (`docs/worklog/2026-07-17-02-run-control-plane-phase2.md`) — **RT-16 전체 종결**.
+
+- background `RunSupervisor`가 논리 실행을 감독한다: typed·ACK `AttemptControlMessage` 수신, decide() 배선, 준비 정체 1회 RESET_PAGE(같은 탭 문서 재로드), 단일 직렬 queue로 "결정 영속 → ACK → 행동" 강제, top-level bootstrap reconcile(4분기 표).
+- terminal 효과(배지·알림·job 종결)는 supervisor 결정 이후 `TerminalEffects`만 실행한다(결정적 알림 ID로 멱등, RESET 중 인계 오보 구조적 불가). RUN_EVENT는 projection 전용이다.
+- durable flush 결과가 `ATTEMPT_FINISHED`에 동반되고 attempt 기록에 남는다. `RUN_STARTED`가 logicalRunId/attemptIndex/resetCause로 attempt를 상관한다.
+- 2026-07-17 목란 라이브 E2E: `run-e4c30052` DATE_SELECTION_STALLED(attempt 2, flushOk true) → RESET_PAGE 결정·재로드 → `run-8bb138ea` 재준비·오픈 후 슬롯 감지 → DRY_RUN_COMPLETED. 두 attempt 모두 dropped 0·seq 연속, resetCount 1, 효과 1회.
+- 종결 원인(DATE_UNAVAILABLE) 즉시 HANDOFF는 라이브로, RESET 예산·시효·EXECUTING 가드·SW 사망 reconcile 멱등은 단위 테스트 매트릭스로 검증했다(ACK 직후 SW 강제 종료 라이브 재현은 후속 non-blocking).
+- Phase 3(ExecutionPhase 내부 분해)은 공식 p95 하네스(RT-11/12) 확보 후 별도 착수한다. blocking backlog는 아니다.
 
 ## 검증 근거
 
@@ -150,6 +159,8 @@ run-control-plane Phase 1(Data Plane 순수화)을 완료했다 (`docs/worklog/2
 - RT-15 전체 `npm run check`: 323/323 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - RT-16 전체 `npm run check`: 336/336 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - run-control-plane Phase 1 전체 `npm run check`: 360/360 tests(Task별 게이트 344→354→361→368→369→360), typecheck, dist validation, MAIN/ISOLATED independence 통과
+- run-control-plane Phase 2 전체 `npm run check`: 399/399 tests(Task별 게이트 372→374→379→383→385→399), typecheck, dist validation, MAIN/ISOLATED independence 통과
+- run-control-plane Phase 2 Chrome live: `run-e4c30052` HANDED_OFF(DATE_SELECTION_STALLED, RESET_PAGE 결정) → 같은 탭 재로드 → `run-8bb138ea` DRY_RUN_COMPLETED(108 events), 양쪽 dropped 0·seq 연속, logicalRun TERMINAL·resetCount 1·효과 마커 기록
 - RT-16 Chrome live: `run-e2a5c932` HANDED_OFF(33 events, DATE_SELECTION_STALLED attempt 2) → 같은 탭 무새로고침 `run-40f9f982` DRY_RUN_COMPLETED(42 events), 양쪽 dropped 0
 - RT-14 Chrome live: 3상태 radio 표시, `empty_exit` 저장·재로드 복원, `off` 원복, Side Panel 런타임 오류 없음
 - probe 정책 Chrome live: 확장 재로드 후 `XHR 응답 진단` 기본 꺼짐, 토글 동작, Side Panel 재로드 후 꺼짐 복원, 경고·오류 없음 확인
