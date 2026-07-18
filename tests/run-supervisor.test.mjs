@@ -30,6 +30,7 @@ function harness({ seed = {}, status = () => null, nowMs = 1_000 } = {}) {
   };
   let idSeq = 0;
   const state = { nowMs };
+  const hooks = {};
   const deps = {
     storage: {
       get: async (keys) => {
@@ -43,14 +44,18 @@ function harness({ seed = {}, status = () => null, nowMs = 1_000 } = {}) {
       },
     },
     port: {
-      navigateIfNeeded: async () => undefined,
+      navigateIfNeeded: async () => { await hooks.gateNavigation?.(); },
       forceReenter: async (_tabId, url) => {
         calls.decisionAtReenter.push(store.get("logicalRun")?.attempts?.[0]?.decision ?? null);
         calls.reenters.push(url);
       },
       inject: async () => { calls.injects += 1; },
       ping: async () => true,
-      startAttempt: async (_tabId, command) => { calls.starts.push(command); return { ok: true }; },
+      startAttempt: async (_tabId, command) => {
+        hooks.interceptStart?.(command);
+        calls.starts.push(command);
+        return { ok: true };
+      },
       stopAttempt: async () => { calls.stops += 1; return true; },
       getAttemptStatus: async (_tabId, attemptId) => {
         calls.statusRequests.push(attemptId);
@@ -74,7 +79,7 @@ function harness({ seed = {}, status = () => null, nowMs = 1_000 } = {}) {
   };
   const supervisor = new RunSupervisor(deps);
   return {
-    supervisor, store, calls, state,
+    supervisor, store, calls, state, hooks,
     settle: () => supervisor.whenIdle(),
   };
 }
@@ -333,4 +338,44 @@ test("탭 닫힘은 logicalRun을 STOPPED로 종결하고 효과와 trace를 남
   assert.equal(h.store.get("activeRun").state, "STOPPED");
   assert.equal(h.calls.traces.some(([kind, message]) => kind === "backgroundTerminal" && /탭이 닫혔습니다/.test(message)), true);
   assert.equal(h.calls.effects.length, 1);
+});
+
+test("commitNextAttempt은 병행 도착한 next attempt의 RUN_EVENT projection을 보존한다", async () => {
+  const h = harness();
+  await h.supervisor.ready;
+  await h.supervisor.startManual(config());
+  const run = h.store.get("logicalRun");
+  // content의 첫 RUN_EVENT가 commit 쓰기보다 먼저 도착하는 경쟁을 재현한다.
+  h.hooks.interceptStart = (command) => {
+    if (command.attemptIndex === 1) {
+      h.store.set("runEvents", [{ at: 1, serverAt: null, runId: command.runId, kind: "state", message: "설정" }]);
+    }
+  };
+  await h.supervisor.onAttemptFinished({
+    type: "ATTEMPT_FINISHED", logicalRunId: run.logicalRunId, attemptId: run.currentAttemptId,
+    outcome: prepFailed(), flush: { ok: true },
+  });
+  await h.settle();
+  const events = h.store.get("runEvents");
+  assert.equal(events.length, 1);
+  assert.equal(events[0].runId, h.store.get("logicalRun").currentAttemptId);
+});
+
+test("stop은 직렬 queue를 기다리지 않고 진행 중인 시작을 즉시 취소한다", async () => {
+  let releaseNavigation = () => undefined;
+  const gate = new Promise((resolve) => { releaseNavigation = resolve; });
+  const h = harness();
+  h.hooks.gateNavigation = () => gate;
+  await h.supervisor.ready;
+  const startPromise = h.supervisor.startManual(config());
+  await new Promise((resolve) => setTimeout(resolve, 10)); // startLogical이 navigation에서 대기
+  const stopPromise = h.supervisor.stop();
+  releaseNavigation();
+  const startResult = await startPromise;
+  assert.equal(startResult.ok, false);
+  assert.match(startResult.error, /중지/);
+  assert.deepEqual(h.calls.starts, []); // START는 전송되지 않았다
+  assert.equal(h.store.get("activeRun").state, "STOPPED"); // FAILED가 아니라 STOPPED
+  assert.equal(h.store.get("logicalRun") ?? null, null);
+  await stopPromise;
 });

@@ -85,12 +85,4 @@ export class JobScheduler {
     this.dependencies.notify(`${job.config.reservationDate} 예약 작업 시작에 실패했습니다: ${result.error}`);
   }
 
-  async onRunTerminal(jobId: string, state: RunState, message: string): Promise<void> {
-    const nowMs = this.dependencies.now();
-    await this.dependencies.repository.update((jobs) => finishJob(jobs, jobId, {
-      state,
-      message,
-      finishedAt: nowMs,
-    }, nowMs));
-  }
 }

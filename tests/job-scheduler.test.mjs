@@ -112,15 +112,6 @@ test("onAlarm ignores unknown or non-scheduled jobs", async () => {
   assert.equal(launched.length, 0);
 });
 
-test("onRunTerminal records the run result", async () => {
-  const { scheduler, repository } = harness();
-  await scheduler.schedule(null, config());
-  await scheduler.onAlarm(`${JOB_ALARM_PREFIX}id-1`);
-  await scheduler.onRunTerminal("id-1", "HANDED_OFF", "예약 폼에 도착했습니다.");
-  const [job] = await repository.read();
-  assert.equal(job.status, "finished");
-  assert.equal(job.result.state, "HANDED_OFF");
-});
 
 test("reconcile re-registers alarms and notifies missed jobs", async () => {
   const { scheduler, repository, created, notifications } = harness();

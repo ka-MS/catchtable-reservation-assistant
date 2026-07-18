@@ -3,7 +3,7 @@
 **갱신:** 2026-07-17
 **브랜치:** `main`
 **최신 작업 로그:** `docs/worklog/2026-07-17-02-run-control-plane-phase2.md`
-**최신 제어 평면 구현:** `docs/specs/run-control-plane/` (Phase 1·2 완료 — RT-16 종결)
+**최신 제어 평면 구현:** `docs/specs/run-control-plane/` (Phase 1·2 완료 — RT-16 종결, 검증 `40-verification.md` · 구현 레드팀 `50-adversarial-review.md`)
 **최신 Tier 3 구현:** `docs/specs/open-timing-performance/03-runtime-resilience/01-rt16-preparation-recovery/`
 **최신 기준시계 구현:** `docs/specs/open-timing-performance/01-reference-clock-reliability/01-raw-sample-trace/`
 **최신 Tier 3 분석:** `docs/specs/open-timing-performance/03-runtime-resilience/10-analysis.md`
@@ -147,7 +147,8 @@ run-control-plane Phase 2(Control Plane)를 완료했다 (`docs/worklog/2026-07-
 - terminal 효과(배지·알림·job 종결)는 supervisor 결정 이후 `TerminalEffects`만 실행한다(결정적 알림 ID로 멱등, RESET 중 인계 오보 구조적 불가). RUN_EVENT는 projection 전용이다.
 - durable flush 결과가 `ATTEMPT_FINISHED`에 동반되고 attempt 기록에 남는다. `RUN_STARTED`가 logicalRunId/attemptIndex/resetCause로 attempt를 상관한다.
 - 2026-07-17 목란 라이브 E2E: `run-e4c30052` DATE_SELECTION_STALLED(attempt 2, flushOk true) → RESET_PAGE 결정·재로드 → `run-8bb138ea` 재준비·오픈 후 슬롯 감지 → DRY_RUN_COMPLETED. 두 attempt 모두 dropped 0·seq 연속, resetCount 1, 효과 1회.
-- 종결 원인(DATE_UNAVAILABLE) 즉시 HANDOFF는 라이브로, RESET 예산·시효·EXECUTING 가드·SW 사망 reconcile 멱등은 단위 테스트 매트릭스로 검증했다(ACK 직후 SW 강제 종료 라이브 재현은 후속 non-blocking).
+- 종결 원인(DATE_UNAVAILABLE) 즉시 HANDOFF는 라이브로, RESET 예산·시효·EXECUTING 가드·SW 사망 reconcile 멱등은 단위 테스트 매트릭스로 검증했다(ACK 직후 SW 강제 종료 라이브 재현은 후속 non-blocking). 검증 기록은 `docs/specs/run-control-plane/40-verification.md`.
+- 병합 후 구현 레드팀(`50-adversarial-review.md`)에서 3건을 수정했다: next attempt RUN_EVENT projection 보존, stop()의 이동 중 즉시 취소 복원(STOPPED 기록 포함), 고아가 된 jobScheduler.onRunTerminal 제거. hot path·경계·가시 메시지 영향 결함은 없었다.
 - Phase 3(ExecutionPhase 내부 분해)은 공식 p95 하네스(RT-11/12) 확보 후 별도 착수한다. blocking backlog는 아니다.
 
 ## 검증 근거
@@ -160,6 +161,7 @@ run-control-plane Phase 2(Control Plane)를 완료했다 (`docs/worklog/2026-07-
 - RT-16 전체 `npm run check`: 336/336 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - run-control-plane Phase 1 전체 `npm run check`: 360/360 tests(Task별 게이트 344→354→361→368→369→360), typecheck, dist validation, MAIN/ISOLATED independence 통과
 - run-control-plane Phase 2 전체 `npm run check`: 399/399 tests(Task별 게이트 372→374→379→383→385→399), typecheck, dist validation, MAIN/ISOLATED independence 통과
+- run-control-plane 구현 레드팀 후 전체 `npm run check`: 400/400 tests, typecheck, dist validation, MAIN/ISOLATED independence 통과
 - run-control-plane Phase 2 Chrome live: `run-e4c30052` HANDED_OFF(DATE_SELECTION_STALLED, RESET_PAGE 결정) → 같은 탭 재로드 → `run-8bb138ea` DRY_RUN_COMPLETED(108 events), 양쪽 dropped 0·seq 연속, logicalRun TERMINAL·resetCount 1·효과 마커 기록
 - RT-16 Chrome live: `run-e2a5c932` HANDED_OFF(33 events, DATE_SELECTION_STALLED attempt 2) → 같은 탭 무새로고침 `run-40f9f982` DRY_RUN_COMPLETED(42 events), 양쪽 dropped 0
 - RT-14 Chrome live: 3상태 radio 표시, `empty_exit` 저장·재로드 복원, `off` 원복, Side Panel 런타임 오류 없음
