@@ -12,7 +12,7 @@ import type {
   AttemptControlMessage, AttemptFinishedAck, AttemptOutcome, AttemptPhaseChangedAck, TerminalRunState,
 } from "../shared/run-control/protocol.js";
 import type {
-  ActiveRun, CommandResponse, ContentCommand, ReservationConfig, RunExecutionContext, RunState, ScheduledJob,
+  ActiveRun, CommandResponse, ContentCommand, ReservationConfig, RunEvent, RunExecutionContext, RunState, ScheduledJob,
 } from "../shared/types.js";
 import { sameRestaurant, leftReservationFlow } from "./navigation.js";
 import type { PageRuntimePort } from "./page-runtime-port.js";
@@ -61,6 +61,7 @@ type StartCommand = Extract<ContentCommand, { type: "START" }>;
 export class RunSupervisor {
   private readonly queue = new SerialTaskQueue();
   private readonly cancelledPendingRuns = new Set<string>();
+  private pendingStartRunId: string | null = null;
   readonly ready: Promise<void>;
 
   constructor(private readonly deps: SupervisorDependencies) {
@@ -138,6 +139,9 @@ export class RunSupervisor {
   }
 
   stop(): Promise<CommandResponse> {
+    // 직렬 queue 뒤에 서지 않고 즉시 취소를 표시한다 — 탭 이동·주입이 진행 중이어도
+    // 다음 assertPending 검문에서 실행이 중단된다(구 stopRun의 병행 동작 보존).
+    if (this.pendingStartRunId !== null) this.cancelledPendingRuns.add(this.pendingStartRunId);
     return this.queue.enqueue(async () => {
       const state = await this.read();
       const activeRun = state.activeRun ?? null;
@@ -278,6 +282,7 @@ export class RunSupervisor {
       updatedAt: now,
       ...(origin.kind === "scheduled" ? { scheduledJobId: origin.jobId } : {}),
     };
+    this.pendingStartRunId = runId;
     await this.deps.storage.set({ reservationConfig: config, activeRun: pendingRun, runEvents: [] });
     this.deps.saveHistory(config);
     const assertPending = async (): Promise<void> => {
@@ -315,10 +320,12 @@ export class RunSupervisor {
       throw new Error(response.error ?? "실행을 시작할 수 없습니다.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "실행을 시작할 수 없습니다.";
+      const cancelled = this.cancelledPendingRuns.has(runId);
       const current = await this.read();
       if (current.activeRun?.runId === runId && !TERMINAL_STATES.has(current.activeRun.state)) {
         await this.deps.storage.set({
-          activeRun: { ...current.activeRun, state: "FAILED", updatedAt: this.deps.now() },
+          // 사용자 취소로 인한 중단은 실패가 아니라 중지다(구 stopRun 동작 보존).
+          activeRun: { ...current.activeRun, state: cancelled ? "STOPPED" : "FAILED", updatedAt: this.deps.now() },
         });
       }
       if (current.logicalRun?.currentAttemptId === runId && current.logicalRun.status !== "TERMINAL") {
@@ -329,6 +336,7 @@ export class RunSupervisor {
         origin.kind === "scheduled" ? origin.jobId : undefined);
       return { ok: false, error: message };
     } finally {
+      this.pendingStartRunId = null;
       this.cancelledPendingRuns.delete(runId);
     }
   }
@@ -488,7 +496,13 @@ export class RunSupervisor {
       updatedAt: nowMs,
       ...(next.origin.kind === "scheduled" ? { scheduledJobId: next.origin.jobId } : {}),
     };
-    await this.deps.storage.set({ logicalRun: next, activeRun, runEvents: [] });
+    // START 이후 content의 첫 RUN_EVENT가 이 쓰기보다 먼저 도착할 수 있다 —
+    // next attempt의 이벤트는 지우지 않는다(이전 attempt 이벤트만 초기화).
+    const stored = await this.deps.storage.get("runEvents") as { runEvents?: RunEvent[] };
+    const preserved = Array.isArray(stored.runEvents)
+      ? stored.runEvents.filter((event) => event.runId === next.currentAttemptId)
+      : [];
+    await this.deps.storage.set({ logicalRun: next, activeRun, runEvents: preserved });
   }
 
   /** SW 부트스트랩 reconcile — 크래시 지점 표(§B)의 4분기. */
