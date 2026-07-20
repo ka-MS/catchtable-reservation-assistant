@@ -2,7 +2,7 @@
 
 **브랜치:** `codex/feat-reservation-quick-actions`
 **계획:** `docs/specs/reservation-quick-actions/10-design.md`
-**커밋:** `56107cd` → `4ffb031` → `e799503` → `51df95c` → `1950bd1` → `62987f8` → `8a29c27` → `caa8883` → `7abede2` → `5a484d0`
+**커밋:** `56107cd` → `4ffb031` → `e799503` → `51df95c` → `1950bd1` → `62987f8` → `8a29c27` → `caa8883` → `7abede2` → `5a484d0` → `28a9328` → `308e57a` → `3b96548`
 
 ## 변경 요약
 
@@ -26,6 +26,15 @@ Side Panel "01 언제 예약할까요?" 섹션에 버튼 2개를 추가했다.
   - 매장 아닌 탭(사이드패널 자신이 활성 탭이 된 경우)에서 "가져오기" → `"현재 탭이 캐치테이블 매장 페이지가 아닙니다."` 에러 정상 표시.
   - 콘솔 오류·경고 없음.
 - 실패 상태(HANDED_OFF/TIMED_OUT/FAILED) 분기는 코드 검토 + 기존 상태 머신 테스트로만 확인했다 — success 분기와 동일한 `else` 브랜치라 별도 라이브 재현은 생략했다.
+
+## 사용자 수동 테스트 후 보완 (2026-07-21)
+
+라이브 사용 중 발견된 4건을 사용자가 직접 테스트하며 수정했다(E2E는 사용자가 수동으로 진행, 이 세션에서는 `npm run check`만 게이트로 사용).
+
+1. **"식당으로 이동하기"가 실행 로그 뷰로 전환됨** — `renderRuntime`의 `if (running && !wasRunning) setView("run")` 가드에 `!watchingPrepTest` 조건 추가. 실제 "지금 시작"/스케줄 job은 기존대로 전환된다(`28a9328`).
+2. **위 수정이 처음엔 안 먹힘 — 타이밍 경쟁 발견**: `watchingPrepTest = true`를 `PANEL_START` **응답 수신 후**에 설정하고 있었는데, `RunSupervisor`가 `activeRun`을 storage에 쓰는 시점이 그보다 빨라 `renderRuntime`이 플래그가 아직 `false`인 상태로 먼저 실행되고 있었다. 요청 전송 **직전**으로 설정 시점을 옮겨 해결(`308e57a`).
+3. **버튼 hover·클릭 모션 없음** — 참고 mockup 스타일(hover 배경 변화, `translateY(1px)` 클릭 눌림, `focus-visible` 링)을 `.primary`/`.secondary`에 전역 적용. 앱 전체에서 재사용되는 클래스라 "+ 새 예약"/"예약 저장"/"지금 시작"에도 동일하게 적용됐다(`28a9328`).
+4. **버튼이 너무 크고 아래 여백 없음, 상태 메시지가 안 사라짐** — `.compact`가 `height`를 재정의하지 않아 기본 48px가 그대로 적용되던 결함을 `36px`로 수정, `.field-quick-actions`에 `margin-bottom:14px` 추가, `setQuickStatus`에 4초 자동 숨김 타이머 추가(`3b96548`).
 
 ## 다음 단계
 
