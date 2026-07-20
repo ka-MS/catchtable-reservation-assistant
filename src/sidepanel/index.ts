@@ -3,10 +3,10 @@ import { MonotonicEpochClock } from "../shared/monotonic-clock.js";
 import { sanitizeSavedConfigs } from "../shared/saved-configs.js";
 import { sanitizeScheduledJobs } from "../shared/scheduled-jobs.js";
 import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
-import type { ActiveRun, AvailabilityProbeMode, CommandResponse, EntryMode, PanelCommand, PaymentMethodPolicy, ReservationConfig, RunEvent, RunState, ScheduledJob, TablePreference } from "../shared/types.js";
+import type { ActiveRun, AvailabilityProbeMode, CommandResponse, EntryMode, PanelCommand, PaymentMethodPolicy, ReservationConfig, RunEvent, RunState, ScheduledJob, ShopSnapshot, TablePreference } from "../shared/types.js";
 import { countdownModel } from "./countdown.js";
 import { formatEventDetail, formatEventTime } from "./event-format.js";
-import { configFromFormValues, configSnapshotFromFormValues, type FormValues } from "./form-model.js";
+import { configFromFormValues, configSnapshotFromFormValues, quickPrepConfig, type FormValues } from "./form-model.js";
 import { jobCardModel } from "./job-card.js";
 import { jobListModel, miniLogModel } from "./job-list-model.js";
 import { SavedConfigsView } from "./saved-configs-view.js";
@@ -33,6 +33,9 @@ const eventFilter = byId<HTMLButtonElement>("event-filter");
 const clockOffset = byId<HTMLElement>("clock-offset");
 const startButton = byId<HTMLButtonElement>("start");
 const stopButton = byId<HTMLButtonElement>("stop");
+const fetchShopSnapshotButton = byId<HTMLButtonElement>("fetch-shop-snapshot");
+const goToShopButton = byId<HTMLButtonElement>("go-to-shop");
+const quickActionStatus = byId<HTMLElement>("quick-action-status");
 const priorityInput = byId<HTMLInputElement>("priority-time");
 const priorityList = byId<HTMLOListElement>("priority-list");
 const postSlotOptions = byId<HTMLElement>("post-slot-options");
@@ -831,12 +834,67 @@ stopButton.addEventListener("click", async () => {
   if (!response.ok) formError.textContent = response.error ?? "실행을 중지할 수 없습니다.";
 });
 
+function setQuickStatus(message: string, tone?: "success" | "error"): void {
+  quickActionStatus.textContent = message;
+  quickActionStatus.hidden = false;
+  if (tone) quickActionStatus.dataset.tone = tone;
+  else delete quickActionStatus.dataset.tone;
+}
+
+fetchShopSnapshotButton.addEventListener("click", async () => {
+  const response = await send({ type: "FETCH_SHOP_SNAPSHOT" });
+  if (!response.ok) {
+    setQuickStatus(response.error ?? "현재 탭 정보를 가져올 수 없습니다.", "error");
+    return;
+  }
+  const snapshot = response.data as ShopSnapshot;
+  fields.targetUrl.value = snapshot.url;
+  const filled = ["URL"];
+  if (snapshot.selectedDate) {
+    fields.reservationDate.value = snapshot.selectedDate;
+    filled.push("날짜");
+  }
+  if (snapshot.selectedPersonCount !== null) {
+    fields.personCount.value = String(snapshot.selectedPersonCount);
+    filled.push("인원");
+  }
+  renderSummary();
+  saveDraft();
+  setQuickStatus(`${filled.join("·")}을(를) 가져왔습니다.`, "success");
+});
+
+const PREP_STOP_STATES = new Set<RunState>(["PREPARING_PAGE", "HANDED_OFF", "TIMED_OUT", "FAILED", "STOPPED"]);
+let watchingPrepTest = false;
+
+goToShopButton.addEventListener("click", async () => {
+  goToShopButton.disabled = true;
+  setQuickStatus("예약창 진입을 확인하는 중…");
+  const config = quickPrepConfig(readValues(), Date.now());
+  const response = await send({ type: "PANEL_START", config });
+  if (!response.ok) {
+    setQuickStatus(response.error ?? "실행을 시작할 수 없습니다.", "error");
+    goToShopButton.disabled = false;
+    return;
+  }
+  watchingPrepTest = true;
+});
+
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") return;
   if (changes.activeRun || changes.runEvents || changes.logicalRun) {
     void chrome.storage.local.get(["activeRun", "runEvents", "logicalRun"]).then((stored) => {
       logicalRunStatus = (stored.logicalRun as { status?: string } | null | undefined)?.status ?? null;
       renderRuntime(stored.activeRun as ActiveRun | null | undefined, (stored.runEvents as RunEvent[] | undefined) ?? []);
+      if (watchingPrepTest) {
+        const last = latestEvents.at(-1);
+        const state = last?.data?.state;
+        if (typeof state === "string" && PREP_STOP_STATES.has(state as RunState)) {
+          watchingPrepTest = false;
+          void send({ type: "PANEL_STOP" });
+          setQuickStatus(last!.message, state === "PREPARING_PAGE" ? "success" : "error");
+          goToShopButton.disabled = false;
+        }
+      }
     });
   }
   if (changes.configHistory || changes.configFavorites) {
