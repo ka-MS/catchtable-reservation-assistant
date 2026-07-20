@@ -22,6 +22,7 @@
 - [슬롯 전환 결과 패키지](slot-transition-outcomes/10-analysis.md)
 - [Availability 사이클 상관 패키지](availability-cycle-correlation/10-analysis.md)
 - [슬롯 XHR 감시 패키지](xhr-slot-watch/10-analysis-design.md)
+- [예약 설정 빠른 동작 패키지](reservation-quick-actions/10-design.md)
 - [오픈 타이밍 성능 패키지(우산)](open-timing-performance/open-timing-performance-analysis.md)
   - [Tier 1 · 기준시계 신뢰성](open-timing-performance/01-reference-clock-reliability/10-analysis.md)
     - [RT-15 · 기준시계 원시 표본 trace](open-timing-performance/01-reference-clock-reliability/01-raw-sample-trace/00-index.md)
