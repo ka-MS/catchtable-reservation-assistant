@@ -924,10 +924,50 @@ fieldset:disabled {
   font-size: 17px;
 }
 
-.primary.compact {
+.primary.compact,
+.secondary.compact {
   width: auto;
   padding: 8px 14px;
   font-size: 13px;
+}
+
+.field-quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.field-quick-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.field-quick-actions svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.quick-status {
+  margin: 6px 2px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6d7872;
+}
+
+.quick-status[data-tone="success"] {
+  color: #166c4d;
+}
+
+.quick-status[data-tone="error"] {
+  color: #b42318;
+}
+
+.quick-status[hidden] {
+  display: none;
 }
 
 .archive-toggle {
