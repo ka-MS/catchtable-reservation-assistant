@@ -195,6 +195,14 @@ section {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.time-range-presets {
+  margin-bottom: 12px;
+}
+
+.time-range-presets .filter-button {
+  min-height: 32px;
+}
+
 .field {
   display: grid;
   gap: 6px;

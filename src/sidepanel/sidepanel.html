@@ -98,21 +98,26 @@
           <section class="panel-card">
             <span class="step">02</span>
             <h2>어떤 자리를 찾을까요?</h2>
+            <div class="grid three time-range-presets" aria-label="시간대 빠른 선택">
+              <button id="time-preset-lunch" class="filter-button" type="button">점심</button>
+              <button id="time-preset-dinner" class="filter-button" type="button">저녁</button>
+              <button id="time-preset-all" class="filter-button" type="button">전체</button>
+            </div>
             <div class="grid two">
               <label class="field">
                 <span>시작</span>
-                <input id="start-time" type="time" required value="18:00" />
+                <input id="start-time" type="time" step="1800" required value="18:00" />
               </label>
               <label class="field">
                 <span>종료</span>
-                <input id="end-time" type="time" required value="20:00" />
+                <input id="end-time" type="time" step="1800" required value="20:00" />
               </label>
             </div>
             <div class="priority-editor">
               <label class="field priority-input">
                 <span>시간 우선순위</span>
                 <span class="inline-control">
-                  <input id="priority-time" type="time" />
+                  <input id="priority-time" type="time" step="1800" />
                   <button id="add-priority" class="icon-button" type="button" title="우선순위 추가" aria-label="우선순위 추가">+</button>
                 </span>
               </label>

@@ -38,6 +38,9 @@ const goToShopButton = byId<HTMLButtonElement>("go-to-shop");
 const quickActionStatus = byId<HTMLElement>("quick-action-status");
 const priorityInput = byId<HTMLInputElement>("priority-time");
 const priorityList = byId<HTMLOListElement>("priority-list");
+const timePresetLunch = byId<HTMLButtonElement>("time-preset-lunch");
+const timePresetDinner = byId<HTMLButtonElement>("time-preset-dinner");
+const timePresetAll = byId<HTMLButtonElement>("time-preset-all");
 const postSlotOptions = byId<HTMLElement>("post-slot-options");
 const summaryMain = byId<HTMLElement>("summary-main");
 const summarySub = byId<HTMLElement>("summary-sub");
@@ -775,6 +778,17 @@ saveJobButton.addEventListener("click", async () => {
     saveJobButton.disabled = false;
   }
 });
+
+function applyTimeRangePreset(start: string, end: string): void {
+  fields.startTime.value = start;
+  fields.endTime.value = end;
+  renderSummary();
+  saveDraft();
+}
+
+timePresetLunch.addEventListener("click", () => applyTimeRangePreset("11:00", "15:00"));
+timePresetDinner.addEventListener("click", () => applyTimeRangePreset("17:00", "21:00"));
+timePresetAll.addEventListener("click", () => applyTimeRangePreset("11:00", "21:00"));
 
 byId<HTMLButtonElement>("add-priority").addEventListener("click", () => {
   const value = priorityInput.value;
