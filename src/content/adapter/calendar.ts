@@ -25,6 +25,10 @@ export class CalendarAdapter {
     };
   }
 
+  readSelectedDate(): string | null {
+    return this.readCells().find((cell) => cell.selected)?.date ?? null;
+  }
+
   clickDate(date: string): boolean {
     const cell = this.readCells().find((candidate) => candidate.date === date && candidate.available);
     if (!cell || !cell.element.isConnected) return false;
