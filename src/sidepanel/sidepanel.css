@@ -473,6 +473,7 @@ summary {
   border-radius: 9px;
   font-weight: 700;
   cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 120ms ease;
 }
 
 .primary {
@@ -480,6 +481,12 @@ summary {
   border: 1px solid #166c4d;
   color: #ffffff;
   background: #166c4d;
+  box-shadow: 0 2px 8px rgba(22, 108, 77, 0.16);
+}
+
+.primary:hover:not(:disabled) {
+  background: #12563e;
+  border-color: #12563e;
 }
 
 .secondary {
@@ -487,6 +494,23 @@ summary {
   border: 1px solid #9ba8a0;
   color: #26342d;
   background: #ffffff;
+}
+
+.secondary:hover:not(:disabled) {
+  background: #eef5f1;
+  border-color: #7e9088;
+}
+
+.primary:active:not(:disabled),
+.secondary:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.primary:focus-visible,
+.secondary:focus-visible {
+  outline: 3px solid rgba(22, 108, 77, 0.22);
+  outline-offset: 2px;
 }
 
 button:disabled,

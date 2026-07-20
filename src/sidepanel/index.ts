@@ -541,7 +541,7 @@ function renderRuntime(activeRun: ActiveRun | null | undefined, events: RunEvent
   startButton.hidden = running;
   stopButton.disabled = !running;
   renderMiniLog();
-  if (running && !wasRunning) setView("run");
+  if (running && !wasRunning && !watchingPrepTest) setView("run");
   wasRunning = running;
 
   const metric = [...events].reverse().find((event) => typeof event.data?.clockOffsetMs === "number");
