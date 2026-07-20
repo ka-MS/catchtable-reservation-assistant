@@ -951,7 +951,8 @@ fieldset:disabled {
 .primary.compact,
 .secondary.compact {
   width: auto;
-  padding: 8px 14px;
+  height: 36px;
+  padding: 0 12px;
   font-size: 13px;
 }
 
@@ -959,7 +960,7 @@ fieldset:disabled {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin-top: 8px;
+  margin: 8px 0 14px;
 }
 
 .field-quick-actions button {

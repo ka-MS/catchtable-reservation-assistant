@@ -834,11 +834,18 @@ stopButton.addEventListener("click", async () => {
   if (!response.ok) formError.textContent = response.error ?? "실행을 중지할 수 없습니다.";
 });
 
+const QUICK_STATUS_VISIBLE_MS = 4_000;
+let quickStatusHideTimer: ReturnType<typeof setTimeout> | undefined;
+
 function setQuickStatus(message: string, tone?: "success" | "error"): void {
   quickActionStatus.textContent = message;
   quickActionStatus.hidden = false;
   if (tone) quickActionStatus.dataset.tone = tone;
   else delete quickActionStatus.dataset.tone;
+  clearTimeout(quickStatusHideTimer);
+  quickStatusHideTimer = setTimeout(() => {
+    quickActionStatus.hidden = true;
+  }, QUICK_STATUS_VISIBLE_MS);
 }
 
 fetchShopSnapshotButton.addEventListener("click", async () => {
