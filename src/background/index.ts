@@ -1,15 +1,18 @@
 import type {
   ActiveRun,
   CommandResponse,
+  ContentCommand,
   PanelCommand,
   ReservationConfig,
   RunEvent,
   RunEventMessage,
   RunState,
+  ShopSnapshot,
 } from "../shared/types.js";
 import { validateReservationConfig } from "../shared/config.js";
 import { finishJob as finishScheduledJob } from "../shared/scheduled-jobs.js";
 import type { AttemptControlMessage } from "../shared/run-control/protocol.js";
+import { isShopUrl } from "./navigation.js";
 import { appendRunEvent, SerialTaskQueue } from "./storage.js";
 import { SavedConfigRepository } from "./saved-config-repository.js";
 import { ScheduledJobRepository } from "./scheduled-job-repository.js";
@@ -78,23 +81,24 @@ const scheduledJobs = new ScheduledJobRepository({
   get: (key) => chrome.storage.local.get(key),
   set: (values) => chrome.storage.local.set(values),
 }, () => crypto.randomUUID(), () => Date.now());
+const pageRuntimePort = createPageRuntimePort({
+  tabs: {
+    get: (tabId) => chrome.tabs.get(tabId),
+    update: async (tabId, properties) => (await chrome.tabs.update(tabId, properties)) ?? {},
+    reload: (tabId) => chrome.tabs.reload(tabId),
+    onUpdated: chrome.tabs.onUpdated,
+  },
+  executeScript: async (tabId) => {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ["content/index.js"] });
+  },
+  sendMessage: (tabId, command) => chrome.tabs.sendMessage(tabId, command),
+});
 const supervisor = new RunSupervisor({
   storage: {
     get: (keys) => chrome.storage.local.get(keys),
     set: (values) => chrome.storage.local.set(values),
   },
-  port: createPageRuntimePort({
-    tabs: {
-      get: (tabId) => chrome.tabs.get(tabId),
-      update: async (tabId, properties) => (await chrome.tabs.update(tabId, properties)) ?? {},
-      reload: (tabId) => chrome.tabs.reload(tabId),
-      onUpdated: chrome.tabs.onUpdated,
-    },
-    executeScript: async (tabId) => {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ["content/index.js"] });
-    },
-    sendMessage: (tabId, command) => chrome.tabs.sendMessage(tabId, command),
-  }),
+  port: pageRuntimePort,
   effects: (run) => runTerminalEffects(run, {
     setBadge: async (color, text) => {
       await chrome.action.setBadgeBackgroundColor({ color });
@@ -242,6 +246,23 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
     void supervisorReady.then(() => supervisor.stop()).then(sendResponse).catch((error) => {
       sendResponse({ ok: false, error: error instanceof Error ? error.message : "실행을 중지할 수 없습니다." });
     });
+    return true;
+  }
+  if (message.type === "FETCH_SHOP_SNAPSHOT") {
+    void (async () => {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (!isShopUrl(tab?.url) || tab.id === undefined) {
+        sendResponse({ ok: false, error: "현재 탭이 캐치테이블 매장 페이지가 아닙니다." });
+        return;
+      }
+      try {
+        await pageRuntimePort.inject(tab.id);
+        const response = await chrome.tabs.sendMessage(tab.id, { type: "READ_SHOP_SNAPSHOT" } satisfies ContentCommand);
+        sendResponse({ ok: true, data: response.data as ShopSnapshot });
+      } catch (error) {
+        sendResponse({ ok: false, error: error instanceof Error ? error.message : "현재 탭 정보를 가져올 수 없습니다." });
+      }
+    })();
     return true;
   }
   if (message.type === "SAVE_FAVORITE" || message.type === "DELETE_SAVED" || message.type === "CLEAR_SAVED") {

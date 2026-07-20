@@ -67,3 +67,15 @@ export function configFromFormValues(values: FormValues, nowMs: number): Reserva
   if (errors.length > 0) throw new Error(errors.join(" "));
   return config;
 }
+
+/** 자동으로 재계산된 값 — 정상 경로는 수 초 내 종료되며, 이 값은 자동 정지 실패 시의 안전망 상한일 뿐이다. */
+const QUICK_PREP_WINDOW_MS = 300_000;
+
+/** "식당으로 이동하기" 전용 — 폼의 실제 dryRun·entryMode·오픈/종료 시각과 무관하게
+ * 준비단계(URL 이동·예약창 오픈·날짜·인원)만 안전하게 확인하는 설정으로 덮어쓴다.
+ * dryRun을 강제하는 이유: orchestrator의 dryRun 체크가 clickSlot() 호출보다 먼저 걸리는
+ * 유일한 실클릭 방지 지점이라, 이 강제가 실수 클릭을 구조적으로 차단한다. */
+export function quickPrepConfig(values: FormValues, nowMs: number): ReservationConfig {
+  const config = configSnapshotFromFormValues(values);
+  return { ...config, entryMode: "auto", dryRun: true, openAtMs: nowMs, stopAtMs: nowMs + QUICK_PREP_WINDOW_MS };
+}

@@ -2,7 +2,7 @@ import { abortableSleep } from "../shared/scheduler.js";
 import type {
   AttemptControlMessage, AttemptOutcome, AttemptStatusResponse, TerminalRunState,
 } from "../shared/run-control/protocol.js";
-import type { ContentCommand, RunEventMessage } from "../shared/types.js";
+import type { ContentCommand, RunEventMessage, ShopSnapshot } from "../shared/types.js";
 import { CalendarAdapter } from "./adapter/calendar.js";
 import { EntryAdapter } from "./adapter/entry.js";
 import { PersonAdapter } from "./adapter/person.js";
@@ -124,6 +124,19 @@ if (!window.__ctReserveInjected) {
     const message = rawMessage as ContentCommand;
     if (message.type === "PING") {
       sendResponse({ ok: true });
+      return;
+    }
+    if (message.type === "READ_SHOP_SNAPSHOT") {
+      // 날짜·인원은 별도 필드로 반영되므로 URL에는 남기지 않는다(예약 날짜 쿼리 등으로 중복 표시 방지).
+      const url = new URL(location.href);
+      url.search = "";
+      url.hash = "";
+      const snapshot: ShopSnapshot = {
+        url: url.toString(),
+        selectedDate: new CalendarAdapter(document).readSelectedDate(),
+        selectedPersonCount: new PersonAdapter(document).readSelectedCount(),
+      };
+      sendResponse({ ok: true, data: snapshot });
       return;
     }
     if (message.type === "START") {

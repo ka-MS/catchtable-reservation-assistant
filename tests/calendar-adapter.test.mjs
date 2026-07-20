@@ -23,6 +23,18 @@ test("calendar click re-resolves the measured date cell", async () => {
   assert.equal(adapter.clickDate("2026-07-31"), false);
 });
 
+test("readSelectedDate는 현재 선택된 날짜 셀을 반환한다", async () => {
+  const dom = await loadFixture("calendar.html");
+  const adapter = new CalendarAdapter(dom.window.document);
+  assert.equal(adapter.readSelectedDate(), "2026-07-30");
+});
+
+test("readSelectedDate는 선택된 셀이 없으면 null을 반환한다", async () => {
+  const dom = await loadFixture("calendar-navigation.html");
+  const adapter = new CalendarAdapter(dom.window.document);
+  assert.equal(adapter.readSelectedDate(), null);
+});
+
 test("calendar inspection refuses to invent an adjacent date", async () => {
   const dom = await loadFixture("calendar-no-adjacent.html");
   const adapter = new CalendarAdapter(dom.window.document);

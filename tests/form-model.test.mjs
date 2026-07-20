@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { configFromFormValues, configSnapshotFromFormValues } from "../dist/sidepanel/form-model.js";
+import { configFromFormValues, configSnapshotFromFormValues, quickPrepConfig } from "../dist/sidepanel/form-model.js";
 
 function values(overrides = {}) {
   return {
@@ -72,4 +72,16 @@ test("favorite snapshots allow past times but keep structural validation", () =>
   const snapshot = configSnapshotFromFormValues(values());
   assert.equal(snapshot.openAtMs, new Date("2026-07-10T13:00").getTime());
   assert.throws(() => configSnapshotFromFormValues(values({ targetUrl: "https://example.com" })), /URL/);
+});
+
+test("quickPrepConfig는 dryRun·entryMode를 강제하고 오픈·종료 시각을 현재 기준으로 재계산한다", () => {
+  // 폼의 실제 openAt/stopAt(과거)·dryRun(false)·entryMode(prepared)와 무관하게 안전값으로 덮어써야 한다.
+  const nowMs = new Date("2026-07-20T12:00").getTime();
+  const config = quickPrepConfig(values({ dryRun: false, entryMode: "prepared" }), nowMs);
+  assert.equal(config.dryRun, true);
+  assert.equal(config.entryMode, "auto");
+  assert.equal(config.openAtMs, nowMs);
+  assert.equal(config.stopAtMs, nowMs + 300_000);
+  assert.equal(config.reservationDate, "2026-07-30");
+  assert.equal(config.personCount, 2);
 });

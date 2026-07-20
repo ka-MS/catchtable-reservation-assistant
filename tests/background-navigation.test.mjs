@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { navigateTab, sameRestaurant, leftReservationFlow } from "../dist/background/navigation.js";
+import { navigateTab, sameRestaurant, leftReservationFlow, isShopUrl } from "../dist/background/navigation.js";
 
 test("sameRestaurant ignores query strings but requires the exact shop path", () => {
   assert.equal(sameRestaurant(
@@ -30,6 +30,15 @@ test("leftReservationFlow allows the shop page and the reservation form, blocks 
   assert.equal(leftReservationFlow("https://example.com/", target), true);
   // 잘못된 URL: 이탈로 간주(보수적)
   assert.equal(leftReservationFlow("not a url", target), true);
+});
+
+test("isShopUrl accepts only catchtable shop pages", () => {
+  assert.equal(isShopUrl("https://app.catchtable.co.kr/ct/shop/mokran"), true);
+  assert.equal(isShopUrl("https://app.catchtable.co.kr/ct/shop/mokran?date=260730"), true);
+  assert.equal(isShopUrl("https://app.catchtable.co.kr/ct/reservation/form"), false);
+  assert.equal(isShopUrl("https://example.com/ct/shop/mokran"), false);
+  assert.equal(isShopUrl(undefined), false);
+  assert.equal(isShopUrl("not a url"), false);
 });
 
 test("navigateTab waits for the target tab to finish loading", async () => {

@@ -14,6 +14,13 @@ export class PersonAdapter {
     };
   }
 
+  readSelectedCount(): number | null {
+    for (const [value, input] of this.choices()) {
+      if (input.checked) return Number(value);
+    }
+    return null;
+  }
+
   select(personCount: number): boolean {
     const target = this.choices().get(String(personCount));
     if (!target || isDisabled(target) || !target.isConnected) return false;

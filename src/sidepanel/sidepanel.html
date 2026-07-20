@@ -52,6 +52,29 @@
               <span>식당 예약 URL</span>
               <input id="target-url" type="url" required placeholder="https://app.catchtable.co.kr/ct/shop/..." />
             </label>
+            <div class="field-quick-actions" aria-label="식당 URL 빠른 동작">
+              <button id="fetch-shop-snapshot" class="primary compact" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="14" rx="2"></rect>
+                  <path d="M8 22h8"></path>
+                  <path d="M12 8v6"></path>
+                  <path d="m9.5 11.5 2.5 2.5 2.5-2.5"></path>
+                </svg>
+                현재 탭에서 가져오기
+              </button>
+              <button id="go-to-shop" class="secondary compact" type="button"
+                title="입력한 정보로 예약창 진입까지만 실제로 확인합니다. 슬롯 클릭·결제는 하지 않습니다.">
+                <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 3h7v7"></path>
+                  <path d="M10 14 21 3"></path>
+                  <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"></path>
+                </svg>
+                식당으로 이동하기
+              </button>
+            </div>
+            <p id="quick-action-status" class="quick-status" aria-live="polite" hidden></p>
             <div class="grid two">
               <label class="field">
                 <span>예약 오픈 일시</span>
