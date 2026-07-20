@@ -869,14 +869,17 @@ let watchingPrepTest = false;
 goToShopButton.addEventListener("click", async () => {
   goToShopButton.disabled = true;
   setQuickStatus("예약창 진입을 확인하는 중…");
+  // storage에 activeRun이 먼저 쓰이고 그 변경 이벤트가 PANEL_START 응답보다 먼저
+  // 도착할 수 있다 — renderRuntime의 뷰 전환 가드가 걸리려면 응답을 기다리지 않고
+  // 요청 직전에 켜야 한다.
+  watchingPrepTest = true;
   const config = quickPrepConfig(readValues(), Date.now());
   const response = await send({ type: "PANEL_START", config });
   if (!response.ok) {
+    watchingPrepTest = false;
     setQuickStatus(response.error ?? "실행을 시작할 수 없습니다.", "error");
     goToShopButton.disabled = false;
-    return;
   }
-  watchingPrepTest = true;
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
