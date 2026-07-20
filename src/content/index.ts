@@ -127,8 +127,12 @@ if (!window.__ctReserveInjected) {
       return;
     }
     if (message.type === "READ_SHOP_SNAPSHOT") {
+      // 날짜·인원은 별도 필드로 반영되므로 URL에는 남기지 않는다(예약 날짜 쿼리 등으로 중복 표시 방지).
+      const url = new URL(location.href);
+      url.search = "";
+      url.hash = "";
       const snapshot: ShopSnapshot = {
-        url: location.href,
+        url: url.toString(),
         selectedDate: new CalendarAdapter(document).readSelectedDate(),
         selectedPersonCount: new PersonAdapter(document).readSelectedCount(),
       };
