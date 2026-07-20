@@ -13,6 +13,16 @@ interface NavigationTabs {
   };
 }
 
+export function isShopUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.origin === "https://app.catchtable.co.kr" && /^\/ct\/shop\/[^/]+\/?$/.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
 export function sameRestaurant(tabUrl: string | undefined, targetUrl: string): boolean {
   if (!tabUrl) return false;
   try {
