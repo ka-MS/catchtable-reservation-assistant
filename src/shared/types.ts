@@ -112,6 +112,12 @@ export interface RunExecutionContext {
   windowFocused: boolean | null;
 }
 
+export interface ShopSnapshot {
+  url: string;
+  selectedDate: string | null;
+  selectedPersonCount: number | null;
+}
+
 export type ContentCommand =
   | { type: "PING" }
   | {
@@ -126,7 +132,8 @@ export type ContentCommand =
     config: ReservationConfig;
   }
   | { type: "STOP" }
-  | { type: "GET_ATTEMPT_STATUS"; attemptId: string };
+  | { type: "GET_ATTEMPT_STATUS"; attemptId: string }
+  | { type: "READ_SHOP_SNAPSHOT" };
 
 export type PanelCommand =
   | { type: "PANEL_START"; config: ReservationConfig }
@@ -140,7 +147,8 @@ export type PanelCommand =
   | { type: "GET_RUN_TRACE"; runId: string; limit?: number }
   | { type: "EXPORT_RUN_TRACE"; runId: string }
   | { type: "EXPORT_RUN_DIAGNOSTIC"; runId: string }
-  | { type: "DELETE_RUN_TRACE"; runId: string };
+  | { type: "DELETE_RUN_TRACE"; runId: string }
+  | { type: "FETCH_SHOP_SNAPSHOT" };
 
 export interface RunEventMessage {
   type: "RUN_EVENT";
