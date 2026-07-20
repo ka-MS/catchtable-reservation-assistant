@@ -1,8 +1,9 @@
 # HANDOFF
 
-**갱신:** 2026-07-17
+**갱신:** 2026-07-20
 **브랜치:** `main`
-**최신 작업 로그:** `docs/worklog/2026-07-17-02-run-control-plane-phase2.md`
+**최신 작업 로그:** `docs/worklog/2026-07-20-01-reservation-quick-actions.md`
+**최신 편의 기능:** `docs/specs/reservation-quick-actions/10-design.md` — Side Panel "현재 탭에서 가져오기"·"식당으로 이동하기" 완료. `PANEL_START`/`PANEL_STOP`·orchestrator·coordinator·adapter·RunSupervisor 무변경으로 재사용했고, "식당으로 이동하기"는 `dryRun:true`/`entryMode:"auto"`를 항상 강제해 실클릭을 구조적으로 차단한다. blocking backlog 아님.
 **최신 제어 평면 구현:** `docs/specs/run-control-plane/` (Phase 1·2 완료 — RT-16 종결, 검증 `40-verification.md` · 구현 레드팀 `50-adversarial-review.md`)
 **최신 Tier 3 구현:** `docs/specs/open-timing-performance/03-runtime-resilience/01-rt16-preparation-recovery/`
 **최신 기준시계 구현:** `docs/specs/open-timing-performance/01-reference-clock-reliability/01-raw-sample-trace/`
