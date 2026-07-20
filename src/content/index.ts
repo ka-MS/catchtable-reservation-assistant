@@ -2,7 +2,7 @@ import { abortableSleep } from "../shared/scheduler.js";
 import type {
   AttemptControlMessage, AttemptOutcome, AttemptStatusResponse, TerminalRunState,
 } from "../shared/run-control/protocol.js";
-import type { ContentCommand, RunEventMessage } from "../shared/types.js";
+import type { ContentCommand, RunEventMessage, ShopSnapshot } from "../shared/types.js";
 import { CalendarAdapter } from "./adapter/calendar.js";
 import { EntryAdapter } from "./adapter/entry.js";
 import { PersonAdapter } from "./adapter/person.js";
@@ -124,6 +124,15 @@ if (!window.__ctReserveInjected) {
     const message = rawMessage as ContentCommand;
     if (message.type === "PING") {
       sendResponse({ ok: true });
+      return;
+    }
+    if (message.type === "READ_SHOP_SNAPSHOT") {
+      const snapshot: ShopSnapshot = {
+        url: location.href,
+        selectedDate: new CalendarAdapter(document).readSelectedDate(),
+        selectedPersonCount: new PersonAdapter(document).readSelectedCount(),
+      };
+      sendResponse({ ok: true, data: snapshot });
       return;
     }
     if (message.type === "START") {
