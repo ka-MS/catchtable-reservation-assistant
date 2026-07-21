@@ -277,6 +277,7 @@ function applyValues(values: FormValues): void {
   syncPostSlotFields();
   renderPriorities();
   renderSummary();
+  syncTimePresetButtons();
 }
 
 function minutesToInput(minutes: number): string {
@@ -779,11 +780,20 @@ saveJobButton.addEventListener("click", async () => {
   }
 });
 
+function syncTimePresetButtons(): void {
+  const start = fields.startTime.value;
+  const end = fields.endTime.value;
+  timePresetLunch.setAttribute("aria-pressed", String(start === "11:00" && end === "15:00"));
+  timePresetDinner.setAttribute("aria-pressed", String(start === "17:00" && end === "21:00"));
+  timePresetAll.setAttribute("aria-pressed", String(start === "11:00" && end === "21:00"));
+}
+
 function applyTimeRangePreset(start: string, end: string): void {
   fields.startTime.value = start;
   fields.endTime.value = end;
   renderSummary();
   saveDraft();
+  syncTimePresetButtons();
 }
 
 timePresetLunch.addEventListener("click", () => applyTimeRangePreset("11:00", "15:00"));
@@ -818,6 +828,7 @@ fields.postSlotEnabled.addEventListener("change", () => {
 fields.paymentMethodAutoAdvance.addEventListener("change", syncPostSlotFields);
 form.addEventListener("input", (event) => {
   renderSummary();
+  if (event.target === fields.startTime || event.target === fields.endTime) syncTimePresetButtons();
   if (event.target !== fields.stopAt && event.target !== fields.openAt) saveDraft();
 });
 
