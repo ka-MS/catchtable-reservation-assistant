@@ -2,7 +2,8 @@
 
 **브랜치:** `codex/feat-time-range-presets`
 **계획:** 없음(스펙 문서 생략, 간단 작업으로 분류)
-**커밋:** `6181d6e` → `a18ef96` → `8a01419`
+**커밋:** `6181d6e` → `a18ef96` → `8a01419` → `2bb6bfa` → `b929e83`
+**병합:** GitHub PR #1 (`gh pr merge --merge`), merge commit `2e5610f`
 
 ## 변경 요약
 
@@ -22,6 +23,16 @@ Side Panel "02 어떤 자리를 찾을까요?" 섹션에 순수 UI 편의 기능
 - 사용자 수동 확인(Chrome 확장 리로드 후):
   - select 박스 오탐 1건 — git reset 이후 `dist/`를 재빌드하지 않아 스테일 빌드가 남아있던 것으로 확인, 재빌드 후 해소.
   - 프리셋 버튼 3개, 30분 단위 제한, 활성 표시 동작 확인.
+
+## GitHub PR 워크플로우 실험 — `/code-review medium --comment`
+
+병합 전에 GitHub PR #1을 생성하고 Claude Code의 `/code-review medium --comment`로 리뷰를 받아보는 실험을 진행했다. 8개 finder(A/B/C/Reuse/Simplification/Efficiency/Altitude/Conventions) 병렬 실행 → 후보 dedup → 1-vote 검증 → 3건이 CONFIRMED로 살아남아 인라인 코멘트로 게시됨:
+
+1. **[correctness, 최우선]** `step="1800"`이 `novalidate` 없는 폼에서 네이티브 `stepMismatch` 검증을 발동시켜, 30분 정렬이 아닌 기존 저장값(초안/즐겨찾기/히스토리/예약작업) 제출을 막음(`isMinute()`가 30분 정렬을 요구한 적이 없어 그런 값이 실제로 존재 가능). 3개 각도(A/B/C)가 독립적으로 발견.
+2. **[altitude/simplification]** 프리셋 3쌍 값이 클릭 핸들러와 `syncTimePresetButtons` 두 곳에 하드코딩되어 있어 드리프트 위험.
+3. **[reuse]** `.filter-button:hover`/`:focus-visible`이 기존 `.filter-button[aria-pressed="true"]`, `.primary/.secondary:focus-visible`과 값이 완전히 동일한데 별도 규칙으로 중복 선언됨.
+
+세 건 모두 `b929e83`에서 수정: `step` 속성 제거(30분 안내는 프리셋 버튼만으로 충분, 네이티브 검증 부작용 제거), `TIME_PRESETS` 배열로 단일 출처화, CSS 셀렉터 그룹 병합. `npm run check` 406/406 재확인 후 PR을 merge commit으로 병합.
 
 ## 다음 단계
 
