@@ -523,7 +523,8 @@ summary {
 }
 
 .primary:focus-visible,
-.secondary:focus-visible {
+.secondary:focus-visible,
+.filter-button:focus-visible {
   outline: 3px solid rgba(22, 108, 77, 0.22);
   outline-offset: 2px;
 }
@@ -767,21 +768,11 @@ fieldset:disabled {
   transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 100ms ease;
 }
 
-.filter-button:hover:not(:disabled) {
-  border-color: #88b9a4;
-  color: #0e6847;
-  background: #e8f5ef;
-}
-
 .filter-button:active:not(:disabled) {
   transform: translateY(1px);
 }
 
-.filter-button:focus-visible {
-  outline: 3px solid rgba(22, 108, 77, 0.22);
-  outline-offset: 2px;
-}
-
+.filter-button:hover:not(:disabled),
 .filter-button[aria-pressed="true"] {
   border-color: #88b9a4;
   color: #0e6847;

@@ -38,9 +38,11 @@ const goToShopButton = byId<HTMLButtonElement>("go-to-shop");
 const quickActionStatus = byId<HTMLElement>("quick-action-status");
 const priorityInput = byId<HTMLInputElement>("priority-time");
 const priorityList = byId<HTMLOListElement>("priority-list");
-const timePresetLunch = byId<HTMLButtonElement>("time-preset-lunch");
-const timePresetDinner = byId<HTMLButtonElement>("time-preset-dinner");
-const timePresetAll = byId<HTMLButtonElement>("time-preset-all");
+const TIME_PRESETS = [
+  { button: byId<HTMLButtonElement>("time-preset-lunch"), start: "11:00", end: "15:00" },
+  { button: byId<HTMLButtonElement>("time-preset-dinner"), start: "17:00", end: "21:00" },
+  { button: byId<HTMLButtonElement>("time-preset-all"), start: "11:00", end: "21:00" },
+] as const;
 const postSlotOptions = byId<HTMLElement>("post-slot-options");
 const summaryMain = byId<HTMLElement>("summary-main");
 const summarySub = byId<HTMLElement>("summary-sub");
@@ -783,9 +785,9 @@ saveJobButton.addEventListener("click", async () => {
 function syncTimePresetButtons(): void {
   const start = fields.startTime.value;
   const end = fields.endTime.value;
-  timePresetLunch.setAttribute("aria-pressed", String(start === "11:00" && end === "15:00"));
-  timePresetDinner.setAttribute("aria-pressed", String(start === "17:00" && end === "21:00"));
-  timePresetAll.setAttribute("aria-pressed", String(start === "11:00" && end === "21:00"));
+  for (const preset of TIME_PRESETS) {
+    preset.button.setAttribute("aria-pressed", String(start === preset.start && end === preset.end));
+  }
 }
 
 function applyTimeRangePreset(start: string, end: string): void {
@@ -796,9 +798,9 @@ function applyTimeRangePreset(start: string, end: string): void {
   syncTimePresetButtons();
 }
 
-timePresetLunch.addEventListener("click", () => applyTimeRangePreset("11:00", "15:00"));
-timePresetDinner.addEventListener("click", () => applyTimeRangePreset("17:00", "21:00"));
-timePresetAll.addEventListener("click", () => applyTimeRangePreset("11:00", "21:00"));
+for (const preset of TIME_PRESETS) {
+  preset.button.addEventListener("click", () => applyTimeRangePreset(preset.start, preset.end));
+}
 
 byId<HTMLButtonElement>("add-priority").addEventListener("click", () => {
   const value = priorityInput.value;
