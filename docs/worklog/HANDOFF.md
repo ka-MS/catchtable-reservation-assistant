@@ -2,7 +2,8 @@
 
 **갱신:** 2026-07-21
 **브랜치:** `main`
-**최신 작업 로그:** `docs/worklog/2026-07-20-01-reservation-quick-actions.md`
+**최신 작업 로그:** `docs/worklog/2026-07-21-01-time-range-presets.md`
+**최신 UI 편의:** Side Panel "02 어떤 자리를 찾을까요?"에 점심/저녁/전체 시간대 프리셋 버튼 + 30분 단위 제한(`step="1800"`) + 프리셋 활성 표시 완료. 순수 UI 변경, 실행 로직 무변경. blocking backlog 아님.
 **최신 편의 기능:** `docs/specs/reservation-quick-actions/10-design.md` — Side Panel "현재 탭에서 가져오기"·"식당으로 이동하기" 완료, 사용자 수동 테스트로 뷰 전환·타이밍 경쟁·버튼 UX 4건 보완 후 검증됨. `PANEL_START`/`PANEL_STOP`·orchestrator·coordinator·adapter·RunSupervisor 무변경으로 재사용했고, "식당으로 이동하기"는 `dryRun:true`/`entryMode:"auto"`를 항상 강제해 실클릭을 구조적으로 차단한다. blocking backlog 아님.
 **최신 제어 평면 구현:** `docs/specs/run-control-plane/` (Phase 1·2 완료 — RT-16 종결, 검증 `40-verification.md` · 구현 레드팀 `50-adversarial-review.md`)
 **최신 Tier 3 구현:** `docs/specs/open-timing-performance/03-runtime-resilience/01-rt16-preparation-recovery/`
