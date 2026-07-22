@@ -38,6 +38,11 @@ const goToShopButton = byId<HTMLButtonElement>("go-to-shop");
 const quickActionStatus = byId<HTMLElement>("quick-action-status");
 const priorityInput = byId<HTMLInputElement>("priority-time");
 const priorityList = byId<HTMLOListElement>("priority-list");
+const TIME_PRESETS = [
+  { button: byId<HTMLButtonElement>("time-preset-lunch"), start: "11:00", end: "15:00" },
+  { button: byId<HTMLButtonElement>("time-preset-dinner"), start: "17:00", end: "21:00" },
+  { button: byId<HTMLButtonElement>("time-preset-all"), start: "11:00", end: "21:00" },
+] as const;
 const postSlotOptions = byId<HTMLElement>("post-slot-options");
 const summaryMain = byId<HTMLElement>("summary-main");
 const summarySub = byId<HTMLElement>("summary-sub");
@@ -274,6 +279,7 @@ function applyValues(values: FormValues): void {
   syncPostSlotFields();
   renderPriorities();
   renderSummary();
+  syncTimePresetButtons();
 }
 
 function minutesToInput(minutes: number): string {
@@ -776,6 +782,26 @@ saveJobButton.addEventListener("click", async () => {
   }
 });
 
+function syncTimePresetButtons(): void {
+  const start = fields.startTime.value;
+  const end = fields.endTime.value;
+  for (const preset of TIME_PRESETS) {
+    preset.button.setAttribute("aria-pressed", String(start === preset.start && end === preset.end));
+  }
+}
+
+function applyTimeRangePreset(start: string, end: string): void {
+  fields.startTime.value = start;
+  fields.endTime.value = end;
+  renderSummary();
+  saveDraft();
+  syncTimePresetButtons();
+}
+
+for (const preset of TIME_PRESETS) {
+  preset.button.addEventListener("click", () => applyTimeRangePreset(preset.start, preset.end));
+}
+
 byId<HTMLButtonElement>("add-priority").addEventListener("click", () => {
   const value = priorityInput.value;
   if (!value || priorityTimes.includes(value)) return;
@@ -804,6 +830,7 @@ fields.postSlotEnabled.addEventListener("change", () => {
 fields.paymentMethodAutoAdvance.addEventListener("change", syncPostSlotFields);
 form.addEventListener("input", (event) => {
   renderSummary();
+  if (event.target === fields.startTime || event.target === fields.endTime) syncTimePresetButtons();
   if (event.target !== fields.stopAt && event.target !== fields.openAt) saveDraft();
 });
 

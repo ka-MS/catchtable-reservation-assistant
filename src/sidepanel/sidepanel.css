@@ -195,6 +195,21 @@ section {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.time-range-presets {
+  margin-bottom: 12px;
+}
+
+.time-range-presets .filter-button {
+  min-height: 36px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.time-range-presets .filter-button:hover:not(:disabled) {
+  box-shadow: 0 2px 6px rgba(22, 108, 77, 0.12);
+}
+
 .field {
   display: grid;
   gap: 6px;
@@ -508,7 +523,8 @@ summary {
 }
 
 .primary:focus-visible,
-.secondary:focus-visible {
+.secondary:focus-visible,
+.filter-button:focus-visible {
   outline: 3px solid rgba(22, 108, 77, 0.22);
   outline-offset: 2px;
 }
@@ -749,8 +765,14 @@ fieldset:disabled {
   background: #f7f9f8;
   font-size: 11px;
   cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 100ms ease;
 }
 
+.filter-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.filter-button:hover:not(:disabled),
 .filter-button[aria-pressed="true"] {
   border-color: #88b9a4;
   color: #0e6847;
