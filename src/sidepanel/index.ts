@@ -208,7 +208,7 @@ function setView(view: PanelView): void {
   viewForm.hidden = view !== "form";
   viewRun.hidden = view !== "run";
   actionBar.hidden = view !== "form";
-  startButton.hidden = isRunning();
+  startButton.disabled = isRunning();
   navButtons.forEach((button) => {
     button.setAttribute("aria-current", String(button.dataset.view === view));
   });
@@ -546,7 +546,7 @@ function renderRuntime(activeRun: ActiveRun | null | undefined, events: RunEvent
     : STATE_LABEL[state];
   const running = activeRun !== null && activeRun !== undefined && !TERMINAL.has(state);
   fieldset.disabled = running;
-  startButton.hidden = running;
+  startButton.disabled = running;
   stopButton.disabled = !running;
   resetFormButton.disabled = running;
   saveJobButton.disabled = running;
@@ -850,12 +850,10 @@ form.addEventListener("submit", async (event) => {
     stateBadge.dataset.state = "CONFIGURED";
     statusDetail.textContent = "현재 탭에 실행을 요청했습니다.";
     fieldset.disabled = true;
-    startButton.hidden = true;
     stopButton.disabled = false;
     setView("run");
   } catch (error) {
     formError.textContent = error instanceof Error ? error.message : "입력값을 확인하세요.";
-  } finally {
     startButton.disabled = false;
   }
 });
