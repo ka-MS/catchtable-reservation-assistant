@@ -28,9 +28,9 @@ Side Panel "새 예약 작업" 타이틀 옆에 `초기화` 버튼을 추가했�
 
 1. **초기화 후 draft가 조용히 되돌아오는 문제**: `편집` 버튼(`renderJobs()`의 job-card 편집 핸들러)이 `applyValues()`로 화면은 채우지만 `saveDraft()`를 호출하지 않는 기존 버그. 초기화가 `draftForm`에 눈에 띄는 기본값을 남기면서 이 버그가 처음으로 가시화됐다 — 초기화 → 편집 → 지금 시작 → 중지 → 패널 재오픈 순서에서 `draftForm`이 초기화 시점 그대로 남아있어 재오픈 시 "초기화된 것처럼" 보였다. 즐겨찾기/히스토리 로드는 이미 `saveDraft()`를 호출하고 있어 문제없었다. `editButton` 핸들러에 `saveDraft()` 추가로 수정(`561684a`).
 
-## 다음 작업 - 실행 중 예약 저장 버튼 미차단
+## 후속 수정 - 실행 중 예약 저장 버튼 미차단 (별도 PR)
 
-사용자가 실사용 중 추가로 발견: 실행 중 예약 설정 화면으로 가면 `지금 시작`은 `hidden` 처리되는데 `예약 저장` 버튼은 그대로 활성 상태다. `saveJobButton`이 `startButton`과 함께 `<footer id="action-bar">`에 있어 `fieldset.disabled = running`의 영향을 안 받고, `renderRuntime()`에 `saveJobButton.disabled = running` 라인이 없다. 이번 PR과 무관한 별개 버그로 판단해 병합 후 새 브랜치(`codex/fix-save-job-during-run` 예정)로 분리하기로 했다 — 아직 착수 전.
+사용자가 실사용 중 추가로 발견: 실행 중 예약 설정 화면으로 가면 `지금 시작`은 `hidden` 처리되는데 `예약 저장` 버튼은 그대로 활성 상태였다. `saveJobButton`이 `startButton`과 함께 `<footer id="action-bar">`에 있어 `fieldset.disabled = running`의 영향을 안 받았기 때문. 이번 PR과 무관한 별개 버그라 새 브랜치 `codex/fix-save-job-during-run`으로 분리해 `renderRuntime()`에 `saveJobButton.disabled = running` 한 줄을 추가했다(`ae17ca7`). GitHub PR #3, 리뷰 없이 바로 병합(merge commit `fdc9f25`).
 
 ## 검증
 
