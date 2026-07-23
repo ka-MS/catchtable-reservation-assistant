@@ -148,7 +148,8 @@ export type PanelCommand =
   | { type: "EXPORT_RUN_TRACE"; runId: string }
   | { type: "EXPORT_RUN_DIAGNOSTIC"; runId: string }
   | { type: "DELETE_RUN_TRACE"; runId: string }
-  | { type: "FETCH_SHOP_SNAPSHOT" };
+  | { type: "FETCH_SHOP_SNAPSHOT" }
+  | { type: "CLEAR_RUN_EVENTS" };
 
 export interface RunEventMessage {
   type: "RUN_EVENT";

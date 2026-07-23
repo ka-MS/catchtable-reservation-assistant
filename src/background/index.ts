@@ -179,6 +179,14 @@ const jobScheduler = new JobScheduler({
   now: () => Date.now(),
 });
 
+async function clearRunEvents(): Promise<void> {
+  const stored = await chrome.storage.local.get("activeRun");
+  const activeRun = stored.activeRun as ActiveRun | null | undefined;
+  const patch: { runEvents: RunEvent[]; activeRun?: null } = { runEvents: [] };
+  if (!activeRun || TERMINAL_STATES.has(activeRun.state)) patch.activeRun = null;
+  await chrome.storage.local.set(patch);
+}
+
 async function recordEvent(event: RunEvent, tabId: number | undefined): Promise<void> {
   const stored = await chrome.storage.local.get(["runEvents", "activeRun"]);
   const events = Array.isArray(stored.runEvents) ? stored.runEvents as RunEvent[] : [];
@@ -245,6 +253,14 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
   if (message.type === "PANEL_STOP") {
     void supervisorReady.then(() => supervisor.stop()).then(sendResponse).catch((error) => {
       sendResponse({ ok: false, error: error instanceof Error ? error.message : "실행을 중지할 수 없습니다." });
+    });
+    return true;
+  }
+  if (message.type === "CLEAR_RUN_EVENTS") {
+    void eventWrites.enqueue(clearRunEvents).then(() => {
+      sendResponse({ ok: true });
+    }).catch((error) => {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : "실행 기록을 지울 수 없습니다." });
     });
     return true;
   }
