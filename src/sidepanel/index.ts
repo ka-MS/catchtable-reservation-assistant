@@ -549,6 +549,7 @@ function renderRuntime(activeRun: ActiveRun | null | undefined, events: RunEvent
   startButton.hidden = running;
   stopButton.disabled = !running;
   resetFormButton.disabled = running;
+  saveJobButton.disabled = running;
   renderMiniLog();
   if (running && !wasRunning && !watchingPrepTest) setView("run");
   wasRunning = running;
