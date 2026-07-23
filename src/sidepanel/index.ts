@@ -918,11 +918,15 @@ goToShopButton.addEventListener("click", async () => {
   }
 });
 
-resetFormButton.addEventListener("click", () => {
+resetFormButton.addEventListener("click", async () => {
   if (!window.confirm("예약 설정을 기본값으로 초기화하고 실행 기록을 지울까요?")) return;
+  formError.textContent = "";
+  editingJobId = null;
+  formTitle.textContent = "새 예약 작업";
   applyValues(DEFAULT_FORM_VALUES);
   saveDraft();
-  void send({ type: "CLEAR_RUN_EVENTS" });
+  const response = await send({ type: "CLEAR_RUN_EVENTS" });
+  if (!response.ok) formError.textContent = response.error ?? "실행 기록을 지울 수 없습니다.";
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
