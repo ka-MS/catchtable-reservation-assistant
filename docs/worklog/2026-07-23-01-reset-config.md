@@ -32,6 +32,8 @@ Side Panel "새 예약 작업" 타이틀 옆에 `초기화` 버튼을 추가했�
 
 사용자가 실사용 중 추가로 발견: 실행 중 예약 설정 화면으로 가면 `지금 시작`은 `hidden` 처리되는데 `예약 저장` 버튼은 그대로 활성 상태였다. `saveJobButton`이 `startButton`과 함께 `<footer id="action-bar">`에 있어 `fieldset.disabled = running`의 영향을 안 받았기 때문. 이번 PR과 무관한 별개 버그라 새 브랜치 `codex/fix-save-job-during-run`으로 분리해 `renderRuntime()`에 `saveJobButton.disabled = running` 한 줄을 추가했다(`ae17ca7`). GitHub PR #3, 리뷰 없이 바로 병합(merge commit `fdc9f25`).
 
+병합 직후 사용자가 다시 확인: `startButton`은 `hidden`, `saveJobButton`은 `disabled`라 액션바가 비대칭으로 보였다. `startButton`도 `disabled`로 통일하기로 하고(`isRunning()`/`renderRuntime()`/submit 핸들러 3곳), submit 핸들러의 `finally`가 실행 시작 성공 뒤에도 `disabled = false`로 되돌리던 것을 제거해 성공 시엔 계속 disabled로 남고 실패(catch)했을 때만 재활성화하도록 정리했다. 별도 브랜치 `codex/fix-save-job-button-visibility`, GitHub PR #4, 리뷰 없이 바로 병합(merge commit `04a744f`).
+
 ## 검증
 
 - 매 커밋 `npm run check` green(407/407 유지, 신규 `DEFAULT_FORM_VALUES` 단위 테스트 1건 추가).
