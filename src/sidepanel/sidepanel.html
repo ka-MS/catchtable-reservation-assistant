@@ -42,6 +42,7 @@
       <section id="view-form" class="view" hidden>
       <div class="view-title-row">
         <h2 id="form-title">새 예약 작업</h2>
+        <button id="reset-form" class="text-link" type="button">초기화</button>
       </div>
       <form id="reservation-form">
         <fieldset id="config-fields">
@@ -136,7 +137,7 @@
             <div id="post-slot-options" class="grid two dependent-options" data-enabled="false">
               <label class="toggle-row dependent-toggle">
                 <input id="payment-method-auto-advance" type="checkbox" checked disabled />
-                <span>결제 방식까지 자동 진행</span>
+                <span>결제화면 앞까지 자동 진행</span>
               </label>
               <fieldset id="payment-method-policy-options" class="payment-policy" disabled>
                 <legend>결제 방식 정책</legend>
@@ -146,7 +147,7 @@
                 </label>
                 <label class="payment-policy-option">
                   <input type="radio" name="payment-method-policy" value="selected_allowed" checked />
-                  <span>사이트에서 선택된 방식 허용</span>
+                  <span>유료 예약 허용</span>
                 </label>
               </fieldset>
               <label class="field">

@@ -6,7 +6,7 @@ import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
 import type { ActiveRun, AvailabilityProbeMode, CommandResponse, EntryMode, PanelCommand, PaymentMethodPolicy, ReservationConfig, RunEvent, RunState, ScheduledJob, ShopSnapshot, TablePreference } from "../shared/types.js";
 import { countdownModel } from "./countdown.js";
 import { formatEventDetail, formatEventTime } from "./event-format.js";
-import { configFromFormValues, configSnapshotFromFormValues, quickPrepConfig, type FormValues } from "./form-model.js";
+import { configFromFormValues, configSnapshotFromFormValues, quickPrepConfig, DEFAULT_FORM_VALUES, type FormValues } from "./form-model.js";
 import { jobCardModel } from "./job-card.js";
 import { jobListModel, miniLogModel } from "./job-list-model.js";
 import { SavedConfigsView } from "./saved-configs-view.js";
@@ -35,6 +35,7 @@ const startButton = byId<HTMLButtonElement>("start");
 const stopButton = byId<HTMLButtonElement>("stop");
 const fetchShopSnapshotButton = byId<HTMLButtonElement>("fetch-shop-snapshot");
 const goToShopButton = byId<HTMLButtonElement>("go-to-shop");
+const resetFormButton = byId<HTMLButtonElement>("reset-form");
 const quickActionStatus = byId<HTMLElement>("quick-action-status");
 const priorityInput = byId<HTMLInputElement>("priority-time");
 const priorityList = byId<HTMLOListElement>("priority-list");
@@ -914,6 +915,13 @@ goToShopButton.addEventListener("click", async () => {
     setQuickStatus(response.error ?? "실행을 시작할 수 없습니다.", "error");
     goToShopButton.disabled = false;
   }
+});
+
+resetFormButton.addEventListener("click", () => {
+  if (!window.confirm("예약 설정을 기본값으로 초기화하고 실행 기록을 지울까요?")) return;
+  applyValues(DEFAULT_FORM_VALUES);
+  saveDraft();
+  void send({ type: "CLEAR_RUN_EVENTS" });
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {

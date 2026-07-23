@@ -25,6 +25,27 @@ export interface FormValues {
   availabilityProbeEnabled?: boolean;
 }
 
+export const DEFAULT_FORM_VALUES: FormValues = {
+  targetUrl: "",
+  openAt: "",
+  reservationDate: "",
+  personCount: "2",
+  startTime: "18:00",
+  endTime: "20:00",
+  priorityTimes: [],
+  postSlotEnabled: true,
+  paymentMethodAutoAdvance: true,
+  paymentMethodPolicy: "selected_allowed",
+  tablePreference: "any",
+  menuKeyword: "",
+  stopAt: "",
+  entryMode: "auto",
+  dryRun: false,
+  preOpenLeadMs: "3000",
+  toggleIntervalMs: "150",
+  availabilityProbeMode: "empty_exit",
+};
+
 function parseConfig(values: FormValues): ReservationConfig {
   const startMinutes = parseTimeInput(values.startTime);
   const endMinutes = parseTimeInput(values.endTime);

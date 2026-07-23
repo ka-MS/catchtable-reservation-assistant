@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { configFromFormValues, configSnapshotFromFormValues, quickPrepConfig } from "../dist/sidepanel/form-model.js";
+import { configFromFormValues, configSnapshotFromFormValues, quickPrepConfig, DEFAULT_FORM_VALUES } from "../dist/sidepanel/form-model.js";
 
 function values(overrides = {}) {
   return {
@@ -84,4 +84,18 @@ test("quickPrepConfig는 dryRun·entryMode를 강제하고 오픈·종료 시각
   assert.equal(config.stopAtMs, nowMs + 300_000);
   assert.equal(config.reservationDate, "2026-07-30");
   assert.equal(config.personCount, 2);
+});
+
+test("DEFAULT_FORM_VALUES는 후속 선택·유료 예약 허용·자동 준비·EMPTY 조기 종료를 기본으로 켜둔다", () => {
+  assert.equal(DEFAULT_FORM_VALUES.postSlotEnabled, true);
+  assert.equal(DEFAULT_FORM_VALUES.paymentMethodAutoAdvance, true);
+  assert.equal(DEFAULT_FORM_VALUES.paymentMethodPolicy, "selected_allowed");
+  assert.equal(DEFAULT_FORM_VALUES.entryMode, "auto");
+  assert.equal(DEFAULT_FORM_VALUES.availabilityProbeMode, "empty_exit");
+  assert.equal(DEFAULT_FORM_VALUES.targetUrl, "");
+  assert.equal(DEFAULT_FORM_VALUES.personCount, "2");
+  assert.equal(DEFAULT_FORM_VALUES.startTime, "18:00");
+  assert.equal(DEFAULT_FORM_VALUES.endTime, "20:00");
+  assert.deepEqual(DEFAULT_FORM_VALUES.priorityTimes, []);
+  assert.equal(DEFAULT_FORM_VALUES.dryRun, false);
 });

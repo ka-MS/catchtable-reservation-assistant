@@ -248,6 +248,14 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
     });
     return true;
   }
+  if (message.type === "CLEAR_RUN_EVENTS") {
+    void chrome.storage.local.set({ runEvents: [] }).then(() => {
+      sendResponse({ ok: true });
+    }).catch((error) => {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : "실행 기록을 지울 수 없습니다." });
+    });
+    return true;
+  }
   if (message.type === "FETCH_SHOP_SNAPSHOT") {
     void (async () => {
       const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
