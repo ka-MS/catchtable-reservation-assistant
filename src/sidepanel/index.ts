@@ -472,6 +472,7 @@ function renderJobCard(job: ScheduledJob): HTMLLIElement {
       editButton.addEventListener("click", () => {
         editingJobId = job.id;
         applyValues(valuesFromConfig(job.config));
+        saveDraft();
         setView("form");
       });
       actions.append(editButton);
