@@ -22,6 +22,13 @@
 **최신 short-cut:** `docs/specs/run-telemetry/60-csv-export-shortcut.md`
 **최신 호환성 수정:** `docs/specs/reservation-flow-compatibility/01-calendar-dom-compatibility/60-long-range-month-transition.md`
 
+## 방향 전환과 최우선 미완료 (2026-07-23)
+
+- **정책 방향이 "예약 완주"로 전환되었다.** 종전의 "이 확장은 예약을 완료하지 않는다" 원칙은 폐기됐다(`docs/specs/automation-boundary.md`, `CLAUDE.md`, `README.md` 반영 완료). 목표는 약관 동의·결제(유료 예약금 포함)·최종 `예약하기`까지 자동 완주다.
+- **문서가 코드보다 앞서 있다.** 현재 코드는 여전히 예약 폼 도착 시 `HANDED_OFF`로 종료한다. **최우선 미완료(blocking)**는 아래 한 가지다.
+  1. **예약 완주 구현** — `FormAdapter` 실측(약관 체크박스·방문 목적·결제 수단·최종 `예약하기` 버튼) + 상태 머신 `ADVANCING_RESERVATION → COMPLETED` 배선 + config 완주 플래그. 아직 착수 전. 실측·fixture·실결제 위험 통제 절차가 선행되어야 한다.
+- **`availabilityProbeMode` 기본 활성은 의도된 것이다(리그레션 아님).** `src/sidepanel/form-model.ts`의 신규 폼 기본값 `empty_exit`(커밋 `b0bbbd9`)는 XHR probe를 기본 활성으로 두려는 의도적 결정이며, RT-14 당시의 "기본값 `off` 유지, 동등 비교군 검증 전까지 기본 비활성" 결정을 **의식적으로 뒤집은 것**이다. 아래 RT-14 계열 기록의 "기본값 off" 서술은 당시 상태를 기록한 이력이며 현재 기본값과는 다르다 — 코드 수정 대상 아님. (성능 이득·요청 증가량 실측은 여전히 후속 non-blocking 측정 과제로 남는다.)
+
 ## 현재 상태
 
 예약 흐름 호환성 패키지와 Tier 2-2 availability hot path의 fallback 보존형 구현·실제 오픈 기능 검증·RT-05 운영 격리를 완료했다.
