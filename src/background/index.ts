@@ -244,8 +244,15 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
     });
     return true;
   }
+  if (message.type === "COMPLETION_DISPATCH_CLAIM") {
+    void supervisorReady.then(() => supervisor.onCompletionDispatchClaim(message)).then(sendResponse).catch((error) => {
+      console.error("완주 dispatch claim 처리에 실패했습니다.", error);
+      sendResponse({ ok: false, reason: "unknown_logical_run" });
+    });
+    return true;
+  }
   if (message.type === "PANEL_START") {
-    void supervisorReady.then(() => supervisor.startManual(message.config)).then(sendResponse).catch((error) => {
+    void supervisorReady.then(() => supervisor.startManual(message.config, message.authorization)).then(sendResponse).catch((error) => {
       sendResponse({ ok: false, error: error instanceof Error ? error.message : "실행을 시작할 수 없습니다." });
     });
     return true;

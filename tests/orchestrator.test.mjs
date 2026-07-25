@@ -54,6 +54,9 @@ function config(overrides = {}) {
     dryRun: true,
     preOpenLeadMs: 300,
     toggleIntervalMs: 400,
+    reservationCompletionEnabled: false,
+    maxPaymentAmountKrw: 0,
+    requiredFormDefaultAnswer: "",
     ...overrides,
   };
 }
@@ -1908,4 +1911,20 @@ test("attemptPhase는 준비 완료 후 WAITING_FOR_OPEN 전에 1회 EXECUTING�
   assert.equal(result.state, "DRY_RUN_COMPLETED");
   assert.equal(result.message.length > 0, true);
   assert.deepEqual(phases, [{ phase: "EXECUTING", beforeWaiting: true }]);
+});
+
+// 실제 PIN처럼 보일 수 있는 리터럴을 소스에 남기지 않도록 자릿수를 런타임에 조합한다.
+function runtimePinSentinel(digits) {
+  return digits.map(String).join("");
+}
+
+test("RunSession은 authorization을 받아도 dry-run 결과·이벤트에 PIN을 노출하지 않는다", async () => {
+  const h = harness();
+  const pin = runtimePinSentinel([6, 3, 9, 5]);
+  const result = await h.orchestrator.start(config(), "run-1", undefined, { catchPayPin: pin });
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  const serializedEvents = JSON.stringify(h.events);
+  const serializedTraces = JSON.stringify(h.traces);
+  assert.equal(serializedEvents.includes(pin), false);
+  assert.equal(serializedTraces.includes(pin), false);
 });

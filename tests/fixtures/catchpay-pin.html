@@ -1,0 +1,27 @@
+<!-- 실측 출처: docs/analysis/site-behavior.md §12.7 (더피제리아마켓, 2026-07-24, 로그인, 실결제
+     20,000원). 외부 자동결제로 예약하기 제출 뒤 나타난 CatchPay PIN 화면. 최상위와 동일
+     오리진·동일 문서(app.catchtable.co.kr/ct/reservation/form), iframe 0개. 일반 password
+     input 없음(passwordInputCount=0) — 커스텀 보안 키패드(숫자 button 10개 + 전체삭제).
+     숫자 배열은 1표본 관측 순서(4,5,6,1,3,9,7,8,2,0)를 그대로 반영한다 — 위치가 아니라
+     accessible text로만 식별해야 한다. -->
+<main>
+  <section role="dialog" aria-label="캐치페이 비밀번호 입력">
+    <h2>캐치페이 비밀번호 입력</h2>
+    <p>비밀번호를 입력해 주세요</p>
+    <div>
+      <button type="button">4</button>
+      <button type="button">5</button>
+      <button type="button">6</button>
+      <button type="button">1</button>
+      <button type="button">3</button>
+      <button type="button">9</button>
+      <button type="button">7</button>
+      <button type="button">8</button>
+      <button type="button">2</button>
+      <button type="button">0</button>
+      <button type="button">전체삭제</button>
+    </div>
+    <button type="button" disabled>결제하기</button>
+    <button type="button">취소</button>
+  </section>
+</main>

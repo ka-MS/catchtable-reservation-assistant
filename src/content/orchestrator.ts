@@ -12,7 +12,7 @@ import { nextTogglePlan } from "../shared/toggle-schedule.js";
 import type { SlotRefreshWatchPort } from "./adapter/slot-refresh-watch.js";
 import type { SlotDomMutationWatchPort } from "./adapter/slot-dom-mutation-watch.js";
 import type { ReferenceClockPort } from "./reference-clock-sampler.js";
-import type { ReservationConfig, RunEvent, RunExecutionContext, RunState } from "../shared/types.js";
+import type { OneShotRunAuthorization, ReservationConfig, RunEvent, RunExecutionContext, RunState } from "../shared/types.js";
 import type { TraceCode } from "../shared/telemetry/codes.js";
 import type { TraceAttributes, TraceSeverity } from "../shared/telemetry/types.js";
 import type { CalendarInspection } from "./adapter/calendar.js";
@@ -184,6 +184,19 @@ type ToggleCycleOutcome =
   | { kind: "retry" }
   | { kind: "slot"; candidate: SlotCandidate };
 
+/** initial manual attempt에만 존재하는 일회성 PIN의 disposable wrapper — 사용 후 참조를 폐기한다. */
+class OneShotAuthorizationHandle {
+  private value: OneShotRunAuthorization | null;
+
+  constructor(authorization?: OneShotRunAuthorization) {
+    this.value = authorization ?? null;
+  }
+
+  dispose(): void {
+    this.value = null;
+  }
+}
+
 class RunSession {
   readonly controller = new AbortController();
   private readonly runId: string;
@@ -208,18 +221,21 @@ class RunSession {
   private readonly runStartMonoMs: number;
   private readonly availabilityCorrelation = new AvailabilityCorrelationTracker();
   private readonly availabilityWake = new AvailabilityDomWake();
+  private readonly authorizationHandle: OneShotAuthorizationHandle;
 
   constructor(
     private readonly deps: Dependencies,
     private readonly config: ReservationConfig,
     requestedRunId?: string,
     private readonly executionContext?: RunExecutionContext,
+    authorization?: OneShotRunAuthorization,
   ) {
     this.runId = requestedRunId ?? deps.runId();
     this.machine = new RunStateMachine({ dryRun: config.dryRun, now: () => deps.clock.now() });
     this.serverClock = new MonotonicEpochClock(deps.monotonicClock);
     // frame 1(monotonic): 기준시계 오차·wall-clock 점프와 무관한 실제 경과.
     this.runStartMonoMs = deps.monotonicClock.now();
+    this.authorizationHandle = new OneShotAuthorizationHandle(authorization);
   }
 
   private monoFromRunStartMs(): number {
@@ -426,6 +442,9 @@ class RunSession {
       }
       return this.finish();
     } finally {
+      // PIN 참조는 나머지 cleanup(비동기 flush 포함)보다 먼저, 그 안의 예외와 무관하게
+      // 즉시 폐기한다 — dispose() 자체는 절대 던지지 않으므로 이 위치가 가장 이르고 안전하다.
+      this.authorizationHandle.dispose();
       try {
         this.deps.availabilityShadow?.stop();
       } catch {
@@ -1526,9 +1545,13 @@ export class OpenRunOrchestrator {
     config: ReservationConfig,
     requestedRunId?: string,
     executionContext?: RunExecutionContext,
+    authorization?: OneShotRunAuthorization,
   ): Promise<RunResult> {
     if (this.activeController) throw new Error("이미 실행 중입니다.");
-    const session = new RunSession(this.dependencies, config, requestedRunId, executionContext);
+    const session = new RunSession(this.dependencies, config, requestedRunId, executionContext, authorization);
+    // RunSession(handle)에 전달한 직후 이 async frame의 raw 참조를 폐기한다 —
+    // await session.execute() 동안 suspended frame에 secret이 남지 않게 한다.
+    authorization = undefined;
     this.activeController = session.controller;
     try {
       return await session.execute();

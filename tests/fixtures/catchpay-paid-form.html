@@ -1,0 +1,59 @@
+<!-- 실측 출처: docs/analysis/site-behavior.md §12.6-§12.7 (더피제리아마켓 pizzeriamarket, 하남미사,
+     2026-07-24, 로그인 세션). /ct/reservation/form?openRegisterCard=0 — 로그인 유료 CatchPay 변형
+     (08-11 화, 오전 11:00, 2명, 총 예약금 20,000원). 결제 수단 input[name="payment-type"]:
+     캐치페이 checked, 일반결제 disabled(0원 폼과 동일 앵커). 필수 약관 정확히 3개, 선택 0개,
+     필수 자유입력 없음(실측). 점유 타이머 문구는 §12.3/§12.4에서 같은 예약 폼 템플릿으로
+     실측된 것을 재사용한다(§12.6에는 재인용되지 않았으나 같은 폼 컴포넌트).
+     매장 표시명은 main 밖 top-bar header > h1(textContent="더피제리아마켓 하남미사")에만
+     있다(§12.8 실측, id/aria-label/aria-labelledby 없음, header 안에는 h1과 닫기 버튼만). -->
+<header>
+  <h1>더피제리아마켓 하남미사</h1>
+  <button type="button">닫기</button>
+</header>
+<main>
+  <section>
+    <p>예약 정보</p>
+    <p>08월 11일 (화) · 오전 11시 · 2명</p>
+  </section>
+
+  <section>
+    <p>방문 목적</p>
+    <label><input type="checkbox" />데이트</label>
+    <label><input type="checkbox" />친목</label>
+    <label><input type="checkbox" />가족식사</label>
+    <label><input type="checkbox" />생일</label>
+    <label><input type="checkbox" />기념일</label>
+    <label><input type="checkbox" />여행</label>
+    <label><input type="checkbox" />비즈니스미팅</label>
+    <label><input type="checkbox" />소개팅</label>
+    <label><input type="checkbox" />기타</label>
+  </section>
+
+  <section>
+    <p>자동결제(최대 100% 할인)</p>
+    <label><input type="radio" name="payment-type" checked />캐치페이</label>
+    <p>이 카드로 식사 금액이 자동결제 됩니다.</p>
+    <label><input type="radio" name="payment-type" disabled />일반결제</label>
+  </section>
+
+  <section>
+    <p>총 결제 금액</p>
+    <p>20,000원</p>
+    <p>2026년 8월 9일까지 취소 시 예약금 100% 환불 가능</p>
+  </section>
+
+  <fieldset>
+    <label><input type="checkbox" />모두 동의합니다</label>
+    <label><input type="checkbox" />[필수] 예약 취소/변경에 대한 환불 정책 동의</label>
+    <label><input type="checkbox" />[필수] 개인정보 제3자 제공 동의 (와드)</label>
+    <label><input type="checkbox" />[필수] 개인정보 제3자 제공 동의 (캐치테이블페이)</label>
+  </fieldset>
+
+  <section>
+    <p>08월 11일(화) · 오전 11:00 · 2명</p>
+  </section>
+
+  <p>7분간 예약 찜! 시간 내 예약을 완료해주세요.</p>
+
+  <button type="button">자동결제로 예약하기</button>
+</main>

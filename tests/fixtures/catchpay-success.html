@@ -1,0 +1,28 @@
+<!-- 실측 출처: docs/analysis/site-behavior.md §12.5 (우블랑, 2026-07-24, 로그인, 실예약).
+     0원 CatchPay 최종 제출 성공 후조건: URL이 /ct/mydining/my/planned로 전이, 완료 문구
+     "자동결제로 예약을 완료했습니다", 방문예정 목록에 매장명·날짜·시간·인원이 일치하는 항목.
+     raw 예약번호는 노출되지 않았으므로 fixture에도 포함하지 않는다. -->
+<main>
+  <section>
+    <h2>자동결제로 예약을 완료했습니다</h2>
+    <p>식사 후 사장님께 자동결제 요청해주세요.</p>
+    <div role="dialog" aria-label="초대장 공유">
+      <button type="button">초대장 편집</button>
+      <button type="button">링크로 공유</button>
+      <button type="button">카카오톡으로 공유</button>
+    </div>
+  </section>
+
+  <section>
+    <h3>방문예정</h3>
+    <ul>
+      <li>
+        <p>우블랑 · 동탄 · 한우오마카세</p>
+        <p>2026.08.10 (월) · 오후 12:00 · 2명</p>
+        <span>D-17</span>
+        <span>예약</span>
+        <span>자동결제</span>
+      </li>
+    </ul>
+  </section>
+</main>

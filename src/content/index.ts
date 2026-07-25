@@ -168,7 +168,7 @@ if (!window.__ctReserveInjected) {
           phase: "PREPARING",
         }).catch(() => undefined);
       }
-      void orchestrator.start(message.config, message.runId, message.executionContext)
+      void orchestrator.start(message.config, message.runId, message.executionContext, message.authorization)
         .then(async (result) => {
           if (!control) return;
           control.phase = "FINISHING";

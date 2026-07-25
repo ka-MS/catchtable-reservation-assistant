@@ -15,6 +15,7 @@ export type RunState =
   | "SLOT_TRANSITION_CONFIRMED"
   | "SLOT_SELECTED"
   | "ADVANCING_RESERVATION"
+  | "COMPLETING_RESERVATION"
   | "DRY_RUN_COMPLETED"
   | "HANDED_OFF"
   | "COMPLETED"
@@ -47,6 +48,14 @@ export interface ReservationConfig {
   availabilityProbeMode?: AvailabilityProbeMode;
   /** @deprecated Legacy persisted setting. Normalize before use. */
   availabilityProbeEnabled?: boolean;
+  reservationCompletionEnabled: boolean;
+  maxPaymentAmountKrw: number;
+  requiredFormDefaultAnswer: string;
+}
+
+/** 초기 수동 attempt의 START에만 존재하는 일회성 secret — ReservationConfig와 별도로 취급한다. */
+export interface OneShotRunAuthorization {
+  catchPayPin: string;
 }
 
 export type SavedConfigList = "history" | "favorites";
@@ -130,13 +139,15 @@ export type ContentCommand =
     shadowChannelId?: string;
     executionContext?: RunExecutionContext;
     config: ReservationConfig;
+    /** initial manual attempt에만 존재한다 — recovery·scheduled START에는 넣지 않는다. */
+    authorization?: OneShotRunAuthorization;
   }
   | { type: "STOP" }
   | { type: "GET_ATTEMPT_STATUS"; attemptId: string }
   | { type: "READ_SHOP_SNAPSHOT" };
 
 export type PanelCommand =
-  | { type: "PANEL_START"; config: ReservationConfig }
+  | { type: "PANEL_START"; config: ReservationConfig; authorization?: OneShotRunAuthorization }
   | { type: "PANEL_STOP" }
   | { type: "SAVE_FAVORITE"; config: ReservationConfig }
   | { type: "DELETE_SAVED"; list: SavedConfigList; id: string }

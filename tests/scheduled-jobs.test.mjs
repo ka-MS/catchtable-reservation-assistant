@@ -31,6 +31,9 @@ function config(overrides = {}) {
     dryRun: false,
     preOpenLeadMs: 3_000,
     toggleIntervalMs: 150,
+    reservationCompletionEnabled: false,
+    maxPaymentAmountKrw: 0,
+    requiredFormDefaultAnswer: "",
     ...overrides,
   };
 }

@@ -1,8 +1,8 @@
 # HANDOFF
 
-**갱신:** 2026-07-23
-**브랜치:** `main`
-**최신 작업 로그:** `docs/worklog/2026-07-23-01-reset-config.md`
+**갱신:** 2026-07-25
+**브랜치:** `codex/feat-catchpay-reservation-completion`
+**최신 작업 로그:** `docs/worklog/2026-07-25-01-catchpay-completion-checkpoint.md`
 **최신 UI 편의:** Side Panel "새 예약 작업" 타이틀 옆에 `초기화` 버튼 완료(하드코딩 기본값 + 실행 기록 초기화, 실행 중 비활성화). GitHub PR 코드리뷰로 race condition·`editingJobId` 미초기화 등 4건 발견·수정. 병합 후 실사용 중 draft 미저장 버그(PR #2 후속 커밋), `예약 저장` 버튼 실행 중 미차단(PR #3), `지금 시작`/`예약 저장` disabled·hidden 불일치(PR #4)를 추가 발견·수정. 실행 중 액션바 버튼은 이제 전부 `disabled`로 통일. blocking backlog 아님.
 **이전 UI 편의:** Side Panel "02 어떤 자리를 찾을까요?"에 점심/저녁/전체 시간대 프리셋 버튼 + 30분 단위 제한(프리셋 버튼 UX만 유지, `step` 속성은 기존 저장 데이터 제출 차단 버그로 코드리뷰에서 제거됨) + 프리셋 활성 표시 완료. 순수 UI 변경, 실행 로직 무변경. blocking backlog 아님.
 **최신 편의 기능:** `docs/specs/reservation-quick-actions/10-design.md` — Side Panel "현재 탭에서 가져오기"·"식당으로 이동하기" 완료, 사용자 수동 테스트로 뷰 전환·타이밍 경쟁·버튼 UX 4건 보완 후 검증됨. `PANEL_START`/`PANEL_STOP`·orchestrator·coordinator·adapter·RunSupervisor 무변경으로 재사용했고, "식당으로 이동하기"는 `dryRun:true`/`entryMode:"auto"`를 항상 강제해 실클릭을 구조적으로 차단한다. blocking backlog 아님.
@@ -21,6 +21,22 @@
 **최신 RT-10M 분석:** `docs/worklog/2026-07-15-01-rt10m-nuwa-measurement.md`
 **최신 short-cut:** `docs/specs/run-telemetry/60-csv-export-shortcut.md`
 **최신 호환성 수정:** `docs/specs/reservation-flow-compatibility/01-calendar-dom-compatibility/60-long-range-month-transition.md`
+
+## CatchPay 예약 완주 체크포인트 (2026-07-25)
+
+- blocking backlog인 **예약 완주 구현은 아직 진행 중**이다. 분석·설계와
+  통제된 실측을 마쳤고, 설계는 사용자 승인을 받았다.
+- `30-implementation.md` Task 1(설정·one-shot authorization)과
+  Task 2(durable completion claim)는 Codex gate를 통과했다.
+- Task 3 `ReservationFormAdapter`는 Sonnet 5 worker 구현과 worker 기준
+  전체 테스트 `484/484`까지 진행됐지만 Codex gate는 통과하지 않았다.
+  ready action의 fresh fingerprint가 실제 매장·날짜·시간·인원 변경을
+  포함하지 않는 결함이 확인됐다.
+- Task 4~6, `40-verification`, `50-adversarial-review`, Chrome 확장 E2E는
+  시작하지 않았다. 다음 단계 진입 전에 Task 3 결함을 실패 테스트로
+  고정하고 수정해야 한다.
+- 정확한 재개 지점과 검증 기록은
+  `docs/worklog/2026-07-25-01-catchpay-completion-checkpoint.md`를 따른다.
 
 ## 방향 전환과 최우선 미완료 (2026-07-23)
 

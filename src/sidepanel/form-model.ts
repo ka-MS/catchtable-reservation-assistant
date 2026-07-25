@@ -1,6 +1,8 @@
 import { resolveAvailabilityProbeMode, validateReservationConfig } from "../shared/config.js";
 import { localInputToEpoch, parseTimeInput } from "../shared/time.js";
-import type { AvailabilityProbeMode, EntryMode, PaymentMethodPolicy, ReservationConfig, TablePreference } from "../shared/types.js";
+import type {
+  AvailabilityProbeMode, EntryMode, OneShotRunAuthorization, PaymentMethodPolicy, ReservationConfig, TablePreference,
+} from "../shared/types.js";
 
 export interface FormValues {
   targetUrl: string;
@@ -23,6 +25,9 @@ export interface FormValues {
   toggleIntervalMs: string;
   availabilityProbeMode?: AvailabilityProbeMode;
   availabilityProbeEnabled?: boolean;
+  reservationCompletionEnabled?: boolean;
+  maxPaymentAmountKrw?: string;
+  requiredFormDefaultAnswer?: string;
 }
 
 export const DEFAULT_FORM_VALUES: FormValues = {
@@ -44,6 +49,9 @@ export const DEFAULT_FORM_VALUES: FormValues = {
   preOpenLeadMs: "3000",
   toggleIntervalMs: "150",
   availabilityProbeMode: "empty_exit",
+  reservationCompletionEnabled: false,
+  maxPaymentAmountKrw: "0",
+  requiredFormDefaultAnswer: "",
 };
 
 function parseConfig(values: FormValues): ReservationConfig {
@@ -71,8 +79,27 @@ function parseConfig(values: FormValues): ReservationConfig {
     preOpenLeadMs: Number(values.preOpenLeadMs),
     toggleIntervalMs: Number(values.toggleIntervalMs),
     availabilityProbeMode: resolveAvailabilityProbeMode(values),
+    reservationCompletionEnabled: values.reservationCompletionEnabled ?? false,
+    maxPaymentAmountKrw: Number(values.maxPaymentAmountKrw ?? "0"),
+    requiredFormDefaultAnswer: values.requiredFormDefaultAnswer ?? "",
   };
   return config;
+}
+
+/** Side Panel의 영속 폼 model과 분리된 일회성 PIN 입력값을 wrapper로 만든다 — 빈 입력은 undefined다. */
+export function oneShotAuthorizationFromPin(pin: string): OneShotRunAuthorization | undefined {
+  const trimmed = pin.trim();
+  return trimmed === "" ? undefined : { catchPayPin: trimmed };
+}
+
+/**
+ * PIN input에서 authorization을 읽어 payload를 만든 직후 입력을 비운다.
+ * DOM 없이도 테스트 가능하도록 `{ value: string }` 구조만 요구한다.
+ */
+export function takeOneShotAuthorization(pinInput: { value: string }): OneShotRunAuthorization | undefined {
+  const authorization = oneShotAuthorizationFromPin(pinInput.value);
+  pinInput.value = "";
+  return authorization;
 }
 
 export function configSnapshotFromFormValues(values: FormValues): ReservationConfig {

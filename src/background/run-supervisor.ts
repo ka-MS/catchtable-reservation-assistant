@@ -1,18 +1,21 @@
 // 논리 실행(LogicalRun)의 process manager. 결정(순수 전이)과 효과(탭·알림·storage)를
 // 잇는 유일한 지점이며, 모든 상태 변경은 단일 SerialTaskQueue에서 직렬화된다 —
 // "결정 영속 → ACK → 행동" 순서를 코드 구조로 강제한다.
-import { resolveAvailabilityProbeMode } from "../shared/config.js";
+import { resolveAvailabilityProbeMode, validateOneShotAuthorization } from "../shared/config.js";
 import {
-  applyAttemptOutcome, applyBackgroundTerminal, applyPhaseChange, applyRecoveryLapse,
-  beginNextAttempt, createLogicalRun, markRecoveryDispatched, markTerminalEffectsCompleted,
+  applyAttemptOutcome, applyBackgroundTerminal, applyCompletionDispatchClaim, applyPhaseChange,
+  applyRecoveryLapse, beginNextAttempt, createLogicalRun, isAcknowledgedCompletionClaim,
+  markRecoveryDispatched, markTerminalEffectsCompleted, requestCompletionStop,
   type LogicalRun,
 } from "../shared/run-control/logical-run.js";
 import { decide } from "../shared/run-control/policy.js";
 import type {
-  AttemptControlMessage, AttemptFinishedAck, AttemptOutcome, AttemptPhaseChangedAck, TerminalRunState,
+  AttemptControlMessage, AttemptFinishedAck, AttemptOutcome, AttemptPhaseChangedAck,
+  CompletionDispatchAck, TerminalRunState,
 } from "../shared/run-control/protocol.js";
 import type {
-  ActiveRun, CommandResponse, ContentCommand, ReservationConfig, RunEvent, RunExecutionContext, RunState, ScheduledJob,
+  ActiveRun, CommandResponse, ContentCommand, OneShotRunAuthorization, ReservationConfig, RunEvent,
+  RunExecutionContext, RunState, ScheduledJob,
 } from "../shared/types.js";
 import { sameRestaurant, leftReservationFlow } from "./navigation.js";
 import type { PageRuntimePort } from "./page-runtime-port.js";
@@ -75,7 +78,7 @@ export class RunSupervisor {
     return this.queue.enqueue(async () => undefined);
   }
 
-  startManual(config: ReservationConfig): Promise<CommandResponse> {
+  startManual(config: ReservationConfig, authorization?: OneShotRunAuthorization): Promise<CommandResponse> {
     return this.queue.enqueue(async () => {
       const runId = `run-${this.deps.newId()}`;
       const errors = this.deps.validate(config, this.deps.now());
@@ -83,6 +86,11 @@ export class RunSupervisor {
         const message = errors.join(" ");
         await this.deps.trace.startFailure(runId, config, message);
         return { ok: false, error: message };
+      }
+      const authError = validateOneShotAuthorization(authorization);
+      if (authError !== null) {
+        await this.deps.trace.startFailure(runId, config, authError);
+        return { ok: false, error: authError };
       }
       const busy = await this.busyError();
       if (busy !== null) {
@@ -100,7 +108,7 @@ export class RunSupervisor {
         await this.deps.trace.startFailure(runId, config, message);
         return { ok: false, error: message };
       }
-      return this.startLogical({ id: tab.id, url: tab.url }, config, { kind: "manual" }, runId);
+      return this.startLogical({ id: tab.id, url: tab.url }, config, { kind: "manual" }, runId, authorization);
     });
   }
 
@@ -146,6 +154,19 @@ export class RunSupervisor {
       const state = await this.read();
       const activeRun = state.activeRun ?? null;
       if (!activeRun) return { ok: false, error: "실행 중인 작업이 없습니다." };
+      // durable logicalRun claim이 activeRun projection(RUN_EVENT 비동기 반영)보다
+      // 우선한다 — logicalRun이 이미 EXECUTING이고 outer claim이 ACK됐다면 activeRun.state가
+      // projection 지연으로 아직 NAVIGATING/CONFIGURED로 보여도 그 조기 분기로 새지 않는다
+      // (20-design §8: 이미 허용된 dispatch를 취소했다고 추측하지 않는다).
+      const hadAcknowledgedCompletionClaim = isAcknowledgedCompletionClaim(state.logicalRun?.completionDispatch);
+      if (hadAcknowledgedCompletionClaim) {
+        if (state.logicalRun) {
+          await this.deps.storage.set({ logicalRun: requestCompletionStop(state.logicalRun, this.deps.now()) });
+        }
+        // outer claim이 이미 ACK된 뒤에는 일반 STOP으로 Content의 read-only 관측
+        // 루프를 abort하지 않고, activeRun/logicalRun을 STOPPED로 단정하지도 않는다.
+        return { ok: true };
+      }
       if (activeRun.state === "NAVIGATING" || activeRun.state === "CONFIGURED") {
         this.cancelledPendingRuns.add(activeRun.runId);
         await this.deps.storage.set({ activeRun: { ...activeRun, state: "STOPPED", updatedAt: this.deps.now() } });
@@ -163,6 +184,12 @@ export class RunSupervisor {
           ).catch((error) => console.error("중지 추적을 저장하지 못했습니다.", error));
         }
         return { ok: true };
+      }
+      if (state.logicalRun && state.logicalRun.status === "EXECUTING") {
+        // 완주 claim 경쟁(20-design §8): stop을 결정 즉시 영속해 이후 queue에서 처리될
+        // outer/pin claim 요청이 이 stop을 반드시 확인하게 한다. 이미 허용된 outer/pin
+        // 권한은 건드리지 않는다 — 취소됐다고 추측하지 않는다.
+        await this.deps.storage.set({ logicalRun: requestCompletionStop(state.logicalRun, this.deps.now()) });
       }
       const delivered = await this.deps.port.stopAttempt(activeRun.tabId);
       if (!delivered) {
@@ -207,25 +234,54 @@ export class RunSupervisor {
     });
   }
 
+  /** 완주 외부/PIN 내부 제출 클릭 권한 claim(20-design §8). PIN은 인자·claim 어디에도 없다.
+   * ACK는 "권한이 영속 접수됨"이며 dispatchGranted만이 "새로 발급된 권한"을 뜻한다 —
+   * 같은 phase·fingerprint의 멱등 재ACK(예: ACK 유실 재전송)는 dispatchGranted:false로
+   * 응답해 content의 이중 클릭을 막는다. */
+  onCompletionDispatchClaim(
+    message: Extract<AttemptControlMessage, { type: "COMPLETION_DISPATCH_CLAIM" }>,
+  ): Promise<CompletionDispatchAck> {
+    return this.queue.enqueue(async () => {
+      const state = await this.read();
+      const run = state.logicalRun ?? null;
+      if (!run || run.logicalRunId !== message.logicalRunId) {
+        return { ok: false, reason: "unknown_logical_run" } as const;
+      }
+      const app = applyCompletionDispatchClaim(run, message.attemptId, message.phase, message.fingerprint, this.deps.now());
+      if (app.kind === "reject") return { ok: false, reason: app.reason } as const;
+      if (app.kind === "replay") return { ok: true, dispatchGranted: false } as const;
+      await this.deps.storage.set({ logicalRun: app.run });
+      return { ok: true, dispatchGranted: true } as const;
+    });
+  }
+
   onTabRemoved(tabId: number): Promise<void> {
     return this.queue.enqueue(async () => {
       const state = await this.read();
       const activeRun = state.activeRun ?? null;
+      // 20-design §11: acknowledged completion claim 뒤 실행 문맥이 사라지면
+      // STOPPED/FAILED로 단정하지 않고 결과 불명 HANDED_OFF로 종결한다 — 이미
+      // 결제·예약이 진행됐을 수 있어 재제출 금지 인계가 필요하다.
+      const hasAcknowledgedCompletionClaim = isAcknowledgedCompletionClaim(state.logicalRun?.completionDispatch);
+      const terminalState = hasAcknowledgedCompletionClaim ? "HANDED_OFF" : "STOPPED";
+      const message = hasAcknowledgedCompletionClaim
+        ? "완주 클릭 권한 부여 뒤 실행 탭이 닫혀 결과를 확인할 수 없어 인계합니다."
+        : "실행 탭이 닫혔습니다.";
       if (activeRun?.tabId === tabId && !TERMINAL_STATES.has(activeRun.state)) {
-        await this.deps.storage.set({ activeRun: { ...activeRun, state: "STOPPED", updatedAt: this.deps.now() } });
-        if (state.reservationConfig) {
+        await this.deps.storage.set({ activeRun: { ...activeRun, state: terminalState, updatedAt: this.deps.now() } });
+        if (!hasAcknowledgedCompletionClaim && state.reservationConfig) {
           await this.deps.trace.backgroundTerminal(
             activeRun.runId,
             activeRun.startedAt,
             state.reservationConfig,
             "STOPPED",
-            "실행 탭이 닫혔습니다.",
+            message,
             activeRun.scheduledJobId,
           ).catch((error) => console.error("종결 추적을 저장하지 못했습니다.", error));
         }
       }
       if (state.logicalRun && state.logicalRun.tabId === tabId && state.logicalRun.status !== "TERMINAL") {
-        await this.terminateLogical(state, "STOPPED", "실행 탭이 닫혔습니다.");
+        await this.terminateLogical(state, terminalState, message);
       }
     });
   }
@@ -235,20 +291,32 @@ export class RunSupervisor {
       const state = await this.read();
       const activeRun = state.activeRun ?? null;
       const config = state.reservationConfig;
-      if (!config || !leftReservationFlow(url, config.targetUrl)) return;
+      if (!config) return;
+      // 20-design §11: acknowledged completion claim이 있는 실행에서만 정확한
+      // /ct/mydining/my/planned 를 정상 완료 후보로 취급해 이탈 STOPPED 오판을 막는다.
+      const hasAcknowledgedCompletionClaim = isAcknowledgedCompletionClaim(state.logicalRun?.completionDispatch);
+      if (!leftReservationFlow(url, config.targetUrl, hasAcknowledgedCompletionClaim)) return;
+      // claim 없는 이탈은 기존대로 STOPPED다. acknowledged claim 뒤의 이탈(성공 path
+      // 제외)은 결제·예약이 이미 진행됐을 수 있어 결과 불명 HANDED_OFF로 종결한다.
+      const terminalState = hasAcknowledgedCompletionClaim ? "HANDED_OFF" : "STOPPED";
+      const message = hasAcknowledgedCompletionClaim
+        ? "완주 클릭 권한 부여 뒤 확인되지 않은 화면으로 이동해 결과를 확인할 수 없어 인계합니다."
+        : "실행 탭이 설정한 식당을 벗어났습니다.";
       if (activeRun?.tabId === tabId && !TERMINAL_STATES.has(activeRun.state)) {
-        await this.deps.storage.set({ activeRun: { ...activeRun, state: "STOPPED", updatedAt: this.deps.now() } });
-        await this.deps.trace.backgroundTerminal(
-          activeRun.runId,
-          activeRun.startedAt,
-          config,
-          "STOPPED",
-          "실행 탭이 설정한 식당을 벗어났습니다.",
-          activeRun.scheduledJobId,
-        ).catch((error) => console.error("종결 추적을 저장하지 못했습니다.", error));
+        await this.deps.storage.set({ activeRun: { ...activeRun, state: terminalState, updatedAt: this.deps.now() } });
+        if (!hasAcknowledgedCompletionClaim) {
+          await this.deps.trace.backgroundTerminal(
+            activeRun.runId,
+            activeRun.startedAt,
+            config,
+            "STOPPED",
+            message,
+            activeRun.scheduledJobId,
+          ).catch((error) => console.error("종결 추적을 저장하지 못했습니다.", error));
+        }
       }
       if (state.logicalRun && state.logicalRun.tabId === tabId && state.logicalRun.status !== "TERMINAL") {
-        await this.terminateLogical(state, "STOPPED", "실행 탭이 설정한 식당을 벗어났습니다.");
+        await this.terminateLogical(state, terminalState, message);
       }
     });
   }
@@ -271,6 +339,7 @@ export class RunSupervisor {
     config: ReservationConfig,
     origin: LogicalRun["origin"],
     runId: string,
+    authorization?: OneShotRunAuthorization,
   ): Promise<CommandResponse> {
     const now = this.deps.now();
     const needsNavigation = config.entryMode === "auto" && !sameRestaurant(tab.url, config.targetUrl);
@@ -315,7 +384,7 @@ export class RunSupervisor {
         logicalRun,
       });
       await assertPending();
-      const response = await this.deps.port.startAttempt(tab.id, this.startCommand(logicalRun, runId, 0, undefined, shadowChannelId, executionContext));
+      const response = await this.deps.port.startAttempt(tab.id, this.startCommand(logicalRun, runId, 0, undefined, shadowChannelId, executionContext, authorization));
       if (response.ok) return { ok: true };
       throw new Error(response.error ?? "실행을 시작할 수 없습니다.");
     } catch (error) {
@@ -348,6 +417,7 @@ export class RunSupervisor {
     resetCause: string | undefined,
     shadowChannelId: string | undefined,
     executionContext: RunExecutionContext | undefined,
+    authorization?: OneShotRunAuthorization,
   ): StartCommand {
     return {
       type: "START",
@@ -359,6 +429,7 @@ export class RunSupervisor {
       ...(shadowChannelId === undefined ? {} : { shadowChannelId }),
       ...(executionContext === undefined ? {} : { executionContext }),
       ...(run.origin.kind === "scheduled" ? { scheduledJobId: run.origin.jobId } : {}),
+      ...(authorization === undefined ? {} : { authorization }),
     };
   }
 
@@ -402,7 +473,7 @@ export class RunSupervisor {
 
   private async terminateLogical(
     state: StoredState,
-    terminalState: Extract<TerminalRunState, "STOPPED" | "FAILED">,
+    terminalState: Extract<TerminalRunState, "STOPPED" | "FAILED" | "HANDED_OFF">,
     message: string,
   ): Promise<void> {
     const run = state.logicalRun ?? null;
@@ -526,12 +597,19 @@ export class RunSupervisor {
       if (result.followUp !== null) await result.followUp();
       return;
     }
-    const failed = applyBackgroundTerminal(run, "FAILED", "실행 문맥이 유실됐습니다.", this.deps.now());
+    // completion claim이 이미 ACK된 EXECUTING attempt는 결과를 회수할 수 없어도 내부
+    // 결함으로 단정하지 않는다 — 재제출 금지 인계(20-design §8, §10)로 HANDED_OFF 종결한다.
+    const hasAcknowledgedCompletionClaim = isAcknowledgedCompletionClaim(run.completionDispatch);
+    const terminalState = hasAcknowledgedCompletionClaim ? "HANDED_OFF" : "FAILED";
+    const terminalMessage = hasAcknowledgedCompletionClaim
+      ? "완주 클릭 권한 부여 뒤 실행 결과를 확인할 수 없어 인계합니다."
+      : "실행 문맥이 유실됐습니다.";
+    const failed = applyBackgroundTerminal(run, terminalState, terminalMessage, this.deps.now());
     await this.deps.storage.set({ logicalRun: failed });
     const current = await this.read();
     if (current.activeRun?.runId === run.currentAttemptId && !TERMINAL_STATES.has(current.activeRun.state)) {
       await this.deps.storage.set({
-        activeRun: { ...current.activeRun, state: "FAILED", updatedAt: this.deps.now() },
+        activeRun: { ...current.activeRun, state: terminalState, updatedAt: this.deps.now() },
       });
     }
     await this.deps.effects(failed);

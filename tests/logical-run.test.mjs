@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  applyAttemptOutcome, applyBackgroundTerminal, applyPhaseChange, applyRecoveryLapse,
-  beginNextAttempt, createLogicalRun, markRecoveryDispatched, markTerminalEffectsCompleted,
+  applyAttemptOutcome, applyBackgroundTerminal, applyCompletionDispatchClaim, applyPhaseChange,
+  applyRecoveryLapse, beginNextAttempt, createLogicalRun, isAcknowledgedCompletionClaim,
+  markRecoveryDispatched, markTerminalEffectsCompleted, requestCompletionStop,
 } from "../dist/shared/run-control/logical-run.js";
 
 function config(overrides = {}) {
@@ -139,4 +140,118 @@ test("markTerminalEffectsCompleted는 완료 시각을 남긴다", () => {
   const done = markTerminalEffectsCompleted(
     applyBackgroundTerminal(run(), "STOPPED", "중지", 1), 2);
   assert.equal(done.terminalEffectsCompletedAt, 2);
+});
+
+function executingRun(overrides = {}) {
+  return { ...applyPhaseChange(run(), "run-a1", "EXECUTING").run, ...overrides };
+}
+
+const FINGERPRINT_A = "fp-shop-slug-2026-08-20-1140-2-20000-form1";
+const FINGERPRINT_B = "fp-shop-slug-2026-08-20-1140-2-0-form2";
+
+test("outer claim은 active EXECUTING attempt에서 한 번만 영속되고 claim에는 PIN이 없다", () => {
+  const app = applyCompletionDispatchClaim(executingRun(), "run-a1", "outer", FINGERPRINT_A, 100);
+  assert.equal(app.kind, "ack");
+  assert.deepEqual(app.run.completionDispatch, { fingerprint: FINGERPRINT_A, outerClaimedAt: 100 });
+  assert.equal(JSON.stringify(app.run.completionDispatch).toLowerCase().includes("pin"), false);
+});
+
+test("같은 phase·fingerprint 재전송은 멱등 replay이고 새 dispatch 권한을 만들지 않는다", () => {
+  const claimed = applyCompletionDispatchClaim(executingRun(), "run-a1", "outer", FINGERPRINT_A, 100).run;
+  const replay = applyCompletionDispatchClaim(claimed, "run-a1", "outer", FINGERPRINT_A, 200);
+  assert.deepEqual(replay, { kind: "replay" });
+  // 재전송이 outerClaimedAt을 다시 찍지 않는다(새 권한 없음).
+  assert.equal(claimed.completionDispatch.outerClaimedAt, 100);
+});
+
+test("다른 fingerprint의 outer 재요청은 거절한다", () => {
+  const claimed = applyCompletionDispatchClaim(executingRun(), "run-a1", "outer", FINGERPRINT_A, 100).run;
+  const conflict = applyCompletionDispatchClaim(claimed, "run-a1", "outer", FINGERPRINT_B, 200);
+  assert.deepEqual(conflict, { kind: "reject", reason: "fingerprint_mismatch" });
+});
+
+test("stale attempt(비current)의 claim 요청은 거절한다", () => {
+  const stale = applyCompletionDispatchClaim(executingRun(), "run-zzz", "outer", FINGERPRINT_A, 100);
+  assert.deepEqual(stale, { kind: "reject", reason: "stale_attempt" });
+});
+
+test("EXECUTING이 아닌 attempt의 claim 요청은 거절한다", () => {
+  const preparing = applyCompletionDispatchClaim(run(), "run-a1", "outer", FINGERPRINT_A, 100);
+  assert.deepEqual(preparing, { kind: "reject", reason: "stale_attempt" });
+});
+
+test("pin-before-outer는 거절한다", () => {
+  const beforeOuter = applyCompletionDispatchClaim(executingRun(), "run-a1", "pin", FINGERPRINT_A, 100);
+  assert.deepEqual(beforeOuter, { kind: "reject", reason: "phase_order" });
+});
+
+test("outer claim 뒤 pin claim은 같은 fingerprint에서만 영속되고 다른 fingerprint는 거절한다", () => {
+  const claimed = applyCompletionDispatchClaim(executingRun(), "run-a1", "outer", FINGERPRINT_A, 100).run;
+  const mismatched = applyCompletionDispatchClaim(claimed, "run-a1", "pin", FINGERPRINT_B, 200);
+  assert.deepEqual(mismatched, { kind: "reject", reason: "fingerprint_mismatch" });
+  const pinApp = applyCompletionDispatchClaim(claimed, "run-a1", "pin", FINGERPRINT_A, 200);
+  assert.equal(pinApp.kind, "ack");
+  assert.deepEqual(pinApp.run.completionDispatch,
+    { fingerprint: FINGERPRINT_A, outerClaimedAt: 100, pinClaimedAt: 200 });
+  const pinReplay = applyCompletionDispatchClaim(pinApp.run, "run-a1", "pin", FINGERPRINT_A, 300);
+  assert.deepEqual(pinReplay, { kind: "replay" });
+});
+
+test("pin claim 뒤 outer 재요청은 phase 역행으로 거절한다", () => {
+  const claimed = applyCompletionDispatchClaim(executingRun(), "run-a1", "outer", FINGERPRINT_A, 100).run;
+  const pinned = applyCompletionDispatchClaim(claimed, "run-a1", "pin", FINGERPRINT_A, 200).run;
+  const regressed = applyCompletionDispatchClaim(pinned, "run-a1", "outer", FINGERPRINT_A, 300);
+  assert.deepEqual(regressed, { kind: "reject", reason: "phase_order" });
+});
+
+test("stop-before-outer는 outer claim을 거절한다", () => {
+  const stopped = requestCompletionStop(executingRun(), 50);
+  assert.equal(stopped.completionDispatch.stopRequestedAt, 50);
+  assert.equal(stopped.completionDispatch.fingerprint, undefined);
+  const rejected = applyCompletionDispatchClaim(stopped, "run-a1", "outer", FINGERPRINT_A, 100);
+  assert.deepEqual(rejected, { kind: "reject", reason: "stop_requested" });
+});
+
+test("stop-after-outer는 stop marker를 영속하고 pin claim을 거절한다", () => {
+  const claimed = applyCompletionDispatchClaim(executingRun(), "run-a1", "outer", FINGERPRINT_A, 100).run;
+  const stopped = requestCompletionStop(claimed, 150);
+  assert.deepEqual(stopped.completionDispatch,
+    { fingerprint: FINGERPRINT_A, outerClaimedAt: 100, stopRequestedAt: 150 });
+  const pinRejected = applyCompletionDispatchClaim(stopped, "run-a1", "pin", FINGERPRINT_A, 200);
+  assert.deepEqual(pinRejected, { kind: "reject", reason: "stop_requested" });
+});
+
+test("pin claim ACK 뒤 stop은 이미 허용된 dispatch를 취소 완료로 오판하지 않는다", () => {
+  const claimed = applyCompletionDispatchClaim(executingRun(), "run-a1", "outer", FINGERPRINT_A, 100).run;
+  const pinned = applyCompletionDispatchClaim(claimed, "run-a1", "pin", FINGERPRINT_A, 200).run;
+  const stopped = requestCompletionStop(pinned, 250);
+  // 이미 허용된 pin dispatch 권한은 그대로 남는다 — stop이 되돌리거나 지우지 않는다.
+  assert.equal(stopped.completionDispatch.pinClaimedAt, 200);
+  assert.equal(stopped.completionDispatch.outerClaimedAt, 100);
+  assert.equal(stopped.status, "EXECUTING"); // stop이 임의로 run을 종결 상태로 바꾸지 않는다
+  assert.equal(stopped.completionDispatch.stopRequestedAt, 250);
+});
+
+test("requestCompletionStop은 멱등이다 — 이미 기록된 stopRequestedAt을 덮어쓰지 않는다", () => {
+  const stoppedOnce = requestCompletionStop(executingRun(), 50);
+  const stoppedTwice = requestCompletionStop(stoppedOnce, 999);
+  assert.equal(stoppedTwice.completionDispatch.stopRequestedAt, 50);
+});
+
+test("isAcknowledgedCompletionClaim은 malformed persisted 객체를 엄격히 거부한다", () => {
+  assert.equal(isAcknowledgedCompletionClaim(undefined), false);
+  assert.equal(isAcknowledgedCompletionClaim({ stopRequestedAt: 10 }), false); // pre-claim variant
+  assert.equal(isAcknowledgedCompletionClaim({ fingerprint: FINGERPRINT_A, outerClaimedAt: 10 }), true);
+  assert.equal(isAcknowledgedCompletionClaim({ fingerprint: FINGERPRINT_A, outerClaimedAt: 10, pinClaimedAt: 20 }), true);
+  // non-empty string이 아닌 fingerprint는 acknowledged로 인정하지 않는다.
+  assert.equal(isAcknowledgedCompletionClaim({ fingerprint: "", outerClaimedAt: 10 }), false);
+  assert.equal(isAcknowledgedCompletionClaim({ fingerprint: 12345, outerClaimedAt: 10 }), false);
+  assert.equal(isAcknowledgedCompletionClaim({ outerClaimedAt: 10 }), false);
+  // finite number가 아닌 outerClaimedAt은 acknowledged로 인정하지 않는다.
+  assert.equal(isAcknowledgedCompletionClaim({ fingerprint: FINGERPRINT_A, outerClaimedAt: Number.NaN }), false);
+  assert.equal(isAcknowledgedCompletionClaim({ fingerprint: FINGERPRINT_A, outerClaimedAt: Number.POSITIVE_INFINITY }), false);
+  assert.equal(isAcknowledgedCompletionClaim({ fingerprint: FINGERPRINT_A, outerClaimedAt: "10" }), false);
+  assert.equal(isAcknowledgedCompletionClaim({ fingerprint: FINGERPRINT_A }), false);
+  assert.equal(isAcknowledgedCompletionClaim(null), false);
+  assert.equal(isAcknowledgedCompletionClaim("not-an-object"), false);
 });

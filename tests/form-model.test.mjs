@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { configFromFormValues, configSnapshotFromFormValues, quickPrepConfig, DEFAULT_FORM_VALUES } from "../dist/sidepanel/form-model.js";
+import {
+  configFromFormValues,
+  configSnapshotFromFormValues,
+  oneShotAuthorizationFromPin,
+  quickPrepConfig,
+  takeOneShotAuthorization,
+  DEFAULT_FORM_VALUES,
+} from "../dist/sidepanel/form-model.js";
 
 function values(overrides = {}) {
   return {
@@ -41,6 +48,7 @@ test("sidepanel values produce an epoch-based configuration", () => {
   assert.equal(config.availabilityProbeMode, "off");
   assert.equal("availabilityProbeEnabled" in config, false);
   assert.equal("clockSampleCount" in config, false);
+  assert.equal("catchPayPin" in config, false);
 });
 
 test("XHR response mode is explicit", () => {
@@ -72,6 +80,7 @@ test("favorite snapshots allow past times but keep structural validation", () =>
   const snapshot = configSnapshotFromFormValues(values());
   assert.equal(snapshot.openAtMs, new Date("2026-07-10T13:00").getTime());
   assert.throws(() => configSnapshotFromFormValues(values({ targetUrl: "https://example.com" })), /URL/);
+  assert.equal("catchPayPin" in snapshot, false); // 즐겨찾기/작업 저장 경로에도 PIN이 없다
 });
 
 test("quickPrepConfig는 dryRun·entryMode를 강제하고 오픈·종료 시각을 현재 기준으로 재계산한다", () => {
@@ -98,4 +107,56 @@ test("DEFAULT_FORM_VALUES는 후속 선택·유료 예약 허용·자동 준비�
   assert.equal(DEFAULT_FORM_VALUES.endTime, "20:00");
   assert.deepEqual(DEFAULT_FORM_VALUES.priorityTimes, []);
   assert.equal(DEFAULT_FORM_VALUES.dryRun, false);
+  assert.equal(DEFAULT_FORM_VALUES.reservationCompletionEnabled, false);
+  assert.equal(DEFAULT_FORM_VALUES.maxPaymentAmountKrw, "0");
+  assert.equal(DEFAULT_FORM_VALUES.requiredFormDefaultAnswer, "");
+  assert.equal("catchPayPin" in DEFAULT_FORM_VALUES, false);
+});
+
+test("완주 opt-in·상한·공통 답변은 폼 값에서 설정으로 그대로 전달된다", () => {
+  const config = configFromFormValues(
+    values({
+      reservationCompletionEnabled: true,
+      maxPaymentAmountKrw: "20000",
+      requiredFormDefaultAnswer: " 가족 모임 ",
+    }),
+    new Date("2026-07-10T12:00").getTime(),
+  );
+  assert.equal(config.reservationCompletionEnabled, true);
+  assert.equal(config.maxPaymentAmountKrw, 20_000);
+  assert.equal(config.requiredFormDefaultAnswer, " 가족 모임 ");
+});
+
+test("완주 관련 폼 값이 없으면 완주 off·상한 0·빈 답변으로 채워진다", () => {
+  const config = configFromFormValues(values(), new Date("2026-07-10T12:00").getTime());
+  assert.equal(config.reservationCompletionEnabled, false);
+  assert.equal(config.maxPaymentAmountKrw, 0);
+  assert.equal(config.requiredFormDefaultAnswer, "");
+});
+
+// PIN 리터럴이 소스에 남지 않도록 자릿수를 런타임에 조합한다.
+function runtimePinSentinel(digits) {
+  return digits.map(String).join("");
+}
+
+test("oneShotAuthorizationFromPin은 빈 입력을 undefined로, 값이 있으면 trim된 wrapper로 만든다", () => {
+  assert.equal(oneShotAuthorizationFromPin(""), undefined);
+  assert.equal(oneShotAuthorizationFromPin("   "), undefined);
+  const pin = runtimePinSentinel([5, 2, 0, 9]);
+  assert.deepEqual(oneShotAuthorizationFromPin(`  ${pin}  `), { catchPayPin: pin });
+});
+
+test("takeOneShotAuthorization은 payload를 만든 직후 입력 객체의 값을 비운다", () => {
+  const pin = runtimePinSentinel([4, 4, 7, 7]);
+  const pinInput = { value: pin };
+  const authorization = takeOneShotAuthorization(pinInput);
+  assert.deepEqual(authorization, { catchPayPin: pin });
+  assert.equal(pinInput.value, "");
+});
+
+test("takeOneShotAuthorization은 빈 입력에도 undefined를 반환하고 값을 비운 채로 둔다", () => {
+  const pinInput = { value: "   " };
+  const authorization = takeOneShotAuthorization(pinInput);
+  assert.equal(authorization, undefined);
+  assert.equal(pinInput.value, "");
 });
