@@ -41,7 +41,10 @@ export type CompletionTelemetryPhase =
   | "success_observed";
 
 const RESULT_TIMEOUT_MS = 15_000;
+const PIN_APPEARANCE_TIMEOUT_MS = 15_000;
+const PIN_POLL_MS = 100;
 const AGREEMENT_SETTLE_MS = 250;
+const PIN_DIGIT_SETTLE_MS = 100;
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
 function formTime(minutes: number): string {
@@ -203,7 +206,6 @@ export class CompletionCoordinator {
           inspectOptions,
           outerFingerprint,
           inspection.facts.currentAmountKrw,
-          inspection.fingerprint,
           pin!,
           signal,
         );
@@ -224,11 +226,10 @@ export class CompletionCoordinator {
     inspectOptions: ReservationFormInspectOptions,
     outerFingerprint: string,
     expectedAmountKrw: number,
-    expectedFormFingerprint: string,
     pin: string,
     signal: AbortSignal,
   ): Promise<CompletionResult> {
-    const deadline = this.deps.now() + RESULT_TIMEOUT_MS;
+    const deadline = this.deps.now() + PIN_APPEARANCE_TIMEOUT_MS;
     while (!signal.aborted && this.deps.now() < deadline) {
       const inspection = this.deps.adapter.inspect(inspectOptions);
       if (inspection.kind === "pin") {
@@ -240,15 +241,25 @@ export class CompletionCoordinator {
           keypadButtonCount: inspection.facts.digitCount,
           innerSubmitEnabled: inspection.facts.innerSubmitEnabled,
         });
-        if (!this.formStillMatches(inspectOptions, expectedAmountKrw, expectedFormFingerprint)) {
+        if (!this.formStillMatches(inspectOptions, expectedAmountKrw)) {
           return { kind: "handed_off", message: "PIN 화면 아래 예약 내용 또는 결제금액이 변경돼 자동 입력하지 않습니다.", claimed: true };
         }
         let secret: string | undefined = pin;
         pin = "";
         try {
           for (const digit of secret) {
-            if (!this.deps.adapter.enterPinDigit(inspection.fingerprint, digit)) {
+            const current = this.deps.adapter.inspect(inspectOptions);
+            if (current.kind !== "pin" || !this.formStillMatches(inspectOptions, expectedAmountKrw)) {
+              return { kind: "handed_off", message: "CatchPay PIN 입력 중 결제 화면이 변경돼 자동 입력을 중단합니다.", claimed: true };
+            }
+            if (!this.deps.adapter.enterPinDigit(current.fingerprint, digit)) {
               return { kind: "handed_off", message: "CatchPay PIN 키패드가 변경돼 자동 입력을 중단합니다.", claimed: true };
+            }
+            if (!(await this.deps.sleep(PIN_DIGIT_SETTLE_MS, signal))) {
+              return { kind: "handed_off", message: "CatchPay PIN 입력 중 중지 요청을 받아 자동 제출하지 않습니다.", claimed: true };
+            }
+            if (this.deps.now() >= deadline) {
+              return { kind: "handed_off", message: "CatchPay PIN 입력 중 결과 관측 시간이 만료돼 자동 제출하지 않습니다.", claimed: true };
             }
           }
         } finally {
@@ -258,7 +269,7 @@ export class CompletionCoordinator {
         if (fresh.kind !== "pin" || !fresh.facts.innerSubmitEnabled) {
           return { kind: "handed_off", message: "PIN 입력 뒤 결제 화면을 확인할 수 없어 자동 제출하지 않습니다.", claimed: true };
         }
-        if (!this.formStillMatches(inspectOptions, expectedAmountKrw, expectedFormFingerprint)) {
+        if (!this.formStillMatches(inspectOptions, expectedAmountKrw)) {
           return { kind: "handed_off", message: "PIN 입력 뒤 예약 내용 또는 결제금액이 변경돼 자동 제출하지 않습니다.", claimed: true };
         }
         const pinClaimed = await this.deps.claim("pin", outerFingerprint);
@@ -273,7 +284,7 @@ export class CompletionCoordinator {
         if (afterClaim.fingerprint !== fresh.fingerprint) {
           return { kind: "handed_off", message: "PIN 결제 클릭 권한 부여 중 화면이 변경됐습니다. 자동 재제출하지 않습니다.", claimed: true };
         }
-        if (!this.formStillMatches(inspectOptions, expectedAmountKrw, expectedFormFingerprint)) {
+        if (!this.formStillMatches(inspectOptions, expectedAmountKrw)) {
           return { kind: "handed_off", message: "PIN 결제 클릭 권한 부여 중 예약 내용 또는 결제금액이 변경됐습니다. 자동 재제출하지 않습니다.", claimed: true };
         }
         const pinDispatched = this.deps.adapter.submitInner(afterClaim.fingerprint);
@@ -292,7 +303,7 @@ export class CompletionCoordinator {
           claimed: true,
         };
       }
-      if (!(await this.deps.sleep(50, signal))) break;
+      if (!(await this.deps.sleep(PIN_POLL_MS, signal))) break;
     }
     return signal.aborted
       ? { kind: "handed_off", message: "결제 제출 뒤 중지 요청을 받아 결과를 확정할 수 없습니다.", claimed: true }
@@ -302,12 +313,8 @@ export class CompletionCoordinator {
   private formStillMatches(
     inspectOptions: ReservationFormInspectOptions,
     expectedAmountKrw: number,
-    expectedFingerprint: string,
   ): boolean {
-    const form = this.deps.adapter.inspectFormBelowPin(inspectOptions);
-    return form.kind === "ready"
-      && form.facts.currentAmountKrw === expectedAmountKrw
-      && form.fingerprint === expectedFingerprint;
+    return this.deps.adapter.paymentContextMatchesBelowPin(inspectOptions, expectedAmountKrw);
   }
 
   private async observeSuccess(

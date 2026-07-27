@@ -673,6 +673,82 @@ test("PIN은 same-origin, same-document, iframe 0, password input 0, visible dig
   });
 });
 
+test("상단·본문 exact heading 중복은 유일한 keypad control 집합으로 분류한다", () => {
+  const document = documentFromFixture("catchpay-pin.html", FORM_URL);
+  const dialog = document.querySelector('[role="dialog"]');
+  dialog.prepend(Object.assign(document.createElement("h2"), {
+    textContent: "캐치페이 비밀번호 입력",
+  }));
+  dialog.removeAttribute("role");
+
+  const inspection = new ReservationFormAdapter(document)
+    .inspect(options(ZERO_EXPECTATION, ZERO_SUCCESS_EXPECTATION));
+
+  assert.equal(inspection.kind, "pin");
+});
+
+test("시각적으로 렌더된 PIN surface는 aria-hidden/inert여도 분류하고 CSS 비표시는 거부한다", () => {
+  const isolated = documentFromFixture("catchpay-pin.html", FORM_URL);
+  const isolatedDialog = isolated.querySelector('[role="dialog"]');
+  isolatedDialog.setAttribute("aria-hidden", "true");
+  isolatedDialog.setAttribute("inert", "");
+  assert.equal(
+    new ReservationFormAdapter(isolated).inspect(options(ZERO_EXPECTATION, ZERO_SUCCESS_EXPECTATION)).kind,
+    "pin",
+  );
+
+  for (const hide of [
+    (dialog) => { dialog.hidden = true; },
+    (dialog) => { dialog.style.display = "none"; },
+    (dialog) => { dialog.style.visibility = "hidden"; },
+  ]) {
+    const hidden = documentFromFixture("catchpay-pin.html", FORM_URL);
+    hide(hidden.querySelector('[role="dialog"]'));
+    assert.notEqual(
+      new ReservationFormAdapter(hidden).inspect(options(ZERO_EXPECTATION, ZERO_SUCCESS_EXPECTATION)).kind,
+      "pin",
+    );
+  }
+});
+
+test("PIN modal 아래 stable context는 접근성 은닉만 허용하고 값 변경·CSS 비표시는 거부한다", () => {
+  const matchesAfter = (mutate = () => {}) => {
+    const document = documentFromFixture("catchpay-paid-form.html", PAID_FORM_URL);
+    const background = document.createElement("div");
+    background.setAttribute("aria-hidden", "true");
+    background.setAttribute("inert", "");
+    while (document.body.firstChild) background.append(document.body.firstChild);
+    document.body.append(background);
+    const pinDocument = documentFromFixture("catchpay-pin.html", PAID_FORM_URL);
+    document.body.append(document.importNode(pinDocument.querySelector('[role="dialog"]'), true));
+    mutate(document);
+    return new ReservationFormAdapter(document).paymentContextMatchesBelowPin(
+      options(PAID_EXPECTATION, PAID_SUCCESS_EXPECTATION),
+      20_000,
+    );
+  };
+
+  assert.equal(matchesAfter(), true);
+  assert.equal(matchesAfter((document) => {
+    const summary = [...document.querySelectorAll("p")]
+      .find((element) => element.textContent?.includes("오전 11:00"));
+    summary.textContent = summary.textContent.replace("08월 11일", "08월 12일");
+  }), false);
+  assert.equal(matchesAfter((document) => {
+    const radios = document.querySelectorAll('input[type="radio"][name="payment-type"]');
+    radios[0].checked = false;
+    radios[1].checked = true;
+  }), false);
+  assert.equal(matchesAfter((document) => {
+    const label = [...document.querySelectorAll("p, dt, span, div, h1, h2, h3")]
+      .find((element) => element.textContent?.trim() === "총 결제 금액");
+    label.nextElementSibling.textContent = "30,000원";
+  }), false);
+  assert.equal(matchesAfter((document) => {
+    document.querySelector("header h1").style.display = "none";
+  }), false);
+});
+
 test("digit 누락·중복·iframe·password input 변형은 지원하지 않는다", () => {
   const missingDigit = documentFor(`
     <section><h2>캐치페이 비밀번호 입력</h2><p>비밀번호를 입력해 주세요</p>
@@ -732,7 +808,7 @@ test("digit 누락·중복·iframe·password input 변형은 지원하지 않는
   assert.equal(passwordResult.code, "pin_keypad_unsupported");
 });
 
-test("PIN surface는 form path·same-origin·유일 heading·전체삭제·내부 submit이 모두 유일해야 한다", () => {
+test("PIN surface는 form path·same-origin·유일 keypad·전체삭제·내부 submit이 모두 유일해야 한다", () => {
   const wrongOrigin = documentFromFixture(
     "catchpay-pin.html",
     "https://example.com/ct/reservation/form",
@@ -757,6 +833,13 @@ test("PIN surface는 form path·same-origin·유일 heading·전체삭제·내�
   }));
   assert.equal(
     new ReservationFormAdapter(duplicateHeading).inspect(options(ZERO_EXPECTATION, ZERO_SUCCESS_EXPECTATION)).kind,
+    "pin",
+  );
+
+  const duplicateDialog = documentFromFixture("catchpay-pin.html", FORM_URL);
+  duplicateDialog.body.append(duplicateDialog.querySelector('[role="dialog"]').cloneNode(true));
+  assert.equal(
+    new ReservationFormAdapter(duplicateDialog).inspect(options(ZERO_EXPECTATION, ZERO_SUCCESS_EXPECTATION)).kind,
     "unknown",
   );
 

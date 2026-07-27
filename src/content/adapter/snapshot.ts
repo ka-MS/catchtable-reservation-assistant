@@ -1,4 +1,11 @@
-import { cleanText, fnvHash, isDisabled, safeText, visibleAll } from "./dom.js";
+import {
+  cleanText,
+  fnvHash,
+  isDisabled,
+  isElementVisuallyHidden,
+  safeText,
+  visibleAll,
+} from "./dom.js";
 import { findActiveDialog, findVisiblePresentationSheet } from "./dialog.js";
 
 export interface StageSnapshot {
@@ -31,11 +38,14 @@ function maskPii(value: string): string {
 }
 
 function hasCatchPayPinSurface(document: Document): boolean {
-  if (visibleAll<HTMLElement>(document, 'h1, h2, h3, [role="heading"]')
+  const rendered = <T extends Element>(selector: string): T[] =>
+    Array.from(document.querySelectorAll<T>(selector))
+      .filter((element) => !isElementVisuallyHidden(element));
+  if (rendered<HTMLElement>('h1, h2, h3, [role="heading"]')
     .some((heading) => safeText(heading.textContent) === CATCHPAY_PIN_HEADING)) {
     return true;
   }
-  const labels = visibleAll<HTMLButtonElement>(document, "button")
+  const labels = rendered<HTMLButtonElement>("button")
     .map((button) => safeText(button.textContent));
   const digits = new Set(labels.filter((label) => /^\d$/.test(label)));
   return digits.size >= 4 && labels.includes("전체삭제") && labels.includes("결제하기");

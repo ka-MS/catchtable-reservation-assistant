@@ -53,7 +53,7 @@ function harness(document, onSleep = () => {}) {
     now: () => now,
     sleep: async (ms, signal) => {
       now += ms;
-      onSleep();
+      onSleep(ms);
       return !signal.aborted;
     },
     claim: async (phase, fingerprint) => {
@@ -229,6 +229,200 @@ test("유료 폼은 outer·pin claim을 각각 한 번만 받은 뒤 성공 근�
   ]);
   assert.equal(telemetry[1].attributes.paymentPinProvided, true);
   assert.equal(JSON.stringify(telemetry).includes(testPin), false);
+});
+
+test("PIN digit 사이에 사이트 상태 반영을 기다린 뒤 네 자리와 내부 submit을 완료한다", async () => {
+  const document = new JSDOM(fixture("catchpay-paid-form.html"), { url: FORM_URL }).window.document;
+  const paidIntent = {
+    ...INTENT,
+    shopSlug: "pizzeriamarket",
+    shopDisplayName: "더피제리아마켓 하남미사",
+    reservationDate: "2026-08-11",
+    selectedMinutes: 660,
+  };
+  let pendingDigit = false;
+  let acceptedDigits = 0;
+  let innerClicks = 0;
+  [...document.querySelectorAll("button")]
+    .find((button) => button.textContent?.trim() === "자동결제로 예약하기")
+    .addEventListener("click", () => {
+      const pinDocument = new JSDOM(fixture("catchpay-pin.html"), { url: FORM_URL }).window.document;
+      const dialog = document.importNode(pinDocument.querySelector('[role="dialog"]'), true);
+      const inner = [...dialog.querySelectorAll("button")]
+        .find((button) => button.textContent?.trim() === "결제하기");
+      for (const button of dialog.querySelectorAll("button")) {
+        if (/^\d$/.test(button.textContent?.trim() ?? "")) {
+          button.addEventListener("click", () => {
+            if (!pendingDigit) pendingDigit = true;
+          });
+        }
+      }
+      inner.addEventListener("click", () => {
+        innerClicks += 1;
+        showSuccess(document, "catchpay-success.html");
+        const paragraphs = document.querySelectorAll("li p");
+        paragraphs[0].textContent = "더피제리아마켓 하남미사";
+        paragraphs[1].textContent = "2026.08.11 (화) · 오전 11:00 · 2명";
+      });
+      document.body.append(dialog);
+    });
+  const { coordinator, claims } = harness(document, () => {
+    if (!pendingDigit) return;
+    pendingDigit = false;
+    acceptedDigits += 1;
+    if (acceptedDigits === 4) {
+      [...document.querySelectorAll("button")]
+        .find((button) => button.textContent?.trim() === "결제하기").disabled = false;
+    }
+  });
+
+  const result = await coordinator.run(
+    config(),
+    paidIntent,
+    new AbortController().signal,
+    () => ["3", "1", "4", "2"].join(""),
+  );
+
+  assert.equal(result.kind, "completed", JSON.stringify(result));
+  assert.equal(acceptedDigits, 4);
+  assert.equal(innerClicks, 1);
+  assert.deepEqual(claims.map((claim) => claim.phase), ["outer", "pin"]);
+});
+
+test("PIN digit settle 중 stop은 추가 digit·pin claim·내부 submit 없이 결과불명 인계한다", async () => {
+  const document = new JSDOM(fixture("catchpay-paid-form.html"), { url: FORM_URL }).window.document;
+  const controller = new AbortController();
+  const paidIntent = {
+    ...INTENT,
+    shopSlug: "pizzeriamarket",
+    shopDisplayName: "더피제리아마켓 하남미사",
+    reservationDate: "2026-08-11",
+    selectedMinutes: 660,
+  };
+  let digitClicks = 0;
+  let innerClicks = 0;
+  [...document.querySelectorAll("button")]
+    .find((button) => button.textContent?.trim() === "자동결제로 예약하기")
+    .addEventListener("click", () => {
+      const pinDocument = new JSDOM(fixture("catchpay-pin.html"), { url: FORM_URL }).window.document;
+      const dialog = document.importNode(pinDocument.querySelector('[role="dialog"]'), true);
+      for (const button of dialog.querySelectorAll("button")) {
+        if (/^\d$/.test(button.textContent?.trim() ?? "")) {
+          button.addEventListener("click", () => {
+            digitClicks += 1;
+            controller.abort();
+          });
+        }
+      }
+      [...dialog.querySelectorAll("button")]
+        .find((button) => button.textContent?.trim() === "결제하기")
+        .addEventListener("click", () => { innerClicks += 1; });
+      document.body.append(dialog);
+    });
+  const { coordinator, claims } = harness(document);
+  const testPin = ["4", "2", "8", "6"].join("");
+
+  const result = await coordinator.run(config(), paidIntent, controller.signal, () => testPin);
+
+  assert.equal(result.kind, "handed_off");
+  assert.equal(result.claimed, true);
+  assert.match(result.message, /중지 요청/);
+  assert.equal(JSON.stringify(result).includes(testPin), false);
+  assert.equal(digitClicks, 1);
+  assert.equal(innerClicks, 0);
+  assert.deepEqual(claims.map((claim) => claim.phase), ["outer"]);
+});
+
+test("유료 PIN surface가 없으면 15초에서 outer 재클릭 없이 bounded 인계한다", async () => {
+  const document = new JSDOM(fixture("catchpay-paid-form.html"), { url: FORM_URL }).window.document;
+  document.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+    if ((input.closest("label")?.textContent ?? "").includes("[필수]")) input.checked = true;
+  });
+  const paidIntent = {
+    ...INTENT,
+    shopSlug: "pizzeriamarket",
+    shopDisplayName: "더피제리아마켓 하남미사",
+    reservationDate: "2026-08-11",
+    selectedMinutes: 660,
+  };
+  let outerClicks = 0;
+  let waitedAfterOuterMs = 0;
+  [...document.querySelectorAll("button")]
+    .find((button) => button.textContent?.trim() === "자동결제로 예약하기")
+    .addEventListener("click", () => { outerClicks += 1; });
+  const { coordinator, claims } = harness(document, (ms) => {
+    if (outerClicks === 1) waitedAfterOuterMs += ms;
+  });
+
+  const result = await coordinator.run(
+    config(),
+    paidIntent,
+    new AbortController().signal,
+    () => ["8", "5", "2", "0"].join(""),
+  );
+
+  assert.equal(result.kind, "handed_off");
+  assert.equal(result.claimed, true);
+  assert.equal(waitedAfterOuterMs, 15_000);
+  assert.equal(outerClicks, 1);
+  assert.deepEqual(claims.map((claim) => claim.phase), ["outer"]);
+});
+
+test("PIN modal과 배경 폼이 aria-hidden/inert로 접근성 격리돼도 시각 렌더와 stable context가 같으면 진행한다", async () => {
+  const document = new JSDOM(fixture("catchpay-paid-form.html"), { url: FORM_URL }).window.document;
+  const paidIntent = {
+    ...INTENT,
+    shopSlug: "pizzeriamarket",
+    shopDisplayName: "더피제리아마켓 하남미사",
+    reservationDate: "2026-08-11",
+    selectedMinutes: 660,
+  };
+  document.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+    if ((input.closest("label")?.textContent ?? "").includes("[필수]")) input.checked = true;
+  });
+  [...document.querySelectorAll("button")]
+    .find((button) => button.textContent?.trim() === "자동결제로 예약하기")
+    .addEventListener("click", () => {
+      const background = document.createElement("div");
+      background.setAttribute("aria-hidden", "true");
+      background.setAttribute("inert", "");
+      while (document.body.firstChild) background.append(document.body.firstChild);
+      document.body.append(background);
+
+      const pinDocument = new JSDOM(fixture("catchpay-pin.html"), { url: FORM_URL }).window.document;
+      const dialog = document.importNode(pinDocument.querySelector('[role="dialog"]'), true);
+      const inner = [...dialog.querySelectorAll("button")]
+        .find((button) => button.textContent?.trim() === "결제하기");
+      let digits = 0;
+      for (const button of dialog.querySelectorAll("button")) {
+        if (/^\d$/.test(button.textContent?.trim() ?? "")) {
+          button.addEventListener("click", () => {
+            digits += 1;
+            if (digits === 4) inner.disabled = false;
+          });
+        }
+      }
+      inner.addEventListener("click", () => {
+        showSuccess(document, "catchpay-success.html");
+        const paragraphs = document.querySelectorAll("li p");
+        paragraphs[0].textContent = "더피제리아마켓 하남미사";
+        paragraphs[1].textContent = "2026.08.11 (화) · 오전 11:00 · 2명";
+      });
+      document.body.append(dialog);
+      document.body.setAttribute("aria-hidden", "true");
+      document.body.setAttribute("inert", "");
+    });
+
+  const { coordinator, claims } = harness(document);
+  const result = await coordinator.run(
+    config(),
+    paidIntent,
+    new AbortController().signal,
+    () => ["2", "4", "6", "8"].join(""),
+  );
+
+  assert.equal(result.kind, "completed", JSON.stringify(result));
+  assert.deepEqual(claims.map((claim) => claim.phase), ["outer", "pin"]);
 });
 
 test("PIN overlay 아래 결제금액이 바뀌면 digit·pin claim·내부 제출을 하지 않는다", async () => {

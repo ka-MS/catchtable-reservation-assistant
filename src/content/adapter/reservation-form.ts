@@ -6,7 +6,15 @@
 // 네이티브 header 안 단일 h1에만 있다(0원·유료 폼 교차 실측). header 내부에는 이 h1과
 // 닫기 버튼만 있다. document.title, 본문의 다른 heading, generated class/id/aria-label/
 // aria-labelledby는 anchor로 쓰지 않는다 — 두 표본 모두 이런 속성이 없었다.
-import { fnvHash, isDisabled, isElementHidden, normalizedText, safeText, visibleAll } from "./dom.js";
+import {
+  fnvHash,
+  isDisabled,
+  isElementHidden,
+  isElementVisuallyHidden,
+  normalizedText,
+  safeText,
+  visibleAll,
+} from "./dom.js";
 
 export type ReservationFormUnknownCode =
   | "amount_ambiguous"
@@ -141,10 +149,20 @@ function effectiveMarkerText(input: Element): string {
   return heading ? safeText(heading.textContent) : own;
 }
 
-function isStruckThrough(element: Element): boolean {
+type HiddenPredicate = (element: Element) => boolean;
+
+function availableAll<T extends Element>(
+  root: ParentNode,
+  selector: string,
+  isHidden: HiddenPredicate,
+): T[] {
+  return Array.from(root.querySelectorAll<T>(selector)).filter((element) => !isHidden(element));
+}
+
+function isStruckThrough(element: Element, isHidden: HiddenPredicate = isElementHidden): boolean {
   for (let current: Element | null = element; current; current = current.parentElement) {
     if (current.tagName === "S" || current.tagName === "DEL") return true;
-    if (current.getAttribute("aria-hidden") === "true") return true;
+    if (isHidden(current)) return true;
     const decoration = current.ownerDocument.defaultView?.getComputedStyle(current).textDecorationLine;
     if (decoration?.includes("line-through")) return true;
   }
@@ -153,8 +171,11 @@ function isStruckThrough(element: Element): boolean {
 
 /** "결제금액"/"총 결제 금액" 라벨과 구조적으로 연결된 컨테이너 안에서 취소선이 아닌
  * KRW 값만 모은다(20-design.md §4.1). */
-function collectCurrentAmounts(document: Document): number[] {
-  const labels = visibleAll<HTMLElement>(document, "p, dt, span, div, h1, h2, h3")
+function collectCurrentAmounts(
+  document: Document,
+  isHidden: HiddenPredicate = isElementHidden,
+): number[] {
+  const labels = availableAll<HTMLElement>(document, "p, dt, span, div, h1, h2, h3", isHidden)
     .filter((el) => {
       const own = safeText(el.textContent);
       return own === "결제금액" || own === "총 결제 금액";
@@ -173,13 +194,13 @@ function collectCurrentAmounts(document: Document): number[] {
       const parts: string[] = [];
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         const parent = node.parentElement;
-        if (!parent || isStruckThrough(parent) || isElementHidden(parent)) continue;
+        if (!parent || isStruckThrough(parent, isHidden) || isHidden(parent)) continue;
         parts.push(node.textContent ?? "");
       }
       return safeText(parts.join(""));
     };
     const matchingElements = candidates.filter((element) =>
-      !isStruckThrough(element) && !isElementHidden(element) && amountPattern.test(currentText(element)));
+      !isStruckThrough(element, isHidden) && !isHidden(element) && amountPattern.test(currentText(element)));
     const amountElements = matchingElements.filter((element) =>
       !matchingElements.some((other) => other !== element && element.contains(other)));
     const amounts = amountElements.map((element) =>
@@ -202,8 +223,11 @@ function hasLoginGate(document: Document): boolean {
   return visibleAll<HTMLButtonElement>(document, "button").some((button) => safeText(button.textContent) === "가입하기");
 }
 
-function paymentTypeRadios(document: Document): HTMLInputElement[] {
-  return visibleAll<HTMLInputElement>(document, 'input[type="radio"][name="payment-type"]');
+function paymentTypeRadios(
+  document: Document,
+  isHidden: HiddenPredicate = isElementHidden,
+): HTMLInputElement[] {
+  return availableAll<HTMLInputElement>(document, 'input[type="radio"][name="payment-type"]', isHidden);
 }
 
 function paymentLabelText(radio: HTMLInputElement): string {
@@ -214,8 +238,11 @@ function paymentLabelText(radio: HTMLInputElement): string {
   return labels.sort((a, b) => b.length - a.length)[0] ?? labelTextFor(radio);
 }
 
-function catchPayFacts(document: Document): { checked: boolean; generalSelected: boolean } {
-  const radios = paymentTypeRadios(document);
+function catchPayFacts(
+  document: Document,
+  isHidden: HiddenPredicate = isElementHidden,
+): { checked: boolean; generalSelected: boolean } {
+  const radios = paymentTypeRadios(document, isHidden);
   const explicitCatchPay = radios.filter((radio) => paymentLabelText(radio).includes("캐치페이"));
   const generalCandidates = radios.filter((radio) => paymentLabelText(radio).includes("일반결제"));
   const general = generalCandidates.length === 1 ? generalCandidates[0] : undefined;
@@ -304,20 +331,31 @@ function readyFacts(document: Document, currentAmountKrw: number): ReservationFo
 /** 20-design.md §4.3 / site-behavior.md §12.8/§12.12: 폼 매장명은 유일하고 비어 있지 않은
  * header h1 textContent에서만 읽는다. 부재·중복·빈 값은 null(불일치로 취급)이고
  * document.title이나 다른 heading으로 fallback하지 않는다. */
-function readShopDisplayNameFromHeader(document: Document): string | null {
-  const candidates = Array.from(document.querySelectorAll("header h1"));
+function readShopDisplayNameFromHeader(
+  document: Document,
+  isHidden?: HiddenPredicate,
+): string | null {
+  const candidates = Array.from(document.querySelectorAll("header h1"))
+    .filter((element) => isHidden === undefined || !isHidden(element));
   if (candidates.length !== 1) return null;
   const text = safeText(candidates[0].textContent);
   return text === "" ? null : text;
 }
 
-function shopNameMatches(document: Document, expectation: ReservationFormExpectation): boolean {
-  const shopDisplayName = readShopDisplayNameFromHeader(document);
+function shopNameMatches(
+  document: Document,
+  expectation: ReservationFormExpectation,
+  isHidden?: HiddenPredicate,
+): boolean {
+  const shopDisplayName = readShopDisplayNameFromHeader(document, isHidden);
   return shopDisplayName !== null && normalizedText(shopDisplayName) === normalizedText(expectation.shopDisplayName);
 }
 
-function reservationSummaryElements(document: Document): HTMLElement[] {
-  const candidates = visibleAll<HTMLElement>(document, "p, div, span")
+function reservationSummaryElements(
+  document: Document,
+  isHidden: HiddenPredicate = isElementHidden,
+): HTMLElement[] {
+  const candidates = availableAll<HTMLElement>(document, "p, div, span", isHidden)
     .filter((element) => {
       const text = normalizedText(element.textContent);
       return /\d{1,2}월\s*\d{1,2}일/.test(text) && /오전|오후/.test(text) && /\d+\s*명/.test(text);
@@ -326,8 +364,12 @@ function reservationSummaryElements(document: Document): HTMLElement[] {
     !candidates.some((other) => other !== element && element.contains(other)));
 }
 
-function dateTimePersonMatches(document: Document, expectation: ReservationFormExpectation): boolean {
-  return reservationSummaryElements(document).some((el) => {
+function dateTimePersonMatches(
+  document: Document,
+  expectation: ReservationFormExpectation,
+  isHidden: HiddenPredicate = isElementHidden,
+): boolean {
+  return reservationSummaryElements(document, isHidden).some((el) => {
     const text = normalizedText(el.textContent);
     return text.includes(normalizedText(expectation.dateText))
       && text.includes(normalizedText(expectation.timeText))
@@ -335,8 +377,13 @@ function dateTimePersonMatches(document: Document, expectation: ReservationFormE
   });
 }
 
-function intentMatches(document: Document, expectation: ReservationFormExpectation): boolean {
-  return shopNameMatches(document, expectation) && dateTimePersonMatches(document, expectation);
+function intentMatches(
+  document: Document,
+  expectation: ReservationFormExpectation,
+  isHidden: HiddenPredicate = isElementHidden,
+): boolean {
+  return shopNameMatches(document, expectation, isHidden)
+    && dateTimePersonMatches(document, expectation, isHidden);
 }
 
 /** action 직전 stale intent를 검출하기 위한 실제 DOM 값. expectation 일치 boolean만
@@ -363,20 +410,26 @@ function holdState(document: Document): "active" | "expired" | "unknown" {
 
 // ---- PIN ----
 
-function findPinDialog(document: Document): HTMLElement | null {
-  const headings = visibleAll<HTMLElement>(document, "h1, h2, h3, [role=heading]");
+function findPinSurface(document: Document): HTMLElement | null {
+  const headings = availableAll<HTMLElement>(
+    document,
+    "h1, h2, h3, [role=heading]",
+    isElementVisuallyHidden,
+  );
   const matches = headings.filter((el) => safeText(el.textContent) === PIN_HEADING);
-  if (matches.length !== 1) return null;
-  return matches[0].closest('[role="dialog"]') ?? matches[0].parentElement;
+  if (matches.length === 0) return null;
+  // live PIN overlay는 상단·본문 heading을 중복 렌더하지만 dialog role을
+  // 노출하지 않는다. 문서 전체에서 keypad control 집합의 유일성을 검증한다.
+  return document.body;
 }
 
 function pinDigitButtons(scope: Element): HTMLButtonElement[] {
-  return visibleAll<HTMLButtonElement>(scope, "button")
+  return availableAll<HTMLButtonElement>(scope, "button", isElementVisuallyHidden)
     .filter((button) => /^\d$/.test(normalizedText(button.textContent)));
 }
 
 function pinInnerSubmitButton(scope: Element): HTMLButtonElement | null {
-  const matches = visibleAll<HTMLButtonElement>(scope, "button")
+  const matches = availableAll<HTMLButtonElement>(scope, "button", isElementVisuallyHidden)
     .filter((button) => safeText(button.textContent) === "결제하기");
   return matches.length === 1 ? matches[0] : null;
 }
@@ -389,7 +442,7 @@ function pinKeypadValid(document: Document, dialog: HTMLElement): boolean {
   const digitButtons = pinDigitButtons(dialog);
   if (digitButtons.length !== 10) return false;
   const digits = new Set(digitButtons.map((button) => normalizedText(button.textContent)));
-  const clearButtons = visibleAll<HTMLButtonElement>(dialog, "button")
+  const clearButtons = availableAll<HTMLButtonElement>(dialog, "button", isElementVisuallyHidden)
     .filter((button) => safeText(button.textContent) === "전체삭제");
   return digits.size === 10 && clearButtons.length === 1 && pinInnerSubmitButton(dialog) !== null;
 }
@@ -430,7 +483,7 @@ export class ReservationFormAdapter {
       return { kind: "success", facts, fingerprint: fp("rf-success", facts) };
     }
 
-    const pinDialog = findPinDialog(document);
+    const pinDialog = findPinSurface(document);
     if (pinDialog) {
       if (!pinKeypadValid(document, pinDialog)) {
         const shape = {
@@ -456,17 +509,18 @@ export class ReservationFormAdapter {
     return this.inspectReservationForm(options);
   }
 
-  /** PIN overlay가 같은 document 위에 열린 동안 그 아래 예약 폼을 다시 검증한다. */
-  inspectFormBelowPin(options: ReservationFormInspectOptions): ReservationFormPageInspection {
-    const pinDialog = findPinDialog(this.document);
-    if (!pinDialog || !pinKeypadValid(this.document, pinDialog)) {
-      return {
-        kind: "unknown",
-        code: "pin_keypad_unsupported",
-        fingerprint: fp("rf-pin-invalid", { present: pinDialog !== null }),
-      };
-    }
-    return this.inspectReservationForm(options);
+  /** PIN modal이 바깥 form을 접근성 tree에서 감춰도 stable 결제 context만 다시 검증한다. */
+  paymentContextMatchesBelowPin(
+    options: ReservationFormInspectOptions,
+    expectedAmountKrw: number,
+  ): boolean {
+    const pinDialog = findPinSurface(this.document);
+    if (!pinDialog || !pinKeypadValid(this.document, pinDialog)) return false;
+    const amounts = collectCurrentAmounts(this.document, isElementVisuallyHidden);
+    if (amounts.length !== 1 || amounts[0] !== expectedAmountKrw) return false;
+    if (!intentMatches(this.document, options.expectation, isElementVisuallyHidden)) return false;
+    const catchPay = catchPayFacts(this.document, isElementVisuallyHidden);
+    return catchPay.checked && !catchPay.generalSelected;
   }
 
   private inspectReservationForm(options: ReservationFormInspectOptions): ReservationFormPageInspection {
@@ -595,7 +649,7 @@ export class ReservationFormAdapter {
   }
 
   enterPinDigit(fingerprint: string, digit: string): boolean {
-    const dialog = findPinDialog(this.document);
+    const dialog = findPinSurface(this.document);
     if (!dialog || !this.freshPinFingerprint(dialog, fingerprint)) return false;
     const target = pinDigitButtons(dialog).find((button) => normalizedText(button.textContent) === digit);
     if (!target) return false;
@@ -604,7 +658,7 @@ export class ReservationFormAdapter {
   }
 
   submitInner(fingerprint: string): boolean {
-    const dialog = findPinDialog(this.document);
+    const dialog = findPinSurface(this.document);
     if (!dialog || !this.freshPinFingerprint(dialog, fingerprint)) return false;
     const innerButton = pinInnerSubmitButton(dialog);
     if (!innerButton || isDisabled(innerButton)) return false;

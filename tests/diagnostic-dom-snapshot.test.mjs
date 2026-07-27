@@ -89,6 +89,8 @@ test("CatchPay PIN surface snapshots omit controls, keypad order and active inpu
       ${digits}<button>전체삭제</button><button disabled>결제하기</button>
     </section></main>
   `, { url: "https://app.catchtable.co.kr/ct/reservation/form", pretendToBeVisual: true }).window.document;
+  document.querySelector('[role="dialog"]').setAttribute("aria-hidden", "true");
+  document.querySelector('[role="dialog"]').setAttribute("inert", "");
   document.querySelector("button").focus();
   const snapshot = captureDiagnosticSnapshot(document, {
     runId: "run-pin",

@@ -18,6 +18,18 @@ export function isElementHidden(element: Element): boolean {
   return false;
 }
 
+/** 접근성 격리(aria-hidden/inert)와 무관하게 픽셀에 렌더될 수 있는지 판정한다.
+ * PIN credential surface처럼 시각 DOM과 접근성 tree가 어긋난 실측 경계에서만 사용한다. */
+export function isElementVisuallyHidden(element: Element): boolean {
+  const view = element.ownerDocument.defaultView;
+  for (let current: Element | null = element; current; current = current.parentElement) {
+    if (current.hasAttribute("hidden")) return true;
+    const style = view?.getComputedStyle(current);
+    if (style?.display === "none" || style?.visibility === "hidden") return true;
+  }
+  return false;
+}
+
 export function visibleAll<T extends Element>(root: ParentNode, selector: string): T[] {
   return Array.from(root.querySelectorAll<T>(selector)).filter((element) => !isElementHidden(element));
 }

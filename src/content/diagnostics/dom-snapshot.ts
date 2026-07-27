@@ -10,7 +10,14 @@ import type {
 } from "../../shared/diagnostics/types.js";
 import type { TraceError } from "../../shared/telemetry/types.js";
 import { readCalendarCells, readDisplayedCalendarMonth } from "../adapter/calendar-dom.js";
-import { cleanText, fnvHash, isDisabled, isElementHidden, safeText } from "../adapter/dom.js";
+import {
+  cleanText,
+  fnvHash,
+  isDisabled,
+  isElementHidden,
+  isElementVisuallyHidden,
+  safeText,
+} from "../adapter/dom.js";
 import { findActiveDialog, findVisiblePresentationSheet } from "../adapter/dialog.js";
 
 const MAX_ITEMS = 24;
@@ -142,6 +149,11 @@ function visibleElements(document: Document, selector: string): Element[] {
   return Array.from(document.querySelectorAll(selector)).filter((element) => !isElementHidden(element));
 }
 
+function renderedElements(document: Document, selector: string): Element[] {
+  return Array.from(document.querySelectorAll(selector))
+    .filter((element) => !isElementVisuallyHidden(element));
+}
+
 function summaries(document: Document, selector: string): DiagnosticElement[] {
   return visibleElements(document, selector).slice(0, MAX_ITEMS).map(elementSummary);
 }
@@ -159,11 +171,11 @@ function queryEvidence(document: Document): DiagnosticQueryEvidence[] {
 }
 
 function hasCatchPayPinSurface(document: Document): boolean {
-  if (visibleElements(document, 'h1, h2, h3, [role="heading"]')
+  if (renderedElements(document, 'h1, h2, h3, [role="heading"]')
     .some((element) => safeText(element.textContent) === "캐치페이 비밀번호 입력")) {
     return true;
   }
-  const labels = visibleElements(document, "button")
+  const labels = renderedElements(document, "button")
     .map((button) => safeText(button.textContent));
   const digits = new Set(labels.filter((label) => /^\d$/.test(label)));
   return digits.size >= 4 && labels.includes("전체삭제") && labels.includes("결제하기");

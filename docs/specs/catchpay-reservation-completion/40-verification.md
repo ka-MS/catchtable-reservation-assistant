@@ -1,6 +1,6 @@
 # CatchPay 예약 완주 검증
 
-**상태:** 자동 검증 완료, 최신 dist 유료 Chrome E2E 진행
+**상태:** 완료
 **기준:** `ab5e825` 이후 Codex 단독 구현
 
 ## 1. 자동 검증
@@ -10,7 +10,7 @@
 ```text
 npm run check
   typecheck: 통과
-  node test: 511/511 통과
+  node test: 518/518 통과
   dist validation: 통과
   MAIN/ISOLATED independence: 통과
 
@@ -41,19 +41,37 @@ git diff --check: 통과
 |---|---|---|
 | `민석 + woo_blanc_` 0원 | 실예약 생성 확인 | outer 1회, PIN 없음, 성공 path·문구·방문예정 일치. 초기 matcher의 heading 한정으로 terminal은 결과 불명 인계했으나 재제출하지 않았고, 실제 성공 DOM을 분석에 선반영한 뒤 fixture 회귀를 추가했다. 사용자가 취소 완료 |
 | `ms + woo_blanc_` 비로그인 | 안전 인계 | `login_required`, outer claim/dispatch 0회, `COMPLETING_RESERVATION` failure snapshot `ss-e06b7fd6`, 예약 생성 없음 |
-| `민석 + pizzeriamarket` 유료 | 최신 dist 실행 준비 | Side Panel 실제 실행, 완주 opt-in, 상한 500,000원, 일회성 password input까지 확인. 사용자의 직접 PIN 입력 뒤 실행·telemetry/storage 대조가 남음 |
+| `민석 + pizzeriamarket` 유료 | 실예약 생성과 `COMPLETED` 확인 | 20,000원, CatchPay selected, 일반결제 unselected, 필수 약관 3개. outer/PIN claim·dispatch 각 1회. same-origin·same-document keypad를 관측하고 성공 path·문구·방문예정 일치 뒤에만 terminal `COMPLETED`. 사용자가 취소 완료 |
 
-과거 실측에서는 더피제리아마켓 20,000원 CatchPay의 same-origin,
-same-document custom keypad와 실제 결제 성공을 확인했고 사용자가 예약을
-취소했다. 최신 구현 E2E는 Side Panel의 일회성 PIN 전달·자동 keypad
-입력·terminal 대조를 함께 검증하는 별도 gate다.
+최종 유료 실행의 completion phase 시각은 다음과 같다.
 
-## 3. 최신 유료 E2E 완료 조건
+- `form_ready` 12:05:18.081
+- `payment_authorization` 12:05:18.368
+- outer claim/dispatch 12:05:18.370/18.380
+- PIN surface 12:05:18.507
+- pin claim/dispatch 12:05:18.984/18.992
+- success observed와 terminal `COMPLETED` 12:05:21.558
 
-- 허용 매장·기간·2명·11:00~21:00·500,000원 이하 재검증
-- Side Panel password input에서만 PIN을 받아 시작 직후 input 비움
-- outer와 PIN 내부 submit 각각 1회 이하
-- 성공 화면 세 조건과 terminal `COMPLETED` 일치
-- run/event/snapshot의 seq·eventCount·dropped 상태 대조
-- `chrome.storage.local`과 IndexedDB에 `catchPayPin` key가 없음
-- 예약 취소와 환불 확인은 사용자 결과로만 기록
+outer dispatch에서 PIN surface까지 127ms, surface에서 pin dispatch까지
+485ms, pin dispatch에서 success까지 2.566초였다. PIN surface facts는
+same-origin·same-document, iframe/password input 0, keypad button
+10개였다.
+
+## 3. terminal·storage·diagnostic 대조
+
+성공 run의 진단 ZIP을 Side Panel에서 내보내 다음을 확인했다.
+
+- manifest event count 63, events `seq=1..63` 연속, snapshot 0
+- completion phase는 `paymentPinProvided=true`와 PIN UI 구조·성공
+  boolean만 보존
+- manifest/environment에는 secret-like key와 네 자리 문자열 값 없음
+- CSV의 secret-like column은 `paymentPinProvided`와
+  `passwordInputCount`뿐이며 raw PIN column 없음
+- 세 Chrome 프로필의 extension `chrome.storage.local`과 IndexedDB
+  LevelDB에 `catchPayPin` key 없음
+- 성공 telemetry가 있는 민석 프로필 IndexedDB에는 허용된
+  `paymentPinProvided` boolean만 존재
+- Side Panel PIN input은 실행 시작 때 즉시 비우는 자동 회귀를 통과
+
+예약 취소는 자동화하지 않았다. 사용자가 성공 직후 직접 취소 완료를
+확인했으며 환불의 금융기관 정산 상태는 별도로 판정하지 않았다.

@@ -1,8 +1,8 @@
 # CatchPay 예약 완주
 
-**상태:** 구현·자동 검증·자체 적대적 리뷰 완료, 최종 유료 E2E 진행
+**상태:** 완료
 **착수일:** 2026-07-24
-**현재 gate:** `40-verification.md` 최신 dist 유료 E2E
+**완료일:** 2026-07-27
 **구현 승인:** 2026-07-24 사용자 명시 승인
 
 ## 목표
@@ -41,7 +41,7 @@ HANDOFF·backlog 확인
 | [10-analysis.md](10-analysis.md) | 확정 | 사용자 관측, 기존 코드, Claude 실측, 불확실성과 범위 |
 | [20-design.md](20-design.md) | 승인됨 | 책임, 상태, 일회성 secret, 안전·테스트 계약 |
 | [30-implementation.md](30-implementation.md) | 완료 | 실패 테스트 우선 구현 순서와 결과 |
-| [40-verification.md](40-verification.md) | 진행 | 자동 검증과 통제된 Chrome E2E |
+| [40-verification.md](40-verification.md) | 완료 | 자동 검증과 통제된 Chrome E2E |
 | [50-adversarial-review.md](50-adversarial-review.md) | 완료 | 중복 결제, secret 유출, 오성공 판정 공격 |
 
 ## 기준 문서
@@ -88,14 +88,14 @@ CatchPay PIN raw 값은 spec, Git, orchestration task·message, Console, telemet
 
 ## 단계 상태
 
-- HANDOFF blocking backlog: `예약 완주 구현` 1건. 구현과 자동 검증은
-  완료됐으며 최신 dist 유료 E2E·최종 문서·커밋을 마치면 해제한다.
+- HANDOFF blocking backlog: 예약 완주 구현과 검증 완료로 해제.
 - 기존 CatchPay 완주 spec: 없음
 - 관련 선행 패키지: `reservation-flow-compatibility/02-payment-method-auto-advance/`
 - 현재 구현: Task 1~6과 자체 적대적 리뷰 수정 완료. stale intent,
   중복 제출, success 오판, PIN 비영속성과 진단 redaction을 회귀
   테스트로 고정했다.
 - Orca 실측: Claude Opus 4.8 worker 1명으로 C(비로그인)→A(0원)→B(유료) 순차 완료
-- 실예약: 우블랑·더피제리아마켓 모두 사용자가 직접 취소 완료, 환불 상태는 별도 미확인
-- 다음 행동: 최신 dist에서 Side Panel 일회성 PIN을 사용한
-  더피제리아마켓 유료 E2E와 terminal/storage 대조를 완료한다.
+- 실예약: 우블랑·더피제리아마켓 모두 사용자가 직접 취소 완료, 환불
+  정산 상태는 별도 미확인
+- 최종 유료 E2E: outer/PIN submit 각 1회, 성공 path·문구·방문예정
+  일치 뒤 `COMPLETED`; terminal·IndexedDB·storage·diagnostic 대조 완료

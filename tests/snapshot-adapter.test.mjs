@@ -81,8 +81,10 @@ test("fingerprint normalizes dynamic numbers", async () => {
 test("CatchPay PIN surface compact snapshot은 keypad 순서와 입력 상태를 수집하지 않는다", async () => {
   const dom = await loadFixture("catchpay-pin.html");
   const doc = dom.window.document;
-  const first = captureStageSnapshot(doc);
   const dialog = doc.querySelector('[role="dialog"]');
+  dialog.setAttribute("aria-hidden", "true");
+  dialog.setAttribute("inert", "");
+  const first = captureStageSnapshot(doc);
   const digitButtons = [...dialog.querySelectorAll("button")]
     .filter((button) => /^\d$/.test(button.textContent?.trim() ?? ""));
   digitButtons.reverse().forEach((button) => dialog.append(button));

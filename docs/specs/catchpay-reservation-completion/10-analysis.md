@@ -300,6 +300,114 @@ failure snapshot `ss-e06b7fd6`가 남아, 기존 예약 폼 handoff의 진단
 누락이 해소됐음을 확인했다. 스냅샷은 프로모션 오버레이의 버튼 구조만
 요약했고 로그인이나 결제를 진행하지 않았다.
 
+2026-07-27 최신 dist의 더피제리아마켓 유료 E2E에서는 예약금
+20,000원과 CatchPay 선택을 확인하고 outer claim/dispatch를 각각 한
+번 수행해 PIN 오버레이까지 도달했다. 접근성 tree에는 exact
+`캐치페이 비밀번호 입력` heading이 상단과 본문에 하나씩, 총 2개
+있었다. 현재 adapter의 문서 전체 heading 단일성 가정 때문에 PIN
+phase로 분류되지 않았고, PIN claim·digit action·내부 submit은 모두
+0회였다. 결과 관측 timeout 뒤 재제출 없이 `completionClaimed=true`
+`HANDED_OFF`로 끝났고, 사용자가 PIN이나 내부 결제를 수행하지 않아
+예약·결제는 생성되지 않았다.
+
+이 표본은 PIN UI가 제목을 중복 렌더하며 접근성 `dialog` 경계를
+노출하지 않음을 확정한다. 같은 날 `role=dialog` 하나에 두 heading이
+포함될 때만 허용한 최신 dist 재실행도 PIN phase 0회로 안전 인계됐다.
+따라서 heading 수나 조상 role을 identity로 사용하지 않는다. top-level
+문서에 exact heading이 하나 이상 있고 0~9 숫자 button, `전체삭제`,
+내부 `결제하기`가 각각 유일한 완전한 control 집합일 때만 지원한다.
+control 중복·누락은 복수/불완전 surface로 보고 계속 인계한다.
+
+10:29 control-set 수정 빌드는 PIN surface를 정상 분류했다
+(`sameOrigin=true`, `sameDocument=true`, iframe/password input 0,
+keypad button 10). 그러나 PIN 입력 전 `inspectFormBelowPin()`이
+제출 전 전체 ready fingerprint를 다시 요구하면서 인계됐다. live modal은
+배경 예약 정보를 픽셀로 남기지만 바깥 폼 control을 이전과 동일한
+visible shape로 열거하지 않는다. 전체 fingerprint에는 최종 button,
+점유 타이머, 약관과 그 visibility까지 섞여 있어, 설계가 요구한
+매장·날짜·시간·인원·금액·CatchPay 불변성보다 강한 false-negative
+조건이었다. 이 실행은 digit, pin claim과 내부 submit 모두 0회였고
+결제·예약은 생성되지 않았다.
+
+PIN 전후에는 modal 표시로 달라지는 전체 ready shape를 비교하지 않는다.
+같은 문서의 stable payment context인 매장 header, 예약 요약,
+현재 결제금액, CatchPay selected와 일반결제 unselected만 제출 전 값과
+다시 비교한다. 접근성 modal 때문에 `aria-hidden`/`inert`가 적용된
+배경도 읽을 수 있어야 하지만, HTML `hidden`, CSS `display:none`/
+`visibility:hidden`, anchor 부재·중복·불일치까지 허용하는 fallback은
+만들지 않는다.
+
+수정 dist의 10:42 사용자 수동 실행은 outer 뒤 PIN을 렌더하지 않고
+`예약을 진행 중입니다`로 바로 전환됐다. pin surface/claim/dispatch와
+성공 근거가 모두 없었고 15초 뒤 무재제출 결과 불명 인계됐다. 사용자는
+실제 결제·예약 없음도 확인했다. 이는 post-claim 불명 정책의 음성
+표본이며 stable-context live 통과 표본으로 세지 않는다.
+
+11:02 재실행도 15초 안에 PIN이나 성공을 분류하지 못했으며 terminal 뒤
+사용자 화면에는 입력 전 PIN keypad가 있었다. 다만 공유 화면의 시각은
+PIN 전이 시각이 아니므로 `PIN 렌더가 15초보다 늦다`고 확정하지 않는다.
+같은 조건의 11:09 재실행에서는 outer dispatch 91ms 뒤 PIN surface를
+관측했다.
+
+11:09 진단 bundle은 PIN 입력 동기화 결함을 확정한다. `pin_surface`
+facts는 same-origin·same-document, iframe/password input 0, digit
+button 10개와 내부 submit 비활성이었다. 20ms 뒤
+`PIN 입력 뒤 결제 화면을 확인할 수 없어 자동 제출하지 않습니다.`로
+끝났고, 화면의 PIN 진행 점은 하나만 채워져 있었다. 이는 첫 digit은
+등록됐지만 나머지 digit을 React 반영 대기 없이 연속 dispatch한 뒤
+즉시 확인해 내부 submit이 계속 비활성이었던 표본이다. pin claim,
+내부 submit과 성공 관측은 없었다. credential snapshot은 control과
+fragment를 보존하지 않아 PIN redaction도 유지됐다.
+
+따라서 PIN 입력은 각 digit 직전에 fresh keypad에서 표시 숫자를 다시
+찾아 한 번 클릭하고, click 사이에 bounded settle을 둬야 한다. 각
+settle 뒤 PIN surface와 stable payment context가 유지되지 않거나 네
+번째 입력 뒤 내부 submit이 활성화되지 않으면 secret을 폐기하고
+무재시도 인계한다. 11:09의 91ms 표본 때문에 현재 15초 PIN surface
+관측 상한은 유지한다. 실제 15초 초과 전이가 별도 타임스탬프로
+확인될 때만 timeout 설계를 다시 연다.
+
+11:21 재실행은 당시 timeout 재설계 조건으로 해석했다. outer dispatch는
+11:21:45.224였고, 15.065초 뒤 terminal snapshot은 처리 presentation과
+button 0개만 기록했다. 11:22:08.431 사용자 화면에는 입력 전 PIN
+surface가 나타나 있었다. 그러나 11:37 동일 탭 교차 관측에서 화면에는
+PIN이 보이는 동안 접근성 tree와 공통 diagnostic에는 처리 presentation과
+button 0개만 남는 것을 확인했다. 따라서 11:21 snapshot은 PIN 미렌더
+증거가 아니며 `15.065초보다 늦게 mount`했다는 추론을 철회한다.
+
+11:37 실행은 outer dispatch 11:37:12.939 뒤 사용자에게 PIN 창이 바로
+보였지만 matcher는 30.114초 동안 `pin`을 분류하지 못했다. 종료 뒤 같은
+활성 `/ct/reservation/form`과 같은 Side Panel 실행을 읽었으므로 다른
+탭 혼동은 배제됐다. 시각 화면에는 heading·고유 0~9 keypad·clear·내부
+submit이 있었지만 접근성 tree에는 PIN 요소가 전혀 없고 처리
+presentation만 있었다. exact DOM 격리 속성은 직접 측정하지 않았지만,
+현재 matcher와 diagnostic이 `aria-hidden`/`inert`를 포함한 동일
+visibility 필터를 공유하는 코드 사실과 일치한다.
+
+따라서 원인은 timeout이 아니라 PIN credential surface의 accessibility
+isolation false negative다. PIN surface identity에만 조상의
+`aria-hidden`/`inert`를 무시하는 rendered 판정을 적용하되, HTML
+`hidden`, CSS `display:none`/`visibility:hidden`, 불완전하거나 중복된
+control 집합은 계속 거부한다. diagnostic PIN redaction도 같은 판정을
+사용해야 한다. 유료 outer 뒤 관측 상한은 근거 없는 30초 확장을
+철회하고 기존 15초로 되돌린다. 외부 submit은 어떤 경우에도 재클릭하지
+않고 stop이나 만료 시 secret을 폐기해 결과 불명 인계한다.
+
+12:05 수정 dist의 통제 실행은 같은 매장, 2026-08-11 오전 11:00,
+2명, 20,000원 조건에서 실제 `COMPLETED`에 도달했다. outer
+claim/dispatch는 각각 한 번이었고 dispatch 127ms 뒤
+same-origin·same-document PIN surface를 관측했다. iframe/password
+input은 0개, keypad button은 10개였다. surface 관측 485ms 뒤
+pin claim/dispatch를 각각 한 번 수행했고, 2.566초 뒤 성공 path,
+정확한 완료 문구와 일치 방문예정 항목을 모두 확인했다. terminal의
+세 success boolean도 모두 true였다. 사용자는 생성된 예약을 직접
+취소했다고 확인했다.
+
+따라서 구현 E2E가 확정한 현재 계약은 다음과 같다. 접근성 격리
+surface는 PIN 전용 rendered 판정으로 읽을 수 있고, digit별 bounded
+settle 뒤 활성화된 내부 submit을 한 번 보낼 수 있다. `COMPLETED`는
+outer나 pin dispatch가 아니라 세 성공 후조건 이후에만 기록된다.
+
 ### 3.5 시나리오 비교
 
 | 항목 | C: 비로그인 우블랑 | A: 로그인 우블랑 0원 | B: 로그인 피제리아 20,000원 |

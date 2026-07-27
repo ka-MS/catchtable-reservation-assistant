@@ -430,15 +430,50 @@ Service Worker reconcile:
 - top-level origin이 `https://app.catchtable.co.kr`
 - path가 계속 `/ct/reservation/form`
 - iframe 수가 0
-- `캐치페이 비밀번호 입력` surface가 유일
+- `캐치페이 비밀번호 입력` exact heading이 하나 이상
 - 일반 password input이 없음
-- visible digit button이 0~9 각각 정확히 하나
-- `전체삭제`와 내부 `결제하기`가 식별됨
+- top-level 문서의 visible digit button이 0~9 각각 정확히 하나
+- top-level 문서의 `전체삭제`와 내부 `결제하기`가 각각 정확히 하나
+
+heading 개수와 조상 `role`은 유일성 조건이 아니다. live surface는
+상단·본문 heading을 중복 렌더하지만 접근성 `dialog` 경계를 노출하지
+않는다. credential identity는 하나 이상의 exact heading과 문서 전체의
+완전하고 유일한 keypad control 집합으로만 판정한다. 두 keypad가 있거나
+digit·clear·내부 submit 중 하나라도 중복·누락되면 거부한다.
+
+11:37 live 표본처럼 화면에는 PIN이 렌더됐지만 접근성 tree에서는 처리
+presentation만 노출될 수 있다. 따라서 PIN heading·digit·clear·내부
+submit을 찾는 경우에만 조상의 `aria-hidden`/`inert`를 visibility 제외
+사유로 보지 않는다. HTML `hidden`, CSS `display:none`/
+`visibility:hidden`은 계속 제외한다. 이 예외는 일반 form control
+탐색으로 확장하지 않는다.
 
 숫자 배열의 위치와 관측 순서는 사용하지 않는다. 각 문자를 입력하기
 직전에 fresh DOM에서 해당 accessible text의 button을 다시 찾아 한 번
-클릭한다. 전체 입력 뒤 내부 button이 enabled이고 예약 intent·금액·
-CatchPay facts가 유지될 때만 pin dispatch claim을 요청한다.
+클릭한다. live 11:09 표본에서 대기 없는 연속 click은 20ms 안에 첫
+digit만 반영됐으므로 각 click 뒤 최대 100ms의 bounded settle을 둔다.
+settle 뒤 fresh PIN surface와 stable payment context를 다시 확인하고
+다음 digit으로 진행한다. 네 번째 입력 뒤 내부 button이 enabled이고
+예약 intent·금액·CatchPay facts가 유지될 때만 pin dispatch claim을
+요청한다. settle 중 stop이면 post-claim 결과 불명으로 인계하고, digit
+click이나 settle을 자동 재시도하지 않는다.
+
+PIN modal은 바깥 예약 폼에 접근성 `aria-hidden` 또는 `inert`를 적용할
+수 있으므로 제출 전 ready fingerprint 전체를 다시 요구하지 않는다.
+PIN 입력 전, 입력 후, pin claim 후에는 다음 stable payment context만
+fresh DOM에서 비교한다.
+
+- 유일한 `header h1` 매장명과 예약 요약이 기존 intent와 일치
+- 구조적으로 연결된 모든 현재 금액 anchor가 하나의 값으로 수렴하고
+  outer 제출 직전 금액과 일치
+- 기존에 식별한 CatchPay radio가 selected이고 일반결제가 unselected
+
+이 전용 비교에서만 접근성 modal의 `aria-hidden`/`inert`를 visibility
+제외 사유로 보지 않는다. HTML `hidden`, CSS `display:none`/
+`visibility:hidden`은 계속 제외하고, 숨은 stale 복제본까지 포함해
+anchor가 없거나 중복·불일치하면 거부한다. 최종 outer button, 점유
+타이머, 약관 control의 modal 중 visibility는 이미 outer claim 전에
+확인한 값이며 PIN context 불변성에는 포함하지 않는다.
 
 다음은 모두 자동 재시도 없이 secret 폐기 후 인계한다.
 
@@ -475,8 +510,17 @@ claim 이후에는 결제·예약 발생 가능성이 있으므로 timeout, navi
 - claim 전에는 기존 `stopAtMs`, 사이트 hold countdown과 AbortSignal을
   모두 지킨다.
 - hold 만료 문구가 있거나 남은 시간을 확인할 수 없으면 제출하지 않는다.
-- claim 뒤에는 최대 15초의 read-only 결과 관측 구간만 둔다.
-- 관측 구간에는 외부·내부 button을 다시 클릭하지 않는다.
+- 0원 outer dispatch 뒤에는 최대 15초 동안 성공 후조건만 관측한다.
+- 유료 outer dispatch 뒤에는 최대 15초 동안 PIN surface 또는 직접
+  성공 후조건을 관측한다. 11:21의 15초 초과 mount 추론은 11:37
+  시각/UIA 교차 관측으로 철회됐다. PIN이 즉시 시각적으로 렌더돼도
+  접근성 기반 matcher와 snapshot이 함께 제외한 것이 원인이었다.
+- 유료 PIN phase에서는 §9의 digit 입력과 별도 pin claim을 받은 내부
+  submit 한 번만 허용하고 outer submit은 반복하지 않는다. digit별
+  최대 100ms settle은 위 15초 안에 포함된다.
+- PIN 내부 submit 뒤에는 새 15초 구간에서 성공 후조건만 읽는다.
+- acknowledged outer/pin submit은 어느 관측 구간에서도 다시 클릭하지
+  않는다.
 - 성공 path 외 다른 origin/path로 이동하면 결과 불명 인계다.
 - acknowledged claim 뒤 탭이 닫히거나 실행 문맥이 사라져도
   `STOPPED`·`FAILED`로 단정하지 않고 결과 불명 `HANDED_OFF`로
