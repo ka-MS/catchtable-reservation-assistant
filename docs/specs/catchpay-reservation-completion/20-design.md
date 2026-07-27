@@ -7,7 +7,7 @@
 ## 1. 목표와 성공 기준
 
 현재 `/ct/reservation/form` 즉시 인계를 opt-in 조건에서만 확장한다.
-로그인·등록 CatchPay·예약 내용·금액·필수 입력·필수 약관을 최종 제출
+로그인·선택된 CatchPay·예약 내용·금액·필수 입력·필수 약관을 최종 제출
 직전에 다시 확인하고, 실측된 완료 후조건을 관측한 경우에만
 `COMPLETED`로 종료한다.
 
@@ -18,8 +18,9 @@
 3. 외부 최종 제출과 PIN 내부 제출은 각각 최대 한 번이다.
 4. PIN은 실행 메시지와 Content 메모리 밖에 저장되지 않는다.
 5. 클릭 dispatch 자체는 성공이 아니다.
-6. 비로그인, 미등록 CatchPay, 일반결제, 선택 약관, 금액 초과,
-   불명확한 DOM과 결과 불명은 자동 진행하지 않는다.
+6. 비로그인, CatchPay 미선택, 일반결제, 명시적으로 판정된 등록 필요
+   상태, 선택 약관, 금액 초과, 불명확한 DOM과 결과 불명은 자동
+   진행하지 않는다.
 
 ## 2. 핵심 결정
 
@@ -134,12 +135,11 @@ interface ReservationIntent {
 6. 현재 총 결제금액을 하나의 정수 KRW 값으로 읽을 수 있다.
 7. 금액이 0 이상이고 `maxPaymentAmountKrw` 이하이다.
 8. `input[name="payment-type"]`에서 CatchPay만 checked다.
-9. CatchPay 영역에 등록 결제수단 행이 있다.
-10. 일반결제를 선택하거나 CatchPay 등록을 유도하는 action이 없었다.
-11. 모든 지원 대상 필수 입력이 채워졌다.
-12. 모든 필수 약관이 checked다.
-13. 선택·마케팅 control의 checked 상태가 실행 전 baseline과 같다.
-14. 유일한 최종 button의 accessible name이
+9. 일반결제가 selected가 아니다.
+10. 모든 지원 대상 필수 입력이 채워졌다.
+11. 모든 필수 약관이 checked다.
+12. 선택·마케팅 control의 checked 상태가 실행 전 baseline과 같다.
+13. 유일한 최종 button의 accessible name이
     `자동결제로 예약하기`다.
 
 매장명, 요약, 금액 또는 button이 둘 이상으로 모호하면 인계한다.
@@ -148,8 +148,14 @@ interface ReservationIntent {
 
 - `총 결제 금액` 또는 하단 `결제금액` 요약에 구조적으로 연결된
   현재 금액만 읽는다.
-- 취소선, 이전 가격, `aria-hidden` 값은 현재 금액에서 제외한다.
-- 현재로 판정되는 KRW 값이 0개 또는 2개 이상이면 인계한다.
+- `<s>`·`<del>` 또는 computed `text-decoration-line: line-through`인
+  취소선, 이전 가격, `aria-hidden` 값은 현재 금액에서 제외한다.
+- 숫자와 `원`이 인접 text node로 분리될 수 있으므로 개별 text node를
+  파싱하지 않는다. 구조적으로 연결된 범위에서 전체 textContent가
+  정확한 KRW 형식인 가장 작은 요소만 후보로 삼는다.
+- 두 요약은 같은 폼에 함께 존재할 수 있다. 각 요약에서 현재 KRW 값이
+  정확히 하나여야 하며, 모든 요약의 현재값이 같을 때만 그 단일 값으로
+  수렴한다. anchor별 값이 0개·2개 이상이거나 서로 다르면 인계한다.
 - `isDepositFree` query나 이전 메뉴 보증액만으로 0원을 추론하지
   않는다.
 - 외부 submit claim 직전과 PIN 내부 submit claim 직전에 다시
@@ -160,9 +166,18 @@ interface ReservationIntent {
 - 로그인 gate의 구조적 표식이 하나라도 있으면 `login_required`다.
 - CatchPay radio는 실측된 `input[name="payment-type"]`과 인접 label로
   식별한다.
-- checked CatchPay와 등록 수단 행을 둘 다 요구한다.
+- 명시적 `캐치페이` label이 없는 실측 변형은 visible payment radio가
+  정확히 2개이고, label ancestor로 `일반결제`인 radio가 정확히 하나일
+  때만 나머지 하나를 CatchPay 후보로 판정한다.
+- 유일하게 식별된 CatchPay radio가 checked이고 일반결제가 selected가
+  아닐 때만 진행한다.
+- 등록 카드 안내문은 presentation copy이므로 존재 여부를 hard gate나
+  `registered` telemetry로 사용하지 않는다.
 - 카드 브랜드, 마스킹 번호와 card label text는 읽거나 기록하지 않는다.
 - 일반결제의 enabled 여부와 무관하게 선택·전환 action은 없다.
+- 미등록 CatchPay 화면은 아직 실측되지 않았다. 명시적인 등록 필요
+  surface가 관측되면 새 사이트 사실을 분석 문서에 먼저 기록하고 별도
+  인계 gate를 추가한다. 실측 전에는 문구나 URL query를 추측하지 않는다.
 
 ### 4.3 예약 폼 매장명 판정
 
@@ -170,7 +185,7 @@ interface ReservationIntent {
 교차 실측한 결과, 폼의 매장 표시명은 본문 `main` 밖 top bar의
 네이티브 `header` 안 단일 `h1`에만 있었다.
 
-- `header > h1` 후보가 정확히 하나이고 trim한 textContent가 비어 있지
+- `header h1` 후보가 정확히 하나이고 trim한 textContent가 비어 있지
   않아야 한다.
 - 이 값을 예약 전 매장 페이지에서 고정한 `shopDisplayName`과 기존
   텍스트 정규화 규칙으로 정확히 비교한다.
@@ -179,6 +194,13 @@ interface ReservationIntent {
   fallback으로 사용하지 않는다.
 - generated class, `id`, `aria-label`과 `aria-labelledby`에 의존하지
   않는다. 두 실측 표본에서 이 속성들은 anchor로 존재하지 않았다.
+- generated wrapper가 삽입될 수 있으므로 `h1`이 `header`의 direct
+  child인지는 요구하지 않는다.
+
+예약 전 매장 상세의 `shopDisplayName` 고정은 2026-07-25 재실측에 따라
+문서 전체의 유일하고 비어 있지 않은 `h1` textContent를 사용한다.
+`main h1`에는 한정하지 않는다. 후보 부재·중복·빈 값이면 이후 폼
+매장명 비교를 시작하지 않고 인계한다.
 
 ## 5. 필수 입력과 약관
 
@@ -189,7 +211,15 @@ interface ReservationIntent {
 - 이미 값이 있는 필수 input은 변경하지 않는다.
 - `[필수]`, native `required` 또는 `aria-required=true`로 구조적으로
   연결된 빈 multiline textbox만 지원한다.
+- label/required/aria 연결이 없는 실측 변형은 textarea에서 위로 올라가
+  textarea를 정확히 하나 포함하고 direct heading(`h1`~`h6`)도 정확히
+  하나인 가장 가까운 질문 container만 허용한다. 그 heading의
+  `[필수]`/`[선택]` marker를 해당 textarea에 적용한다. 후보가 없거나
+  heading·textarea가 복수면 추측하지 않는다.
 - 지원 대상마다 같은 설정값을 넣는다.
+- React 제어 textarea는 native prototype value setter와 bubbling
+  `InputEvent("input")`·`change` event를 사용하고, action 직후 실제
+  value 일치를 확인한다.
 - 설정값이 비었거나, 새로운 필수 single-line/select/file input이
   있거나, label 연결이 모호하면 인계한다.
 - 방문 목적은 실측상 `[필수]`가 아니므로 선택하지 않는다.
@@ -218,6 +248,10 @@ interface ReservationIntent {
 개별 required control을 우선 클릭한다. `모두 동의합니다` 같은 group
 control은 다음을 모두 증명할 때만 사용한다.
 
+실측된 마침표 변형 `모두 동의합니다.`도 같은 명시적 group label로
+허용한다. 개별 required click은 action 뒤 checked를 확인하고, 변하지
+않은 경우에만 아래 group 안전성 검사를 적용한다.
+
 1. 같은 agreement section의 member 집합을 완전히 열거할 수 있다.
 2. 모든 member가 required다.
 3. optional·marketing member가 0개다.
@@ -225,6 +259,17 @@ control은 다음을 모두 증명할 때만 사용한다.
    불변이다.
 
 하나라도 증명하지 못하면 group을 클릭하지 않고 인계한다.
+
+semantic `fieldset`/`section`이 없는 변형에서는 group부터 ancestor를
+올라가 visible checkbox가 2개 이상인 첫 container를 member 범위로
+사용한다. 그 가장 가까운 범위에서도 위 조건을 모두 통과해야 하며 더
+넓은 ancestor를 임의 대체하지 않는다.
+
+React group state는 클릭 뒤 지연 반영될 수 있다. 실측 76.6ms를
+포함하도록 최대 250ms의 bounded 확인 구간에서 group과 required member
+전부 checked 및 optional baseline 불변을 다시 관측한다. 반영되지
+않거나 다른 폼 fingerprint 변화가 생기면 group을 재클릭하지 않고
+인계한다.
 
 ## 6. 설정과 일회성 secret 계약
 
@@ -454,12 +499,16 @@ background 재주입·완료 관측 재개 계약을 설계한다. 그 전에는
 `CompletionFacts`는 다음 세 조건을 모두 만족해야 한다.
 
 1. `location.pathname === "/ct/mydining/my/planned"`
-2. exact normalized text `자동결제로 예약을 완료했습니다`
+2. visible element 중 normalized textContent가 정확히
+   `자동결제로 예약을 완료했습니다`인 가장 작은 element가 하나 이상
+   있음. heading role은 요구하지 않고, 같은 exact text를 가진 자손이
+   있으면 부모는 후보에서 제외한다.
 3. 방문예정 목록에 매장명·날짜·실제 선택 시간·인원이 모두 일치하는
    항목이 있음
 
 초대장 overlay, tab badge, click return 값과 HTTP status만으로는
-완료하지 않는다. raw 예약번호는 읽거나 저장하지 않는다.
+완료하지 않는다. message substring이나 후속 안내가 합쳐진 부모
+textContent도 허용하지 않는다. raw 예약번호는 읽거나 저장하지 않는다.
 
 ## 13. telemetry와 diagnostic
 
@@ -471,7 +520,7 @@ background 재주입·완료 관측 재개 계약을 설계한다. 그 전에는
 - 현재 금액
 - required/optional control 수
 - 빈 필수 입력 수와 처리 성공 여부
-- CatchPay selected·registered boolean
+- CatchPay selected·general-payment-selected boolean
 - claim phase와 ACK 성공 여부
 - outer/internal dispatch 여부
 - PIN UI의 same-origin, iframe 수, keypad 방식
@@ -495,6 +544,16 @@ PIN surface를 감지한 diagnostic capture는 surface 전체를 민감 영역�
 표시하고 controls, text snippet과 fragment를 수집하지 않는다. PIN
 입력 중 breadcrumb와 failure snapshot으로 입력 개수나 keypad 순서를
 추론할 수 없어야 한다.
+
+terminal event에 평탄화되는 compact `StageSnapshot`도 같은 PIN surface
+에서는 heading, button, disabled 배열, dialog title/label을 수집하지
+않고 `credential_surface` marker만 남긴다.
+
+완주 단계의 `handed_off`와 `timed_out`은 일반 terminal transition을
+직접 호출하지 않고 기존 diagnostic failure 경로를 사용한다. 예약 폼은
+개인정보 보호를 위해 HTML fragment를 저장하지 않으며, 정제된
+heading/button/radio/checkbox와 환경 정보만 저장한다. terminal event는
+`diagnosticSnapshotId`로 해당 snapshot을 연결한다.
 
 ## 14. 파일 변경면
 
@@ -561,7 +620,8 @@ success postcondition과 PIN 비유출을 검증하는 gate로 교체한다.
 - B 유료: 필수 3, optional 0, 안전한 group 동의
 - optional이 섞인 group → group 미클릭
 - 방문 목적 → 미선택
-- CatchPay 미선택·미등록·일반결제 선택 → 인계
+- CatchPay 미선택·일반결제 선택 → 인계
+- 등록 안내문이 없어도 CatchPay 선택·자동결제 button 계약이 맞으면 진행
 - current 0원과 취소선 80,000원 구분
 - 상한 초과·음수·두 금액·parse 실패 → 인계
 - 날짜·시간·인원·매장 mismatch → 인계

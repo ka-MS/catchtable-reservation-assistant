@@ -15,30 +15,38 @@ function cleanConfig(config: ReservationConfig): ReservationConfig {
   } catch {
     // Validation reports malformed URLs before a run begins.
   }
-  return { ...config, targetUrl };
+  return { ...config, targetUrl, requiredFormDefaultAnswer: "" };
 }
 
-function cleanAttributes(input: TraceAttributes): TraceAttributes {
+function redact(value: string, sensitiveValues: string[]): string {
+  return sensitiveValues.reduce(
+    (output, sensitive) => output.split(sensitive).join("[REDACTED]"),
+    value,
+  );
+}
+
+function cleanAttributes(input: TraceAttributes, sensitiveValues: string[]): TraceAttributes {
   const output: TraceAttributes = {};
   Object.entries(input).slice(0, 64).forEach(([key, value]) => {
     if (value === null || typeof value === "number" || typeof value === "boolean") output[key] = value;
-    else if (typeof value === "string") output[key] = value.slice(0, 500);
+    else if (typeof value === "string") output[key] = redact(value, sensitiveValues).slice(0, 500);
   });
   return output;
 }
 
-function cleanError(error: unknown): TraceError | undefined {
+function cleanError(error: unknown, sensitiveValues: string[]): TraceError | undefined {
   if (!(error instanceof Error)) return undefined;
   return {
-    name: error.name.slice(0, 100),
-    message: error.message.slice(0, 1_000),
-    ...(error.stack ? { stack: error.stack.slice(0, 8_192) } : {}),
+    name: redact(error.name, sensitiveValues).slice(0, 100),
+    message: redact(error.message, sensitiveValues).slice(0, 1_000),
+    ...(error.stack ? { stack: redact(error.stack, sensitiveValues).slice(0, 8_192) } : {}),
   };
 }
 
 export class TraceLogger {
   private run: TraceRunDescriptor | null = null;
   private seq = 0;
+  private sensitiveValues: string[] = [];
 
   constructor(private readonly processor: BatchTraceProcessor, private readonly now: () => number) {}
 
@@ -49,6 +57,9 @@ export class TraceLogger {
     attempt?: { logicalRunId: string; attemptIndex: number; resetCause?: string },
   ): void {
     this.seq = 0;
+    this.sensitiveValues = config.requiredFormDefaultAnswer.trim() === ""
+      ? []
+      : [config.requiredFormDefaultAnswer];
     this.run = {
       schemaVersion: 1,
       runId,
@@ -78,7 +89,7 @@ export class TraceLogger {
     } = {},
   ): void {
     if (!this.run) return;
-    const traceError = cleanError(options.error);
+    const traceError = cleanError(options.error, this.sensitiveValues);
     const event: TraceEvent = {
       schemaVersion: 1,
       runId: this.run.runId,
@@ -89,8 +100,8 @@ export class TraceLogger {
       localAt: this.now(),
       serverAt: options.serverAt ?? null,
       state: options.state ?? null,
-      message: message.slice(0, 1_000),
-      attributes: cleanAttributes(options.attributes ?? {}),
+      message: redact(message, this.sensitiveValues).slice(0, 1_000),
+      attributes: cleanAttributes(options.attributes ?? {}, this.sensitiveValues),
       ...(traceError ? { error: traceError } : {}),
     };
     this.processor.record(event);

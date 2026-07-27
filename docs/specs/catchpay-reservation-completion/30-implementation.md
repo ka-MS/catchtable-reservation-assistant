@@ -1,11 +1,11 @@
 # CatchPay 예약 완주 구현계획
 
-**상태:** Task 1·2 완료, Task 3 Codex gate 보류
+**상태:** Task 1~6 완료
 **기준 분석:** [10-analysis.md](10-analysis.md)
 **기준 설계:** [20-design.md](20-design.md)
 **사용자 승인:** 2026-07-24 명시 승인
-**구현 책임:** Codex coordinator
-**기본 구현 worker:** Claude Sonnet 5 한 명, Orca orchestration 순차 dispatch
+**구현 책임:** Codex
+**체크포인트 재개:** `ab5e825` 이후 Codex 단독 구현·검수
 
 ## 1. 구현 원칙
 
@@ -19,12 +19,8 @@
   Console, trace와 문서에 넣지 않는다.
 - 테스트용 PIN은 런타임에 조합한 sentinel을 사용하고 failure output에도
   raw 값이 나타나지 않게 한다.
-- worker의 완료 주장은 증거가 아니다. Codex가 diff와 테스트 결과를
-  직접 확인한 뒤 Task를 완료 처리한다.
-- worker가 중단되면 새로 시작하지 말고 현재 worktree와 테스트 상태를
-  먼저 감사한다.
-- worker는 commit하지 않는다. coordinator가 전체 검증 뒤 commit
-  범위를 판단한다.
+- 체크포인트 이후 기존 diff와 테스트 상태를 먼저 감사하고, Codex가
+  실패 테스트·수정·검증을 직접 수행한다.
 
 ## 2. 기준선
 
@@ -227,7 +223,7 @@ fixture 상단에는 관측일, 매장, `site-behavior.md` §12 출처를 기록
 **먼저 실패해야 하는 테스트:**
 
 - C는 `login_required`, 제출 action 0회다.
-- A는 CatchPay checked·등록 수단 행·일반결제 미선택, current 0원,
+- A는 CatchPay checked·일반결제 미선택·자동결제 최종 버튼, current 0원,
   필수 10개, 빈 multiline 3개, optional 0개로 분류된다.
 - B는 current 20,000원, 필수 3개, optional 0개, 필수 자유입력 0개다.
 - 취소선 80,000원과 current 0원을 구분한다.
@@ -237,7 +233,8 @@ fixture 상단에는 관측일, 매장, `site-behavior.md` §12 출처를 기록
   부재·중복·빈 값, `document.title` 또는 본문 heading만 있는 변형은
   매장 일치로 인정하지 않는다.
 - hold 만료와 countdown 불명은 ready가 아니다.
-- CatchPay 미선택·미등록·일반결제 선택은 ready가 아니다.
+- CatchPay 미선택·일반결제 선택은 ready가 아니다.
+- 등록 카드 안내문 부재만으로 ready를 거절하지 않는다.
 - 방문 목적과 `[선택]`·마케팅은 action 대상이 아니다.
 - 개별 required를 우선 처리한다.
 - group member가 정확히 required 3개이고 optional 0개일 때만
@@ -273,12 +270,12 @@ npm run check
 git diff --check
 ```
 
-- [ ] 실패 테스트 확인
-- [ ] fixture 출처 검수
-- [ ] 최소 구현
-- [ ] 대상 테스트 통과
-- [ ] 전체 check 통과
-- [ ] Codex diff 검수
+- [x] 실패 테스트 확인
+- [x] fixture 출처 검수
+- [x] 최소 구현
+- [x] 대상 테스트 통과
+- [x] 전체 check 통과
+- [x] Codex diff 검수
 
 Task 3 체크포인트(2026-07-25):
 
@@ -296,6 +293,17 @@ Task 3 체크포인트(2026-07-25):
   실제 폼에 상단 `총 결제 금액`과 하단 `결제금액` 요약이 동시에
   존재하는지 evidence를 다시 확인한다. 새 사실이면 분석 문서를 먼저
   갱신하고, 그렇지 않으면 추측으로 탐지 범위를 넓히지 않는다.
+
+Task 3 Codex gate 결과(2026-07-25):
+
+- 매장·날짜·시간·인원 실제 DOM shape를 fresh fingerprint에 포함하고
+  각각의 변경 뒤 action 0회를 회귀 테스트로 고정했다.
+- 우블랑 live 폼에서 상단·하단 금액 anchor가 함께 렌더되는 사실을
+  분석 문서에 먼저 기록한 뒤, 각 anchor의 현재 금액이 유일하고 서로
+  같을 때만 수용하도록 수정했다.
+- 명시적 CatchPay label이 없는 live 변형은 유일한 일반결제 radio의
+  반대편만 CatchPay로 판정한다. 등록 카드 안내 문구는 hard gate가
+  아니며, 일반결제 radio가 모호하면 인계한다.
 
 ## 6. Task 4 — `CompletionCoordinator`와 Orchestrator 연결
 
@@ -354,11 +362,20 @@ npm run check
 git diff --check
 ```
 
-- [ ] 실패 테스트 확인
-- [ ] 최소 구현
-- [ ] 대상 테스트 통과
-- [ ] 전체 check 통과
-- [ ] Codex diff 검수
+- [x] 실패 테스트 확인
+- [x] 최소 구현
+- [x] 대상 테스트 통과
+- [x] 전체 check 통과
+- [x] Codex diff 검수
+
+Task 4 결과:
+
+- `CompletionCoordinator`가 필수 입력·필수 약관·fresh 검증·outer/PIN
+  durable claim·성공 관측을 직렬화한다.
+- outer claim 뒤 예외·timeout·중지·navigation은 재클릭 없이 결과 불명
+  인계하며, path·정확한 완료 문구·방문예정 일치가 모두 있어야
+  `COMPLETED`다.
+- scheduled 유료 실행은 일회성 PIN이 없어 outer claim 전에 인계한다.
 
 ## 7. Task 5 — telemetry·diagnostic secret 차단
 
@@ -383,8 +400,12 @@ git diff --check
 - PIN 값·길이·digit·입력 순서·keypad 배열은 trace attribute에 없다.
 - completion telemetry는 금액, 필수/선택 수, claim phase, dispatch
   boolean, PIN UI 유형, 성공 evidence boolean만 기록한다.
+- 완주 `handed_off`·`timed_out`은 정제된 reservation-form failure
+  snapshot과 terminal event의 `diagnosticSnapshotId`를 남긴다.
 - PIN surface snapshot은 credential surface marker 외 controls, text
   snippet, fragment를 저장하지 않는다.
+- terminal event용 compact stage snapshot도 PIN surface의 heading,
+  button 순서와 disabled 상태를 저장하지 않는다.
 - PIN 입력 도중 failure snapshot과 diagnostic ZIP에 sentinel,
   keypad 순서와 입력 개수 추론 정보가 없다.
 - static error code/message만 남고 caught secret-bearing error는
@@ -409,11 +430,21 @@ npm run check
 git diff --check
 ```
 
-- [ ] 실패 테스트 확인
-- [ ] 최소 구현
-- [ ] 대상 테스트 통과
-- [ ] 전체 check 통과
-- [ ] Codex diff 검수
+- [x] 실패 테스트 확인
+- [x] 최소 구현
+- [x] 대상 테스트 통과
+- [x] 전체 check 통과
+- [x] Codex diff 검수
+
+Task 5 결과:
+
+- 예약 폼 실패도 terminal `diagnosticSnapshotId`와 구조화 snapshot을
+  남긴다. 예약 폼 HTML fragment는 저장하지 않는다.
+- PIN surface는 heading·controls·query·fragment·active element를
+  수집하지 않는다. 예약 폼 결제 radio의 카드 별칭·마스킹 번호도
+  snapshot에서 제거한다.
+- trace에는 `paymentPinProvided` 같은 비민감 boolean만 허용하고
+  공통 자유입력 답변은 Content·Background 양쪽에서 redact한다.
 
 ## 8. Task 6 — 통합 회귀와 문서 경계 정합성
 
@@ -463,51 +494,41 @@ npm run check
 git diff --check
 ```
 
-- [ ] 실패 테스트 확인
-- [ ] 최소 구현·문서 갱신
-- [ ] 전체 check 통과
-- [ ] unrelated diff 없음
-- [ ] Codex 구현 완료 판정
+- [x] 실패 테스트 확인
+- [x] 최소 구현·문서 갱신
+- [x] 전체 check 통과
+- [x] unrelated diff 없음
+- [x] Codex 구현 완료 판정
 
-## 9. Worker 운영
+Task 6 결과:
 
-Task마다 별도 Orca task/dispatch를 만든다. 같은 Claude Sonnet 5 terminal을
-완료 후 idle 상태에서 다음 Task로 재사용할 수 있다.
+- build gate를 완주 opt-in·PIN 비하드코딩·authorization 조기 폐기
+  계약으로 교체했다.
+- terminal trace/IndexedDB가 `COMPLETED`를 보존하고 자유입력 답변을
+  저장하지 않는 회귀 테스트를 추가했다.
+- 기존 hot path, 날짜 toggle, availability probe와 slot click claim은
+  변경하지 않았다.
 
-worker가 보고할 최소 결과:
+## 9. 체크포인트 이후 실행 방식
 
-- 수정 파일
-- 먼저 실패한 테스트와 실패 이유
-- 통과한 대상 테스트
-- `npm run check` 결과
-- 남은 불확실성 또는 escalation
-
-heartbeat는 장시간 Task의 생존 확인에만 사용하고 구현 로그 전체를
-메시지로 복사하지 않는다.
-
-worker quota·token 소진 시:
-
-1. `worker_done`이 없으면 완료로 인정하지 않는다.
-2. Codex가 `git status`, 전체 diff와 최근 테스트를 감사한다.
-3. 이 문서의 Task checkbox를 완료·미완료로 구분한다.
-4. 실패 테스트를 재실행한다.
-5. Codex가 직접 인수하거나 남은 Task만 새 worker에 dispatch한다.
-6. 전체 check를 다시 통과하기 전 다음 Task로 가지 않는다.
+`ab5e825` 이후 Task 3 결함 수정과 Task 4~6은 Codex가 단독으로
+수행했다. Claude worker와 Orca orchestration을 사용하지 않았으며,
+현재 worktree의 diff·실패 테스트·전체 검증을 직접 확인했다.
 
 ## 10. 구현 완료 gate
 
 다음이 모두 참이어야 `40-verification`으로 전환한다.
 
-- [ ] Task 1~6의 실패 테스트와 최소 구현 완료
-- [ ] 전체 `npm run check` 통과
-- [ ] PIN sentinel 전 저장·진단 경로 부재
-- [ ] outer/pin 중복 dispatch 회귀 통과
-- [ ] success 후조건 이전 `COMPLETED` 불가
-- [ ] opt-in off 기존 handoff 보존
-- [ ] scheduled 유료 outer submit 0회
-- [ ] source/test/문서 diff를 Codex가 직접 검수
-- [ ] `git diff --check` 통과
-- [ ] 새 실사이트 사실이 있으면 분석·설계 선갱신
+- [x] Task 1~6의 실패 테스트와 최소 구현 완료
+- [x] 전체 `npm run check` 통과
+- [x] PIN sentinel 전 저장·진단 경로 부재
+- [x] outer/pin 중복 dispatch 회귀 통과
+- [x] success 후조건 이전 `COMPLETED` 불가
+- [x] opt-in off 기존 handoff 보존
+- [x] scheduled 유료 outer submit 0회
+- [x] source/test/문서 diff를 Codex가 직접 검수
+- [x] `git diff --check` 통과
+- [x] 새 실사이트 사실을 분석·설계에 선반영
 
 구현 완료는 Chrome E2E 완료가 아니다. 그 결과는
 `40-verification.md`에서 별도로 검증한다.

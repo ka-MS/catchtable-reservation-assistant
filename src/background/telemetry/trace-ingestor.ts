@@ -4,6 +4,21 @@ import { LiveTraceHub } from "./live-trace-hub.js";
 
 const TERMINAL = new Set<RunState>(["DRY_RUN_COMPLETED", "HANDED_OFF", "COMPLETED", "STOPPED", "TIMED_OUT", "FAILED"]);
 
+function redact(value: string, config: ReservationConfig): string {
+  const sensitive = config.requiredFormDefaultAnswer;
+  return sensitive.trim() === "" ? value : value.split(sensitive).join("[REDACTED]");
+}
+
+function redactAttributes(
+  attributes: TraceEvent["attributes"],
+  config: ReservationConfig,
+): TraceEvent["attributes"] {
+  return Object.fromEntries(Object.entries(attributes).map(([key, value]) => [
+    key,
+    typeof value === "string" ? redact(value, config) : value,
+  ]));
+}
+
 export class TraceIngestor {
   constructor(
     private readonly repository: TraceRepository,
@@ -39,13 +54,13 @@ export class TraceIngestor {
       localAt: now,
       serverAt: null,
       state: "FAILED",
-      message: message.slice(0, 1_000),
+      message: redact(message, config).slice(0, 1_000),
       attributes: {},
       ...(error instanceof Error ? {
         error: {
-          name: error.name.slice(0, 100),
-          message: error.message.slice(0, 1_000),
-          ...(error.stack ? { stack: error.stack.slice(0, 8_192) } : {}),
+          name: redact(error.name, config).slice(0, 100),
+          message: redact(error.message, config).slice(0, 1_000),
+          ...(error.stack ? { stack: redact(error.stack, config).slice(0, 8_192) } : {}),
         },
       } : {}),
     };
@@ -76,8 +91,8 @@ export class TraceIngestor {
       localAt: now,
       serverAt: null,
       state: null,
-      message: message.slice(0, 1_000),
-      attributes,
+      message: redact(message, config).slice(0, 1_000),
+      attributes: redactAttributes(attributes, config),
     };
     const run = await this.repository.append(
       this.descriptor(runId, now, config, scheduledJobId),
@@ -108,7 +123,7 @@ export class TraceIngestor {
       localAt: now,
       serverAt: null,
       state,
-      message,
+      message: redact(message, config),
       attributes: {},
     };
     const run = await this.repository.append(
@@ -139,7 +154,7 @@ export class TraceIngestor {
       schemaVersion: 1,
       runId,
       startedAt,
-      config: { ...config, targetUrl },
+      config: { ...config, targetUrl, requiredFormDefaultAnswer: "" },
       ...(scheduledJobId === undefined ? {} : { scheduledJobId }),
     };
   }

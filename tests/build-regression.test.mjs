@@ -13,11 +13,18 @@ test("manifest uses MV3 and on-demand content injection", async () => {
   assert.deepEqual([...icon.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 });
 
-test("content script is an import-free IIFE bundle", async () => {
+test("content script is an import-free IIFE bundle with opt-in completion safety gates", async () => {
   const content = await readFile("dist/content/index.js", "utf8");
+  const decoded = content.replace(/\\u([0-9a-f]{4})/gi, (_match, hex) =>
+    String.fromCharCode(Number.parseInt(hex, 16)));
   assert.doesNotMatch(content, /^\s*import\s/m);
   assert.match(content, /__ctReserveInjected/);
-  assert.doesNotMatch(content, /모두 동의합니다\.|자동결제로 예약하기/);
+  assert.match(content, /reservationCompletionEnabled/);
+  assert.match(content, /COMPLETION_DISPATCH_CLAIM/);
+  assert.match(decoded, /자동결제로 예약하기/);
+  assert.match(decoded, /자동결제로 예약을 완료했습니다/);
+  assert.match(content, /\/ct\/mydining\/my\/planned/);
+  assert.doesNotMatch(content, /main h1/);
 });
 
 test("sidepanel exposes an explicit entry mode instead of pagePrepared", async () => {

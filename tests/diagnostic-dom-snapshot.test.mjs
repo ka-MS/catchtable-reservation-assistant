@@ -54,19 +54,74 @@ test("breadcrumb snapshot remains structural and does not serialize HTML", () =>
 });
 
 test("reservation form failures omit HTML fragments", () => {
-  const document = new JSDOM(`<main><input value="사용자 입력"></main>`, {
+  const document = new JSDOM(`<main>
+    <input value="사용자 입력">
+    <input type="radio" name="payment-type" checked
+      aria-label="토스페이 하나(151*)">
+    <input type="radio" name="saved-card-151" aria-label="등록 카드">
+    <div role="radio" aria-checked="false"
+      aria-label="일반결제 카드 별칭(987*)">일반결제 카드 별칭(987*)</div>
+  </main>`, {
     url: "https://app.catchtable.co.kr/ct/reservation/form?token=secret",
   }).window.document;
   const snapshot = captureDiagnosticSnapshot(document, {
     runId: "run-3",
     kind: "failure",
-    stage: "ADVANCING_RESERVATION",
+    stage: "COMPLETING_RESERVATION",
     trigger: "failure",
     reason: "폼 판별 실패",
   }, () => "ss-3", () => 125);
 
   assert.equal(snapshot.environment.urlKind, "reservation_form");
   assert.equal(snapshot.fragmentHtml, undefined);
+  assert.equal(snapshot.adapter, "ReservationFormAdapter");
+  assert.equal(snapshot.radios.length, 3);
+  assert.equal(snapshot.radios[0].checked, true);
+  assert.equal(snapshot.radios[0].attributes.name, "payment-type");
+  assert.doesNotMatch(JSON.stringify(snapshot), /토스페이|하나|151|등록 카드|카드 별칭|987/);
+});
+
+test("CatchPay PIN surface snapshots omit controls, keypad order and active input evidence", () => {
+  const digits = [4, 5, 6, 1, 3, 9, 7, 8, 2, 0]
+    .map((digit) => `<button>${digit}</button>`).join("");
+  const document = new JSDOM(`
+    <main><section role="dialog"><h2>캐치페이 비밀번호 입력</h2>
+      ${digits}<button>전체삭제</button><button disabled>결제하기</button>
+    </section></main>
+  `, { url: "https://app.catchtable.co.kr/ct/reservation/form", pretendToBeVisual: true }).window.document;
+  document.querySelector("button").focus();
+  const snapshot = captureDiagnosticSnapshot(document, {
+    runId: "run-pin",
+    kind: "failure",
+    stage: "COMPLETING_RESERVATION",
+    trigger: "failure",
+    reason: "PIN 화면 확인 실패",
+  }, () => "ss-pin", () => 125);
+
+  assert.equal(snapshot.fragmentHtml, undefined);
+  assert.deepEqual(snapshot.headings, []);
+  assert.deepEqual(snapshot.buttons, []);
+  assert.deepEqual(snapshot.queries, []);
+  assert.equal(snapshot.environment.activeElement, null);
+  assert.deepEqual(snapshot.surfaces, [{
+    kind: "dialog", label: "credential_surface", title: "", elementCount: 0, controls: [],
+  }]);
+
+  document.querySelector("h2").textContent = "보안 인증";
+  document.querySelector('[role="dialog"]').removeAttribute("role");
+  const changedHeading = captureDiagnosticSnapshot(document, {
+    runId: "run-pin-variant",
+    kind: "failure",
+    stage: "COMPLETING_RESERVATION",
+    trigger: "failure",
+    reason: "PIN 화면 변형",
+  }, () => "ss-pin-variant", () => 126);
+  assert.deepEqual(changedHeading.headings, []);
+  assert.deepEqual(changedHeading.buttons, []);
+  assert.deepEqual(changedHeading.queries, []);
+  assert.deepEqual(changedHeading.surfaces, [{
+    kind: "dialog", label: "credential_surface", title: "", elementCount: 0, controls: [],
+  }]);
 });
 
 test("failure fragments remain valid and bounded under large DOM input", () => {

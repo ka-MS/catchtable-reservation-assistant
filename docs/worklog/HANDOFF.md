@@ -1,6 +1,6 @@
 # HANDOFF
 
-**갱신:** 2026-07-25
+**갱신:** 2026-07-27
 **브랜치:** `codex/feat-catchpay-reservation-completion`
 **최신 작업 로그:** `docs/worklog/2026-07-25-01-catchpay-completion-checkpoint.md`
 **최신 UI 편의:** Side Panel "새 예약 작업" 타이틀 옆에 `초기화` 버튼 완료(하드코딩 기본값 + 실행 기록 초기화, 실행 중 비활성화). GitHub PR 코드리뷰로 race condition·`editingJobId` 미초기화 등 4건 발견·수정. 병합 후 실사용 중 draft 미저장 버그(PR #2 후속 커밋), `예약 저장` 버튼 실행 중 미차단(PR #3), `지금 시작`/`예약 저장` disabled·hidden 불일치(PR #4)를 추가 발견·수정. 실행 중 액션바 버튼은 이제 전부 `disabled`로 통일. blocking backlog 아님.
@@ -24,19 +24,24 @@
 
 ## CatchPay 예약 완주 체크포인트 (2026-07-25)
 
-- blocking backlog인 **예약 완주 구현은 아직 진행 중**이다. 분석·설계와
-  통제된 실측을 마쳤고, 설계는 사용자 승인을 받았다.
-- `30-implementation.md` Task 1(설정·one-shot authorization)과
-  Task 2(durable completion claim)는 Codex gate를 통과했다.
-- Task 3 `ReservationFormAdapter`는 Sonnet 5 worker 구현과 worker 기준
-  전체 테스트 `484/484`까지 진행됐지만 Codex gate는 통과하지 않았다.
-  ready action의 fresh fingerprint가 실제 매장·날짜·시간·인원 변경을
-  포함하지 않는 결함이 확인됐다.
-- Task 4~6, `40-verification`, `50-adversarial-review`, Chrome 확장 E2E는
-  시작하지 않았다. 다음 단계 진입 전에 Task 3 결함을 실패 테스트로
-  고정하고 수정해야 한다.
-- 정확한 재개 지점과 검증 기록은
-  `docs/worklog/2026-07-25-01-catchpay-completion-checkpoint.md`를 따른다.
+- blocking backlog인 **예약 완주 구현은 최종 E2E·커밋 전까지 진행
+  중**이다. 분석·설계 승인 뒤 Task 1~6 최소 구현과 자체 적대적 리뷰
+  수정을 마쳤다.
+- `ab5e825` 이후 Codex가 단독으로 stale intent fingerprint, 중복 금액
+  anchor, live CatchPay radio 변형, 성공 문구 변형, 예약 폼/PIN 진단
+  redaction과 비지원 PIN 즉시 인계를 구현·검수했다. Claude worker와
+  Orca orchestration은 사용하지 않았다.
+- 최신 `npm run check`는 511/511, typecheck, dist validation,
+  MAIN/ISOLATED independence를 모두 통과했고 `git diff --check`도
+  통과했다.
+- 통제된 Chrome 증거는 우블랑 0원 실예약 생성·사용자 취소,
+  `ms` 비로그인 `login_required` 무제출 인계까지 확보했다.
+- 남은 blocking gate는 최신 dist reload 뒤 `민석 +
+  pizzeriamarket` 유료 Side Panel one-shot PIN E2E, terminal/IndexedDB/
+  storage 대조, 사용자 취소 확인, worklog와 최종 커밋이다.
+- 현재 문서는
+  `docs/specs/catchpay-reservation-completion/40-verification.md`와
+  `50-adversarial-review.md`를 따른다.
 
 ## 방향 전환과 최우선 미완료 (2026-07-23)
 

@@ -15,6 +15,7 @@ export interface StageSnapshot {
 
 const MAX_ITEMS = 8;
 const SNIPPET_LEN = 160;
+const CATCHPAY_PIN_HEADING = "캐치페이 비밀번호 입력";
 
 function urlKind(document: Document): StageSnapshot["urlKind"] {
   if (document.location.pathname === "/ct/reservation/form") return "reservation_form";
@@ -29,7 +30,33 @@ function maskPii(value: string): string {
     .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "###@###");
 }
 
+function hasCatchPayPinSurface(document: Document): boolean {
+  if (visibleAll<HTMLElement>(document, 'h1, h2, h3, [role="heading"]')
+    .some((heading) => safeText(heading.textContent) === CATCHPAY_PIN_HEADING)) {
+    return true;
+  }
+  const labels = visibleAll<HTMLButtonElement>(document, "button")
+    .map((button) => safeText(button.textContent));
+  const digits = new Set(labels.filter((label) => /^\d$/.test(label)));
+  return digits.size >= 4 && labels.includes("전체삭제") && labels.includes("결제하기");
+}
+
 export function captureStageSnapshot(document: Document): StageSnapshot {
+  const kind = urlKind(document);
+  const pinSurface = hasCatchPayPinSurface(document);
+  if (pinSurface) {
+    return {
+      urlKind: kind,
+      headings: [],
+      buttons: [],
+      disabledButtons: [],
+      disabledButtonCount: 0,
+      dialogLabel: "credential_surface",
+      dialogTitle: "",
+      textSnippet: "",
+      fingerprint: `ss-${fnvHash(JSON.stringify({ kind, credentialSurface: true }))}`,
+    };
+  }
   const dialogEl = findActiveDialog(document) ?? findVisiblePresentationSheet(document);
   const container: ParentNode = dialogEl ?? document.querySelector("main") ?? document.body;
   const headings = visibleAll<HTMLElement>(container, 'h1, h2, [role="heading"]')
@@ -38,7 +65,6 @@ export function captureStageSnapshot(document: Document): StageSnapshot {
   const buttons = buttonEls.map((b) => safeText(b.textContent)).filter(Boolean);
   const disabledButtons = buttonEls.map(isDisabled);
   const disabledButtonCount = disabledButtons.filter(Boolean).length;
-  const kind = urlKind(document);
   const dialogLabel = dialogEl ? safeText(dialogEl.getAttribute("aria-label")) : "";
   const dialogTitle = dialogEl
     ? safeText(visibleAll<HTMLElement>(dialogEl, 'h1, h2, [role="heading"]').at(0)?.textContent)

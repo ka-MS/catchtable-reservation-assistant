@@ -31,6 +31,10 @@ import {
   type AvailabilityWakeSignal,
 } from "./availability-dom-wake.js";
 import type { PreparationPageContext } from "./preparation-observation.js";
+import type {
+  CompletionResult,
+  ReservationCompletionIntent,
+} from "./completion-coordinator.js";
 
 interface CalendarPort {
   inspect(targetDate: string): CalendarInspection;
@@ -72,6 +76,15 @@ interface DiagnosticsPort {
   forceFlush(): Promise<void>;
 }
 
+interface CompletionPort {
+  run(
+    config: ReservationConfig,
+    intent: ReservationCompletionIntent,
+    signal: AbortSignal,
+    takePin: () => string | undefined,
+  ): Promise<CompletionResult>;
+}
+
 interface Dependencies {
   clock: Clock;
   monotonicClock: Clock;
@@ -93,6 +106,8 @@ interface Dependencies {
   flushTrace?(): Promise<boolean>;
   captureSnapshot?(): StageSnapshot | null;
   capturePreparationContext?(): PreparationPageContext;
+  readShopDisplayName?(): string | null;
+  completion?: CompletionPort;
   /** attempt 제어 신호(Control Plane) — 준비 완료 후 실행영역 진입을 알린다. */
   attemptPhase?(phase: "EXECUTING"): void;
   diagnostics?: DiagnosticsPort;
@@ -142,6 +157,7 @@ const DIAGNOSTIC_BREADCRUMB_STATES = new Set<RunState>([
   "SLOT_CLICK_DISPATCHED",
   "SLOT_TRANSITION_CONFIRMED",
   "ADVANCING_RESERVATION",
+  "COMPLETING_RESERVATION",
 ]);
 
 function postSlotEventData(inspection: PostSlotInspection): NonNullable<RunEvent["data"]> {
@@ -190,6 +206,12 @@ class OneShotAuthorizationHandle {
 
   constructor(authorization?: OneShotRunAuthorization) {
     this.value = authorization ?? null;
+  }
+
+  takePin(): string | undefined {
+    const pin = this.value?.catchPayPin;
+    this.value = null;
+    return pin;
   }
 
   dispose(): void {
@@ -1194,6 +1216,9 @@ class RunSession {
     const serverClock = this.serverClock;
     const slotDetectedAt = serverClock.now();
     const clockData = this.detectionClockData();
+    const shopDisplayName = config.reservationCompletionEnabled
+      ? this.deps.readShopDisplayName?.() ?? null
+      : null;
     this.transition("SLOT_DETECTED", `${candidate.label} 슬롯을 감지했습니다.`, {
       data: slotDetectedEventData(
         slotDetectedAt, this.adjacentTiming, this.targetTiming, config.openAtMs,
@@ -1283,7 +1308,7 @@ class RunSession {
       );
     }
     this.transition("ADVANCING_RESERVATION", "예약 폼까지 선택적 중간 단계를 진행합니다.");
-    return this.advancePostSlot(slotTransition.inspection, postSlotDeadline);
+    return this.advancePostSlot(slotTransition.inspection, postSlotDeadline, candidate, shopDisplayName);
   }
 
   private async waitForSlotTransition(deadline: number): Promise<SlotTransitionResult> {
@@ -1305,6 +1330,8 @@ class RunSession {
   private async advancePostSlot(
     initialInspection: PostSlotInspection,
     initialDeadline: number,
+    candidate: SlotCandidate,
+    shopDisplayName: string | null,
   ): Promise<RunResult> {
     const config = this.config;
     const controller = this.controller;
@@ -1329,11 +1356,51 @@ class RunSession {
           if (!(await this.deps.sleep(20, controller.signal))) break;
           continue;
         }
-        return this.handOff("예약 폼에 도착했습니다. 약관 확인과 최종 예약은 직접 진행하세요.", {
+        const formData = {
           ...postSlotEventData(inspection),
           openDeltaMs: Math.round(formSeenAtMs - config.openAtMs),
           timingServerAtMs: formSeenAtMs,
+        };
+        if (!config.reservationCompletionEnabled) {
+          return this.handOff("예약 폼에 도착했습니다. 약관 확인과 최종 예약은 직접 진행하세요.", formData);
+        }
+        if (!this.deps.completion || !shopDisplayName) {
+          return this.diagnosticHandOff("예약 매장 표시명을 확정할 수 없어 최종 제출하지 않습니다.", formData);
+        }
+        if (serverClock.now() >= config.stopAtMs) {
+          return this.timedOut("최종 제출 전에 감시 종료 시각에 도달했습니다.");
+        }
+        let shopSlug = "";
+        try {
+          const segments = new URL(config.targetUrl).pathname.split("/").filter(Boolean);
+          shopSlug = segments.at(-1) ?? "";
+        } catch {
+          shopSlug = "";
+        }
+        if (!shopSlug) return this.diagnosticHandOff("예약 매장 식별자를 확정할 수 없어 최종 제출하지 않습니다.", formData);
+        this.transition("COMPLETING_RESERVATION", "예약 내용과 CatchPay를 최종 검증하고 예약 완주를 진행합니다.", {
+          data: { ...formData, completionEnabled: true },
         });
+        const completion = await this.deps.completion.run(config, {
+          shopSlug,
+          shopDisplayName,
+          reservationDate: config.reservationDate,
+          selectedMinutes: candidate.minutes,
+          personCount: config.personCount,
+        }, controller.signal, () => this.authorizationHandle.takePin());
+        if (completion.kind === "completed") {
+          this.transition("COMPLETED", completion.message);
+          return this.finish();
+        } else if (completion.kind === "stopped") {
+          this.transition("STOPPED", completion.message, { userStopped: true });
+          return this.finish();
+        } else if (completion.kind === "timed_out") {
+          return this.timedOut(completion.message);
+        } else {
+          return this.diagnosticHandOff(completion.message, {
+            completionClaimed: completion.claimed,
+          });
+        }
       }
       if (inspection.kind === "unknown") {
         return this.diagnosticHandOff(`${inspection.label} 화면은 자동 진행하지 않습니다.`, postSlotEventData(inspection));

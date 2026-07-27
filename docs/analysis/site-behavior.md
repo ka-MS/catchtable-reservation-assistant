@@ -418,3 +418,148 @@ CatchPay 예약 완주(`docs/specs/catchpay-reservation-completion/`) 통제 실
 - PIN 키패드 숫자 배열의 렌더 간 무작위성(다표본), 잘못된 PIN·취소·timeout 시 화면과 재시도 정책.
 - 0원/유료 공통: 완료 화면의 raw 예약번호 없이 재조회(reload) 후 동일 결과 재판독 가능성.
 - 예약 폼 top-bar `h1`과 폼 본문(`main`) 사이 프로그램적 연결(aria-labelledby 등) 부재의 안정성(다매장 교차 확인).
+
+### 12.10 매장 상세 표시명 DOM anchor `[실측: 우블랑 2026-07-25, 로그인, read-only]`
+
+구현 후 통제 E2E 착수 시 `https://app.catchtable.co.kr/ct/shop/woo_blanc_`를
+read-only로 재확인했다.
+
+- 문서 전체의 `h1`은 `우블랑` 하나뿐이고 textContent가 매장 표시명이다.
+- 이 `h1`에는 `id`, `aria-label`, `data-*`가 없으며 `main` 아래에도 있지
+  않다. 따라서 매장 상세에서 `main h1`은 표시명을 찾지 못한다.
+- 예약 전 매장 표시명 anchor는 generated class가 아니라 **문서 전체의
+  유일하고 비어 있지 않은 `h1` textContent**로 한정한다. 부재·중복·빈
+  값이면 추측하지 않고 인계한다.
+
+### 12.11 0원 폼의 중복 금액 요약 `[실측: 우블랑 2026-07-25, 로그인, read-only]`
+
+완주 opt-in 실행이 안전 인계된 뒤 제출 없이 폼 DOM을 확인했다.
+
+- 본문 `h3`의 `총 결제 금액`과 고정 하단 `span`의 `결제금액`이 동시에
+  존재한다.
+- 두 anchor 모두 이전 보증액 `80,000원`과 현재 결제금액 `0원`을
+  표시하며, 이전 금액은 취소선이고 현재 금액은 취소선이 아니다. 본문
+  이전 금액은 네이티브 `<del>`이고, 고정 하단 이전 금액은 일반
+  `<span>`에 computed `text-decoration-line: line-through`가 적용된다.
+- 각 금액 요소의 시각 textContent는 `80,000원`/`0원`이지만 React DOM은
+  숫자와 `원`을 같은 요소 안의 인접 text node로 분리할 수 있다. 금액은
+  개별 text node가 아니라 가장 작은 금액 요소의 전체 textContent로
+  읽어야 한다.
+- 따라서 금액 라벨의 개수 자체를 1개로 제한할 수 없다. 각 anchor에서
+  취소선이 아닌 현재 KRW 값이 정확히 하나이고, 모든 anchor의 현재값이
+  서로 같은 경우에만 단일 현재 결제금액으로 판정한다. anchor별 값이
+  없거나 복수이거나 서로 다르면 인계한다.
+
+### 12.12 예약 폼 top bar wrapper 변형 `[실측: 우블랑 2026-07-25, 로그인, read-only]`
+
+후속 통제 E2E 폼에서 매장명 `우블랑`은 여전히 문서의 유일한 `h1`이고
+네이티브 `header` 안에 있었지만, `header > div > div > h1`처럼 중간
+wrapper가 추가돼 있었다. wrapper에는 안정적인 ARIA/data anchor가 없다.
+따라서 top bar anchor는 direct-child 깊이를 고정하지 않고
+**유일하고 비어 있지 않은 `header h1`**로 판정한다.
+
+### 12.13 결제수단 radio label 변형 `[실측: 우블랑 2026-07-25, 로그인, read-only]`
+
+- `input[type=radio][name="payment-type"]`는 정확히 2개다.
+- 선택된 첫 radio는 두 겹의 빈 `label` 안에 있어 자체 accessible/label
+  text가 없다. 같은 행에는 등록 카드와 `이 카드로 식사 금액이 자동결제
+  됩니다` 문구가 있다.
+- 선택되지 않고 disabled인 둘째 radio는 바깥 `label` text가
+  `일반결제`다.
+- 따라서 명시적 `캐치페이` label이 없을 때는 정확히 2개 중 유일하게
+  `일반결제`로 식별되는 radio의 반대편만 CatchPay 후보로 삼는다.
+  등록 자동결제 문구는 이 표본에서 관측된 표시 사실이지만 준비 상태의
+  hard gate로 사용하지 않는다. CatchPay 후보가 checked이고 일반결제가
+  선택되지 않았으며 최종 버튼이 정확히 `자동결제로 예약하기`일 때만
+  진행한다. 결제수단 선택·전환 action은 하지 않는다. 명시적인
+  CatchPay 등록 필요 화면은 아직 미실측이므로 관측 전 selector를
+  추측해서 추가하지 않는다.
+
+### 12.14 React 제어 입력과 전체동의 문구 변형 `[실측: 우블랑 2026-07-25, 로그인, 자동화 action 후 read-only]`
+
+- textarea에 인스턴스 `.value=` 후 `input`을 보낸 실행은 action 성공을
+  반환했지만 값이 빈 문자열로 남아 반복 상한에 도달했다. React 제어
+  입력은 native textarea value setter를 사용하고 action 뒤 실제 value
+  일치를 확인해야 한다.
+- 같은 폼에서 native setter 후 bubbling `InputEvent("input")`와
+  `change`를 보낸 값은 다음 관측에서도 유지됐다.
+- 개별 매장 유의사항 7개와 취소수수료 동의 1개는 checked가 됐지만,
+  개인정보 제3자 제공 2개는 unchecked로 남았다.
+- 전체동의 label은 기존 관측의 `모두 동의합니다`와 달리
+  `모두 동의합니다.`(마침표 포함)다. 두 문구를 같은 명시적 group
+  변형으로 취급한다.
+- group은 semantic `fieldset`/`section`이 아니라 두 단계 위 일반
+  `div`에 group 자신과 필수 3개가 함께 있다. group부터 위로 올라가
+  visible checkbox가 2개 이상인 첫 ancestor가 이 4-control 집합이다.
+- 개별 required 클릭 뒤 checked가 되지 않으면 성공으로 보지 않는다.
+  같은 section의 group 구성원이 모두 required이고 optional이 0개인
+  경우에만 해당 group으로 fallback한다.
+
+### 12.15 필수 textarea 구조와 전체동의 비동기 반영 `[실측: 우블랑 2026-07-25, 로그인, 무제출]`
+
+통제 E2E는 필수약관 처리 단계에서 `completionClaimed=false`로
+인계됐고 최종 제출은 없었다. 종료 뒤 현재 DOM과 action 반영 시점을
+확인했다.
+
+- visible textarea는 6개였고 native `required`, `aria-required`,
+  `aria-label`, `aria-labelledby`와 wrapping `label`이 모두 없었다.
+- 각 매장 질문은 가장 가까운 일반 `div` 안에 direct child `h4` 하나와
+  해당 textarea를 감싼 `div` 하나를 둔다. 그 질문 container 안의
+  textarea는 정확히 하나다.
+- 첫 3개 질문의 `h4`는 `[필수]`로 시작하고, 다음 2개 질문과 별도
+  `고객 요청사항` textarea에는 `[필수]`가 없다. 따라서 이 변형에서는
+  가장 가까운 단일-textarea 질문 container의 유일한 direct heading이
+  필수 여부의 구조적 근거다.
+- 위 구조로 찾은 필수 textarea는 3개였다. native textarea value
+  setter와 bubbling `InputEvent`·`change`로 `없음`을 넣은 첫 값은
+  150ms 뒤와 약관 group 재렌더 150ms 뒤에도 유지됐다.
+- `모두 동의합니다.` group과 그 필수 member 3개가 모두 checked인
+  상태에서 group 해제는 동기 반영됐다. 다시 group을 클릭한 뒤
+  group과 member 3개의 checked가 모두 반영되기까지 이 표본에서는
+  약 76.6ms가 걸렸다.
+- 따라서 group click 직후의 동기 checked 값만으로 action 실패를
+  판정할 수 없다. 동일 optional baseline을 유지한 채 짧고 제한된
+  확인 구간에서 group과 required member 전부의 반영을 관측해야 하며,
+  확인되지 않으면 재클릭하지 않고 인계한다.
+
+### 12.16 0원 구현 E2E 성공 문구 DOM 변형 `[실측: 우블랑 2026-07-25, 로그인, 실예약]`
+
+확장 구현으로 우블랑 2026-08-10 오후 12:00, 2명 예약의 외부 최종
+버튼을 한 번 제출했다. terminal trace는 `completionClaimed=true`였고
+결과 불명 인계 뒤 재제출하지 않았다. 실제 화면은
+`/ct/mydining/my/planned`로 전이했고 방문예정 목록에 같은 우블랑
+예약이 등재돼 실예약 생성이 확인됐다.
+
+- 완료 문구는 heading이나 `[role=heading]`이 아니다. role·aria-label이
+  없는 일반 `div` 하나가 `strong` `자동결제`, text node `로`, `br`,
+  `span` `예약을 완료했습니다`를 자식으로 가진다.
+- 이 가장 작은 `div`의 normalized textContent는 정확히
+  `자동결제로 예약을 완료했습니다`다. 부모 `div`에는 후속 안내
+  `식사 후 사장님께 자동결제 요청해주세요.`까지 포함된다.
+- 방문예정 항목은 native `li` 하나이며 normalized textContent에
+  `우블랑`, `2026.08.10 (월)`, `오후 12:00`, `2명`이 모두 있었다.
+- 기존 heading-only 완료 문구 판정은 path와 목록이 일치해도
+  `matchedMessage=false`가 되어 안전 인계했다. 성공 path 안에서
+  가장 작은 visible element의 exact normalized text로 문구를
+  판정해야 한다. 부분 문자열이나 부모의 추가 안내까지는 허용하지
+  않는다.
+- 이 실행에서는 제출 전 document marker를 설치하지 않아 full reload와
+  SPA navigation의 구분은 여전히 미측정이다.
+- 이 예약은 자동 취소하지 않았고, 사용자가 직접 취소 완료했다고
+  확인했다. 환불 완료 여부는 별도로 확인하지 않았다.
+
+### 12.17 비로그인 구현 E2E의 안전 인계와 진단 스냅샷 `[실측: 우블랑 2026-07-25, 비로그인, 무제출]`
+
+`ms` 비로그인 프로필에서 확장을 우블랑 2026-08-10, 2명,
+11:00~21:00 조건으로 실행했다. 첫 번째 선택 가능한 메뉴를 2개로
+설정하고 예약 폼 `/ct/reservation/form?isDepositFree=1`까지 도달했다.
+
+- 예약 폼에는 `로그인하고 예약하기`와 `로그인`이 표시됐고,
+  `login_required`로 `HANDED_OFF` 됐다.
+- 외부 최종 제출 claim과 `자동결제로 예약하기` dispatch는 없었으며
+  예약은 생성되지 않았다.
+- terminal 진단은 stage `COMPLETING_RESERVATION`과 failure snapshot
+  `ss-e06b7fd6`를 기록했다. 스냅샷 요약에는 프로모션 오버레이의
+  `닫기`와 `전액 할인의 기회 이 방식으로 예약` 버튼 구조가 남았다.
+- 이 negative-control은 예약 폼의 로그인 인계도 공통 진단 경로를
+  통과하며 DOM 스냅샷을 남긴다는 구현 후 증거다.

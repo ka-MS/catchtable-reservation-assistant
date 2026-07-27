@@ -217,12 +217,95 @@ Opus 4.8 focused read-only recon을 추가 수행했다.
   다른 heading·title을 추측하지 않고 인계한다.
 - 두 폼 모두 최종 제출·PIN·결제·예약 생성 없이 관측을 종료했다.
 
+#### 구현 후 통제 E2E 매장 상세 anchor 정정
+
+2026-07-25 로그인된 우블랑 매장 상세를 read-only로 재확인하자 문서
+전체의 `h1`은 매장명 하나뿐이었지만 `main` 아래에는 없었다. 따라서
+예약 전 표시명을 `main h1`로 읽는 구현은 안전하게 실패하기만 하며
+완주할 수 없다. 매장 상세에서는 문서 전체의 유일하고 비어 있지 않은
+`h1`만 사용하고, 예약 폼에서는 기존 실측대로 유일한 `header > h1`을
+사용한다.
+
+같은 실행에서 우블랑 0원 폼은 본문의 `총 결제 금액`과 고정 하단의
+`결제금액` 두 요약을 동시에 렌더했다. 둘 다 취소선 80,000원과 현재
+0원을 표시했다. 본문 취소선은 `<del>`, 고정 하단 취소선은 일반
+`span`의 CSS `text-decoration-line: line-through`였다. 따라서 라벨
+하나만 허용하거나 의미 태그 취소선만 제외하는 기존 구현은 안전하게
+인계하지만 정상 폼을 완주할 수 없다. 각 요약이 단일 현재값을 내고
+모든 현재값이 같을 때만 그 값으로 수렴시키며, 하나라도 모호하거나
+불일치하면 인계하는 것이 최소 수정이다. 또한 React가 같은 금액
+요소 안에서 숫자와 `원`을 별도 text node로 만들므로, text node마다
+파싱하지 않고 가장 작은 금액 요소의 전체 textContent를 파싱해야 한다.
+
+후속 2026-07-25 폼에서는 매장명 `h1`과 네이티브 `header` 사이에
+두 개의 generated wrapper가 추가됐다. `header > h1` direct-child
+가정은 안전 인계만 일으켰다. 의미 구조는 그대로이므로 wrapper 깊이를
+고정하지 않은 유일한 `header h1`을 사용하고, 중복·빈 값이면 인계한다.
+
+같은 폼에서 CatchPay radio 자체와 두 겹 label에는 텍스트가 없고,
+다른 radio의 바깥 label만 `일반결제`였다. radio는 정확히 2개였으며
+선택된 비-일반결제 radio의 행에 등록 카드 자동결제 문구가 있었다.
+따라서 명시적 CatchPay label이 없을 때만 이 2-radio 보완 판정을
+허용한다. 어느 radio도 자동으로 선택하지 않는다.
+
+2026-07-25 구현 E2E에서 `catchpay_not_ready`로 안전 인계됐지만 당시
+terminal event에는 CatchPay 하위 판정값과 예약 폼 failure snapshot이
+없어 radio 선택, 등록 안내문, 일반결제 중 어느 조건이 실패했는지
+사후 구분할 수 없었다. 현재 등록 판정은 CatchPay radio의 가장 가까운
+`section`에 `이 카드로 식사 금액이 자동결제 됩니다`라는 정확한 문구가
+있는지에 의존한다. 이 문구와 wrapper는 결제 방식 자체보다 약한
+presentation 근거라 정상 선택 상태를 거절할 수 있다.
+
+사용자는 이 false negative를 줄이기 위해 중간안을 승인했다. 등록 카드
+안내문은 더 이상 hard gate나 `registered` 사실로 사용하지 않는다.
+제출 허용 조건은 유일하게 식별된 CatchPay radio가 checked이고
+일반결제가 selected가 아니며, 최종 button이 정확히
+`자동결제로 예약하기`인 경우다. 명시적 등록 필요 상태가 추후 실측되면
+분석 원본을 먼저 갱신한 뒤 별도 인계 gate로 추가한다.
+
+필수 입력 action까지 도달한 실행에서는 단순 textarea `.value=`가 React
+상태에 반영되지 않아 값이 비어 있었고 반복 상한으로 안전 인계됐다.
+또한 전체동의 문구가 `모두 동의합니다.`로 변형됐으며, 개별 필수 중
+개인정보 2개만 클릭 후에도 unchecked였다. 네이티브 textarea setter와
+`InputEvent`·`change` 및 action 후 상태 확인을 사용하고, 개별 required
+클릭 실패 시에만 기존 required-only group 안전성 검사를 통과한
+전체동의로 fallback한다. semantic section이 없을 수 있으므로 group
+membership는 checkbox가 2개 이상인 가장 가까운 ancestor에서 열거한다.
+
+후속 실행은 최종 제출 claim 없이 약관 단계에서 안전 인계됐다. 이
+폼의 textarea에는 label/required/aria 연결이 없고, 가장 가까운
+단일-textarea 질문 `div`의 유일한 direct `h4`가 `[필수]` 표기를
+소유했다. 이 구조로 필수 textarea 3개와 비필수 textarea 3개가 정확히
+분리됐다. 또한 `모두 동의합니다.` 재선택은 required 3개까지 checked가
+되기까지 약 76.6ms가 걸려 클릭 직후 동기 판정이 실패를 오인했다.
+질문 container의 구조가 유일할 때만 heading marker를 사용하고, group
+click 뒤에는 bounded 확인으로 required 전부와 optional baseline을
+재검증한다. 확인되지 않으면 group을 다시 클릭하지 않고 인계한다.
+
+다음 0원 구현 E2E는 외부 제출 claim 한 번 뒤 실제 우블랑 예약을
+생성했지만 완료 문구를 heading에서만 찾던 판정 때문에 재제출 없이
+결과 불명 인계됐다. 현재 성공 문구는 일반 `div` 안의
+`strong`+text node+`br`+`span`으로 분할되고, 가장 작은 해당 `div`의
+normalized textContent만 정확히 `자동결제로 예약을 완료했습니다`였다.
+성공 path와 일치하는 방문예정 `li`는 정상 관측됐다. 따라서 성공
+문구는 heading role을 요구하지 않고 가장 작은 visible element의
+exact normalized text로 판정한다. 부모의 추가 안내나 substring은
+성공 근거로 인정하지 않는다. 이 실행은 제출 전 document marker가
+없어 reload/SPA 구분 근거로는 사용하지 않는다.
+
+같은 날 `ms` 비로그인 프로필의 negative-control은 예약 폼까지 도달한
+뒤 `login_required`로 `HANDED_OFF` 됐다. 외부 제출 claim과 최종 버튼
+dispatch는 없었다. terminal에는 `COMPLETING_RESERVATION` stage와
+failure snapshot `ss-e06b7fd6`가 남아, 기존 예약 폼 handoff의 진단
+누락이 해소됐음을 확인했다. 스냅샷은 프로모션 오버레이의 버튼 구조만
+요약했고 로그인이나 결제를 진행하지 않았다.
+
 ### 3.5 시나리오 비교
 
 | 항목 | C: 비로그인 우블랑 | A: 로그인 우블랑 0원 | B: 로그인 피제리아 20,000원 |
 |---|---|---|---|
 | 로그인 gate | 있음 | 없음 | 없음 |
-| CatchPay | 판정 전 중단 | checked + 등록 수단 행 | checked + 등록 수단 행 |
+| CatchPay | 판정 전 중단 | checked + 자동결제 최종 버튼 | checked + 자동결제 최종 버튼 |
 | 일반결제 | 자동 선택 안 함 | disabled | disabled |
 | 필수 약관 | 회원가입 변형 포함 | 매장 7 + 결제 3 | 결제 3 |
 | 필수 자유입력 | 회원가입·매장 변형 | multiline 3 | 없음 |
@@ -276,7 +359,7 @@ Opus 4.8 focused read-only recon을 추가 수행했다.
 | 성공 화면 reload 뒤 동일 예약을 다시 판독할 수 있는지 | 현재 실행에서 URL·메시지·일치 목록을 확인하지 못하면 `COMPLETED`가 아닌 결과 불명 인계다. |
 | PIN 배열이 렌더마다 재배열되는지 | 위치를 사용하지 않고 매 입력마다 현재 button의 숫자 accessible text를 재조회한다. |
 | 잘못된 PIN·취소·timeout 화면 | 자동 재입력·재제출 없이 secret을 폐기하고 인계한다. |
-| CatchPay 미등록 로그인 폼 | checked CatchPay와 등록 수단 행을 모두 확인하지 못하면 인계한다. |
+| CatchPay 미등록 로그인 폼 | 미실측이다. 등록 안내문 부재만으로 거절하지 않는다. 명시적 등록 필요 UI가 관측되면 분석 갱신 후 인계 gate를 추가한다. |
 | 다른 매장의 새로운 필수 input·약관 구조 | 명시적으로 지원한 control 외에는 추측 입력하지 않고 인계한다. |
 | 예약 폼의 shop slug 속성 | slug 속성은 확인되지 않았다. 이전 매장 페이지에서 캡처한 표시명과 폼의 유일한 `header > h1`을 정규화 비교하고, 없거나 중복·불일치면 인계한다. |
 

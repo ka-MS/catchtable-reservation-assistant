@@ -45,11 +45,13 @@ export interface ReservationFormInspectOptions {
 export interface ReservationFormFacts {
   currentAmountKrw: number;
   catchPayChecked: boolean;
-  catchPayRegistered: boolean;
   generalPaymentSelected: boolean;
   requiredAgreementCount: number;
+  uncheckedRequiredAgreementCount: number;
   emptyRequiredMultilineCount: number;
   optionalAgreementCount: number;
+  checkedOptionalAgreementCount: number;
+  optionalAgreementFingerprint: string;
 }
 
 export interface CatchPayPinFacts {
@@ -58,6 +60,7 @@ export interface CatchPayPinFacts {
   iframeCount: number;
   passwordInputCount: number;
   digitCount: number;
+  innerSubmitEnabled: boolean;
 }
 
 export interface CompletionFacts {
@@ -74,6 +77,11 @@ export type ReservationFormInspection =
   | { kind: "hold_expired"; fingerprint: string }
   | { kind: "unknown"; code: ReservationFormUnknownCode; fingerprint: string };
 
+type ReservationFormPageInspection = Exclude<
+  ReservationFormInspection,
+  { kind: "pin" } | { kind: "success" }
+>;
+
 const CATCHPAY_ORIGIN = "https://app.catchtable.co.kr";
 const SUCCESS_PATH = "/ct/mydining/my/planned";
 const FINAL_BUTTON_LABEL = "자동결제로 예약하기";
@@ -81,7 +89,7 @@ const COMPLETION_MESSAGE = "자동결제로 예약을 완료했습니다";
 const PIN_HEADING = "캐치페이 비밀번호 입력";
 const REQUIRED_MARK = "[필수]";
 const OPTIONAL_MARK = "[선택]";
-const GROUP_LABELS = new Set(["모두 동의합니다", "이용자 약관 전체 동의"]);
+const GROUP_LABELS = new Set(["모두 동의합니다", "모두 동의합니다.", "이용자 약관 전체 동의"]);
 const HOLD_EXPIRED_TEXT = "예약 찜 시간이 만료되었습니다";
 const HOLD_ACTIVE_PATTERN = /\d+\s*분간\s*예약\s*찜/;
 
@@ -95,12 +103,32 @@ function labelTextFor(input: Element): string {
   return safeText(input.getAttribute("aria-label"));
 }
 
+/** site-behavior.md §12.15: label/aria가 없는 textarea는 가장 가까운
+ * 단일-textarea 질문 container의 유일한 direct heading으로만 marker를 보완한다. */
+function questionHeadingText(input: Element): string {
+  if (input.tagName !== "TEXTAREA") return "";
+  for (let container = input.parentElement; container; container = container.parentElement) {
+    const textareas = Array.from(container.querySelectorAll("textarea"));
+    if (textareas.length !== 1 || textareas[0] !== input) return "";
+    const headings = Array.from(container.children)
+      .filter((child) => /^H[1-6]$/.test(child.tagName));
+    if (headings.length > 0) {
+      return headings.length === 1 ? safeText(headings[0].textContent) : "";
+    }
+  }
+  return "";
+}
+
 /** 20-design.md §5.2: "[필수]" 표기는 control 자신의 label뿐 아니라 같은 section에
  * 있어도 된다(예: 매장 유의사항 섹션 머리글 "[필수] 확인해주세요."). control 자신의
  * label에 표기가 없으면 가장 가까운 fieldset/section의 heading 텍스트로 대체한다. */
 function effectiveMarkerText(input: Element): string {
   const own = labelTextFor(input);
   if (own.includes(REQUIRED_MARK) || own.includes(OPTIONAL_MARK)) return own;
+  const questionHeading = questionHeadingText(input);
+  if (questionHeading.includes(REQUIRED_MARK) || questionHeading.includes(OPTIONAL_MARK)) {
+    return questionHeading;
+  }
   const container = input.closest("fieldset, section");
   if (!container) return own;
   // section 머리글 후보는 P/LEGEND/heading만 인정한다 — 다른 control을 감싼 형제
@@ -117,6 +145,8 @@ function isStruckThrough(element: Element): boolean {
   for (let current: Element | null = element; current; current = current.parentElement) {
     if (current.tagName === "S" || current.tagName === "DEL") return true;
     if (current.getAttribute("aria-hidden") === "true") return true;
+    const decoration = current.ownerDocument.defaultView?.getComputedStyle(current).textDecorationLine;
+    if (decoration?.includes("line-through")) return true;
   }
   return false;
 }
@@ -129,23 +159,36 @@ function collectCurrentAmounts(document: Document): number[] {
       const own = safeText(el.textContent);
       return own === "결제금액" || own === "총 결제 금액";
     });
-  if (labels.length !== 1) return [];
-  // 라벨의 바로 다음 형제 요소만 금액 값의 범위로 삼는다 — 같은 컨테이너의 다른
-  // 안내 문구(예: "100원 결제 후 즉시 취소")에 있는 무관한 KRW 언급을 배제하기 위함이다.
-  const container = labels[0].nextElementSibling;
-  if (!container) return [];
-  const walker = document.createTreeWalker(container, 4 /* NodeFilter.SHOW_TEXT */);
-  const amounts: number[] = [];
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const parent = node.parentElement;
-    if (!parent || isStruckThrough(parent) || isElementHidden(parent)) continue;
-    const text = node.textContent ?? "";
-    for (const match of text.matchAll(/([\d,]+)\s*원/g)) {
-      const parsed = Number(match[1].replace(/,/g, ""));
-      if (Number.isFinite(parsed)) amounts.push(parsed);
-    }
+  if (labels.length === 0) return [];
+  const currentByLabel: number[] = [];
+  for (const label of labels) {
+    // 라벨의 바로 다음 형제 요소만 금액 값의 범위로 삼는다 — 같은 컨테이너의 다른
+    // 안내 문구(예: "100원 결제 후 즉시 취소")에 있는 무관한 KRW 언급을 배제하기 위함이다.
+    const container = label.nextElementSibling;
+    if (!container) return [];
+    const candidates = [container, ...Array.from(container.querySelectorAll("*"))];
+    const amountPattern = /^([\d,]+)\s*원$/;
+    const currentText = (element: Element): string => {
+      const walker = document.createTreeWalker(element, 4 /* NodeFilter.SHOW_TEXT */);
+      const parts: string[] = [];
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const parent = node.parentElement;
+        if (!parent || isStruckThrough(parent) || isElementHidden(parent)) continue;
+        parts.push(node.textContent ?? "");
+      }
+      return safeText(parts.join(""));
+    };
+    const matchingElements = candidates.filter((element) =>
+      !isStruckThrough(element) && !isElementHidden(element) && amountPattern.test(currentText(element)));
+    const amountElements = matchingElements.filter((element) =>
+      !matchingElements.some((other) => other !== element && element.contains(other)));
+    const amounts = amountElements.map((element) =>
+      Number(currentText(element).match(amountPattern)![1].replace(/,/g, "")));
+    if (amounts.length !== 1 || !Number.isFinite(amounts[0])) return [];
+    currentByLabel.push(amounts[0]);
   }
-  return amounts;
+  const unique = [...new Set(currentByLabel)];
+  return unique.length === 1 ? unique : [];
 }
 
 function findFinalButtons(document: Document): HTMLButtonElement[] {
@@ -163,26 +206,28 @@ function paymentTypeRadios(document: Document): HTMLInputElement[] {
   return visibleAll<HTMLInputElement>(document, 'input[type="radio"][name="payment-type"]');
 }
 
-function catchPayFacts(document: Document): { checked: boolean; registered: boolean; generalSelected: boolean } {
+function paymentLabelText(radio: HTMLInputElement): string {
+  const labels: string[] = [];
+  for (let current = radio.parentElement; current && current.tagName !== "SECTION"; current = current.parentElement) {
+    if (current.tagName === "LABEL") labels.push(safeText(current.textContent));
+  }
+  return labels.sort((a, b) => b.length - a.length)[0] ?? labelTextFor(radio);
+}
+
+function catchPayFacts(document: Document): { checked: boolean; generalSelected: boolean } {
   const radios = paymentTypeRadios(document);
-  const catchPay = radios.find((radio) => labelTextFor(radio).includes("캐치페이"));
-  const general = radios.find((radio) => labelTextFor(radio).includes("일반결제"));
-  const registered = catchPay
-    ? (() => {
-      let container: Element | null = catchPay.closest("label")?.parentElement ?? null;
-      while (container) {
-        if (normalizedText(container.textContent).includes(normalizedText("이 카드로 식사 금액이 자동결제 됩니다."))) {
-          return true;
-        }
-        container = container.parentElement;
-      }
-      return false;
-    })()
-    : false;
+  const explicitCatchPay = radios.filter((radio) => paymentLabelText(radio).includes("캐치페이"));
+  const generalCandidates = radios.filter((radio) => paymentLabelText(radio).includes("일반결제"));
+  const general = generalCandidates.length === 1 ? generalCandidates[0] : undefined;
+  const catchPay = explicitCatchPay.length === 1 && general && explicitCatchPay[0] !== general
+    ? explicitCatchPay[0]
+    : radios.length === 2 && general
+      ? radios.find((radio) => radio !== general)
+      : undefined;
   return {
     checked: catchPay?.checked === true,
-    registered,
-    generalSelected: general?.checked === true,
+    generalSelected: general?.checked === true
+      || (catchPay !== undefined && radios.some((radio) => radio !== catchPay && radio.checked)),
   };
 }
 
@@ -190,6 +235,8 @@ interface RequiredInputScan {
   requiredAgreementCount: number;
   emptyRequiredMultilineCount: number;
   optionalAgreementCount: number;
+  checkedOptionalAgreementCount: number;
+  optionalAgreementFingerprint: string;
   unsupportedRequiredInput: boolean;
   /** fingerprint 전용 — checked 상태 변화도 fingerprint를 무효화하도록 별도 추적한다
    * (공개 facts에는 노출하지 않는다: 요구되는 필드는 requiredAgreementCount뿐이다). */
@@ -202,6 +249,8 @@ function scanRequiredInputs(document: Document): RequiredInputScan {
     .filter((el) => !isDisabled(el));
   let requiredAgreementCount = 0;
   let optionalAgreementCount = 0;
+  let checkedOptionalAgreementCount = 0;
+  const optionalAgreementStates: Array<[string, boolean]> = [];
   let uncheckedRequiredCount = 0;
   let groupChecked = false;
   for (const checkbox of checkboxes) {
@@ -215,6 +264,8 @@ function scanRequiredInputs(document: Document): RequiredInputScan {
       if (!checkbox.checked) uncheckedRequiredCount += 1;
     } else if (text.includes(OPTIONAL_MARK)) {
       optionalAgreementCount += 1;
+      if (checkbox.checked) checkedOptionalAgreementCount += 1;
+      optionalAgreementStates.push([safeText(checkbox.closest("label")?.textContent), checkbox.checked]);
     }
   }
   const textareas = visibleAll<HTMLTextAreaElement>(document, "textarea");
@@ -227,7 +278,9 @@ function scanRequiredInputs(document: Document): RequiredInputScan {
   const unsupportedRequiredInput = visibleAll<HTMLElement>(document, 'input[type="text"], input[type="email"], input[type="file"], select')
     .some((el) => effectiveMarkerText(el).includes(REQUIRED_MARK));
   return {
-    requiredAgreementCount, emptyRequiredMultilineCount, optionalAgreementCount, unsupportedRequiredInput,
+    requiredAgreementCount, emptyRequiredMultilineCount, optionalAgreementCount, checkedOptionalAgreementCount,
+    optionalAgreementFingerprint: fnvHash(JSON.stringify(optionalAgreementStates)),
+    unsupportedRequiredInput,
     uncheckedRequiredCount, groupChecked,
   };
 }
@@ -238,19 +291,21 @@ function readyFacts(document: Document, currentAmountKrw: number): ReservationFo
   return {
     currentAmountKrw,
     catchPayChecked: catchPay.checked,
-    catchPayRegistered: catchPay.registered,
     generalPaymentSelected: catchPay.generalSelected,
     requiredAgreementCount: scan.requiredAgreementCount,
+    uncheckedRequiredAgreementCount: scan.uncheckedRequiredCount,
     emptyRequiredMultilineCount: scan.emptyRequiredMultilineCount,
     optionalAgreementCount: scan.optionalAgreementCount,
+    checkedOptionalAgreementCount: scan.checkedOptionalAgreementCount,
+    optionalAgreementFingerprint: scan.optionalAgreementFingerprint,
   };
 }
 
-/** 20-design.md §4.3 / site-behavior.md §12.8: 폼 매장명은 유일하고 비어 있지 않은
- * header > h1 textContent에서만 읽는다. 부재·중복·빈 값은 null(불일치로 취급)이고
+/** 20-design.md §4.3 / site-behavior.md §12.8/§12.12: 폼 매장명은 유일하고 비어 있지 않은
+ * header h1 textContent에서만 읽는다. 부재·중복·빈 값은 null(불일치로 취급)이고
  * document.title이나 다른 heading으로 fallback하지 않는다. */
 function readShopDisplayNameFromHeader(document: Document): string | null {
-  const candidates = Array.from(document.querySelectorAll("header > h1"));
+  const candidates = Array.from(document.querySelectorAll("header h1"));
   if (candidates.length !== 1) return null;
   const text = safeText(candidates[0].textContent);
   return text === "" ? null : text;
@@ -261,9 +316,18 @@ function shopNameMatches(document: Document, expectation: ReservationFormExpecta
   return shopDisplayName !== null && normalizedText(shopDisplayName) === normalizedText(expectation.shopDisplayName);
 }
 
+function reservationSummaryElements(document: Document): HTMLElement[] {
+  const candidates = visibleAll<HTMLElement>(document, "p, div, span")
+    .filter((element) => {
+      const text = normalizedText(element.textContent);
+      return /\d{1,2}월\s*\d{1,2}일/.test(text) && /오전|오후/.test(text) && /\d+\s*명/.test(text);
+    });
+  return candidates.filter((element) =>
+    !candidates.some((other) => other !== element && element.contains(other)));
+}
+
 function dateTimePersonMatches(document: Document, expectation: ReservationFormExpectation): boolean {
-  const candidates = visibleAll<HTMLElement>(document, "p, div, span");
-  return candidates.some((el) => {
+  return reservationSummaryElements(document).some((el) => {
     const text = normalizedText(el.textContent);
     return text.includes(normalizedText(expectation.dateText))
       && text.includes(normalizedText(expectation.timeText))
@@ -273,6 +337,21 @@ function dateTimePersonMatches(document: Document, expectation: ReservationFormE
 
 function intentMatches(document: Document, expectation: ReservationFormExpectation): boolean {
   return shopNameMatches(document, expectation) && dateTimePersonMatches(document, expectation);
+}
+
+/** action 직전 stale intent를 검출하기 위한 실제 DOM 값. expectation 일치 boolean만
+ * fingerprint하면 일치했던 날짜·시간·인원이 나중에 바뀌어도 true가 유지될 수 있다. */
+function reservationIntentShape(document: Document): {
+  shopDisplayName: string | null;
+  summaryTexts: string[];
+} {
+  const summaryTexts = reservationSummaryElements(document)
+    .map((el) => normalizedText(el.textContent))
+    .filter(Boolean);
+  return {
+    shopDisplayName: readShopDisplayNameFromHeader(document),
+    summaryTexts: [...new Set(summaryTexts)].sort(),
+  };
 }
 
 function holdState(document: Document): "active" | "expired" | "unknown" {
@@ -286,9 +365,9 @@ function holdState(document: Document): "active" | "expired" | "unknown" {
 
 function findPinDialog(document: Document): HTMLElement | null {
   const headings = visibleAll<HTMLElement>(document, "h1, h2, h3, [role=heading]");
-  const heading = headings.find((el) => safeText(el.textContent) === PIN_HEADING);
-  if (!heading) return null;
-  return heading.closest('[role="dialog"]') ?? heading.parentElement;
+  const matches = headings.filter((el) => safeText(el.textContent) === PIN_HEADING);
+  if (matches.length !== 1) return null;
+  return matches[0].closest('[role="dialog"]') ?? matches[0].parentElement;
 }
 
 function pinDigitButtons(scope: Element): HTMLButtonElement[] {
@@ -297,25 +376,33 @@ function pinDigitButtons(scope: Element): HTMLButtonElement[] {
 }
 
 function pinInnerSubmitButton(scope: Element): HTMLButtonElement | null {
-  return visibleAll<HTMLButtonElement>(scope, "button")
-    .find((button) => safeText(button.textContent) === "결제하기") ?? null;
+  const matches = visibleAll<HTMLButtonElement>(scope, "button")
+    .filter((button) => safeText(button.textContent) === "결제하기");
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function pinKeypadValid(document: Document, dialog: HTMLElement): boolean {
+  if (document.location.origin !== CATCHPAY_ORIGIN || document.location.pathname !== "/ct/reservation/form") return false;
   const iframeCount = document.querySelectorAll("iframe").length;
   const passwordInputCount = document.querySelectorAll('input[type="password"]').length;
   if (iframeCount > 0 || passwordInputCount > 0) return false;
   const digitButtons = pinDigitButtons(dialog);
   if (digitButtons.length !== 10) return false;
   const digits = new Set(digitButtons.map((button) => normalizedText(button.textContent)));
-  return digits.size === 10;
+  const clearButtons = visibleAll<HTMLButtonElement>(dialog, "button")
+    .filter((button) => safeText(button.textContent) === "전체삭제");
+  return digits.size === 10 && clearButtons.length === 1 && pinInnerSubmitButton(dialog) !== null;
 }
 
 // ---- success ----
 
-function findHeadingText(document: Document): string | null {
-  const heading = visibleAll<HTMLElement>(document, "h1, h2, h3, [role=heading]").at(0);
-  return heading ? safeText(heading.textContent) : null;
+function hasExactMessageText(document: Document, expected: string): boolean {
+  const matches = visibleAll<HTMLElement>(
+    document,
+    "div, p, span, strong, h1, h2, h3, h4, h5, h6, [role=heading]",
+  ).filter((element) => normalizedText(element.textContent) === normalizedText(expected));
+  return matches.some((element) =>
+    !matches.some((other) => other !== element && element.contains(other)));
 }
 
 function listingMatches(document: Document, expectation: ReservationSuccessExpectation): boolean {
@@ -337,7 +424,7 @@ export class ReservationFormAdapter {
     if (document.location.pathname === SUCCESS_PATH) {
       const facts: CompletionFacts = {
         path: document.location.pathname,
-        matchedMessage: findHeadingText(document) === COMPLETION_MESSAGE,
+        matchedMessage: hasExactMessageText(document, COMPLETION_MESSAGE),
         listingMatch: listingMatches(document, options.successExpectation),
       };
       return { kind: "success", facts, fingerprint: fp("rf-success", facts) };
@@ -353,18 +440,37 @@ export class ReservationFormAdapter {
         };
         return { kind: "unknown", code: "pin_keypad_unsupported", fingerprint: fp("rf-pin-invalid", shape) };
       }
+      const innerButton = pinInnerSubmitButton(pinDialog);
       const facts: CatchPayPinFacts = {
         sameOrigin: document.location.origin === CATCHPAY_ORIGIN,
         sameDocument: true,
         iframeCount: 0,
         passwordInputCount: 0,
         digitCount: 10,
+        innerSubmitEnabled: innerButton ? !isDisabled(innerButton) : false,
       };
-      const innerButton = pinInnerSubmitButton(pinDialog);
       const shape = { facts, innerEnabled: innerButton ? !isDisabled(innerButton) : false };
       return { kind: "pin", facts, fingerprint: fp("rf-pin", shape) };
     }
 
+    return this.inspectReservationForm(options);
+  }
+
+  /** PIN overlay가 같은 document 위에 열린 동안 그 아래 예약 폼을 다시 검증한다. */
+  inspectFormBelowPin(options: ReservationFormInspectOptions): ReservationFormPageInspection {
+    const pinDialog = findPinDialog(this.document);
+    if (!pinDialog || !pinKeypadValid(this.document, pinDialog)) {
+      return {
+        kind: "unknown",
+        code: "pin_keypad_unsupported",
+        fingerprint: fp("rf-pin-invalid", { present: pinDialog !== null }),
+      };
+    }
+    return this.inspectReservationForm(options);
+  }
+
+  private inspectReservationForm(options: ReservationFormInspectOptions): ReservationFormPageInspection {
+    const { document } = this;
     if (hasLoginGate(document)) {
       return { kind: "login_required", fingerprint: fp("rf-login", { url: document.location.pathname }) };
     }
@@ -386,6 +492,7 @@ export class ReservationFormAdapter {
       scan,
       catchPay,
       finalButtonCount: finalButtons.length,
+      intent: reservationIntentShape(document),
       intentMatch: intentMatches(document, options.expectation),
     };
     const fingerprint = fp("rf-ready", shape);
@@ -398,7 +505,7 @@ export class ReservationFormAdapter {
     if (!intentMatches(document, options.expectation)) {
       return { kind: "unknown", code: "intent_mismatch", fingerprint };
     }
-    if (!catchPay.checked || !catchPay.registered || catchPay.generalSelected) {
+    if (!catchPay.checked || catchPay.generalSelected) {
       return { kind: "unknown", code: "catchpay_not_ready", fingerprint };
     }
     if (scan.unsupportedRequiredInput) {
@@ -417,9 +524,19 @@ export class ReservationFormAdapter {
     const target = visibleAll<HTMLTextAreaElement>(this.document, "textarea")
       .find((el) => effectiveMarkerText(el).includes(REQUIRED_MARK) && el.value.trim() === "");
     if (!target) return false;
-    target.value = defaultAnswer;
-    target.dispatchEvent(new this.document.defaultView!.Event("input", { bubbles: true }));
-    return true;
+    const setter = Object.getOwnPropertyDescriptor(
+      this.document.defaultView!.HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) return false;
+    setter.call(target, defaultAnswer);
+    target.dispatchEvent(new this.document.defaultView!.InputEvent("input", {
+      bubbles: true,
+      inputType: "insertText",
+      data: defaultAnswer,
+    }));
+    target.dispatchEvent(new this.document.defaultView!.Event("change", { bubbles: true }));
+    return target.value === defaultAnswer;
   }
 
   /** 개별 필수 control을 우선 클릭하고, 안전이 증명된 group만 대체로 사용한다. */
@@ -435,21 +552,35 @@ export class ReservationFormAdapter {
     });
     if (individualRequired) {
       individualRequired.click();
-      return true;
+      if (individualRequired.checked) return true;
     }
     const group = checkboxes.find((checkbox) => GROUP_LABELS.has(safeText(checkbox.closest("label")?.textContent)) && !checkbox.checked);
     if (!group) return false;
     if (!this.isSafeGroup(group)) return false;
+    const members = this.groupMembers(group);
+    if (individualRequired && (!members || !members.includes(individualRequired))) return false;
     group.click();
+    // React가 group/member checked를 비동기로 반영할 수 있다(실측 76.6ms).
+    // Coordinator가 bounded settle 뒤 전체 facts와 optional baseline을 재검증한다.
     return true;
   }
 
+  private groupMembers(group: HTMLInputElement): HTMLInputElement[] | null {
+    let container = group.parentElement;
+    while (container) {
+      const visibleCheckboxes = visibleAll<HTMLInputElement>(container, 'input[type="checkbox"]');
+      if (visibleCheckboxes.length > 1) {
+        return Array.from(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
+          .filter((el) => el !== group && !isDisabled(el));
+      }
+      container = container.parentElement;
+    }
+    return null;
+  }
+
   private isSafeGroup(group: HTMLInputElement): boolean {
-    const container = group.closest("fieldset") ?? group.closest("section") ?? group.parentElement;
-    if (!container) return false;
-    const members = visibleAll<HTMLInputElement>(container, 'input[type="checkbox"]')
-      .filter((el) => el !== group);
-    if (members.length === 0) return false;
+    const members = this.groupMembers(group);
+    if (!members || members.length === 0) return false;
     const anyOptional = members.some((member) => effectiveMarkerText(member).includes(OPTIONAL_MARK));
     const allRequired = members.every((member) => effectiveMarkerText(member).includes(REQUIRED_MARK));
     return allRequired && !anyOptional;
@@ -483,14 +614,15 @@ export class ReservationFormAdapter {
 
   private freshPinFingerprint(dialog: HTMLElement, fingerprint: string): boolean {
     if (!pinKeypadValid(this.document, dialog)) return false;
+    const innerButton = pinInnerSubmitButton(dialog);
     const facts: CatchPayPinFacts = {
       sameOrigin: this.document.location.origin === CATCHPAY_ORIGIN,
       sameDocument: true,
       iframeCount: 0,
       passwordInputCount: 0,
       digitCount: 10,
+      innerSubmitEnabled: innerButton ? !isDisabled(innerButton) : false,
     };
-    const innerButton = pinInnerSubmitButton(dialog);
     const shape = { facts, innerEnabled: innerButton ? !isDisabled(innerButton) : false };
     return fp("rf-pin", shape) === fingerprint;
   }
@@ -505,12 +637,9 @@ export class ReservationFormAdapter {
       scan,
       catchPay,
       finalButtonCount: finalButtons.length,
+      intent: reservationIntentShape(this.document),
       intentMatch: true,
     };
-    // action 메서드는 expectation을 받지 않으므로 intentMatch는 fingerprint 계산에서
-    // 항상 상수로 고정한다 — inspect()가 만든 fingerprint와 재현 가능하게 맞추려면
-    // 호출자가 반드시 direct하게 같은 shape을 구성해야 하므로, 대신 inspect() 쪽
-    // fingerprint 계산에서도 intentMatch가 매 호출 동일하면 값이 같다.
     return fp("rf-ready", shape) === fingerprint;
   }
 }
