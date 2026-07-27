@@ -32,6 +32,20 @@ test("leftReservationFlow allows the shop page and the reservation form, blocks 
   assert.equal(leftReservationFlow("not a url", target), true);
 });
 
+test("acknowledged completion claim이 있어야만 정확한 mydining planned path를 이탈에서 제외한다", () => {
+  const target = "https://app.catchtable.co.kr/ct/shop/kea";
+  const plannedUrl = "https://app.catchtable.co.kr/ct/mydining/my/planned";
+  // claim 없이는 완주 후 목적지도 여전히 이탈 STOPPED 후보다.
+  assert.equal(leftReservationFlow(plannedUrl, target), true);
+  assert.equal(leftReservationFlow(plannedUrl, target, false), true);
+  // acknowledged claim이 있으면 정확한 planned path만 이탈에서 제외한다.
+  assert.equal(leftReservationFlow(plannedUrl, target, true), false);
+  // claim이 있어도 다른 path나 origin은 기존 이탈 정책을 그대로 따른다.
+  assert.equal(leftReservationFlow("https://app.catchtable.co.kr/ct/mydining/my/history", target, true), true);
+  assert.equal(leftReservationFlow("https://app.catchtable.co.kr/ct/mydining/my/planned/", target, true), true);
+  assert.equal(leftReservationFlow("https://example.com/ct/mydining/my/planned", target, true), true);
+});
+
 test("isShopUrl accepts only catchtable shop pages", () => {
   assert.equal(isShopUrl("https://app.catchtable.co.kr/ct/shop/mokran"), true);
   assert.equal(isShopUrl("https://app.catchtable.co.kr/ct/shop/mokran?date=260730"), true);

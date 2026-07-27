@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Catchtable Reserve Assistant는 예약 오픈 시각에 Catchtable(`app.catchtable.co.kr`) DINING 예약 슬롯을 감지하고, 목표 슬롯을 한 번 클릭한 뒤 사용자에게 제어권을 넘기는 개인용 Chrome Manifest V3 확장 프로그램이다.
 
-**핵심 원칙: 이 확장은 예약을 완료하지 않는다.** 로그인, CAPTCHA, 유료 예약금 선택, 약관 동의, 결제, 최종 `예약하기` 클릭은 절대 자동화하지 않는다. 자동화는 항상 `/ct/reservation/form` 도착 또는 미지원 화면에서 `HANDED_OFF`로 종료하고 사용자에게 넘긴다. 자세한 경계는 `docs/specs/automation-boundary.md`를 따른다.
+**핵심 원칙: 이 확장은 예약을 완주하는 것을 목표로 한다.** 약관 동의, 결제(유료 예약금 포함), 최종 `예약하기` 클릭까지 실측된 흐름 안에서 자동으로 진행해 예약을 확정한다. 다만 로그인, CAPTCHA/대기열, 실측되지 않은 미지원 화면은 여전히 자동화하지 않고 `HANDED_OFF`로 사용자에게 넘긴다. (2026-07-23 방향 전환: 종전의 "예약을 완료하지 않는다" 원칙은 폐기되었다. **현재 코드는 아직 `HANDED_OFF`로 종료하므로 문서가 코드보다 앞서 있으며, 완주 동작은 별도 코드 변경에서 구현한다.**) 자세한 경계는 `docs/specs/automation-boundary.md`를 따른다.
 
 ## 명령어
 
@@ -74,8 +74,8 @@ Background가 `chrome.storage.local`의 `reservationConfig`, `activeRun`, `runEv
 
 ## 자동화 경계 (코드 변경 시 반드시 지킬 것)
 
-- 자동화가 하는 일: 같은 오리진 서버 시간 측정, 매장 상세 URL로 탭 이동 및 dock 예약 CTA/월·날짜/인원 준비, 슬롯 탐색과 우선순위 선택, dry-run이 아닐 때 선택 슬롯 단일 클릭, (설정 시) 테이블/메뉴/예약금 안내/0원 결제 방법 처리.
-- 자동화가 하지 않는 일: 로그인, CAPTCHA/대기열 우회, 설정과 다른 인원 대체, 유료 예약금 선택, 예약 폼의 방문 목적/약관/결제/최종 확정 조작, 추가 상품 수량 변경.
+- 자동화가 하는 일: 같은 오리진 서버 시간 측정, 매장 상세 URL로 탭 이동 및 dock 예약 CTA/월·날짜/인원 준비, 슬롯 탐색과 우선순위 선택, dry-run이 아닐 때 선택 슬롯 단일 클릭, (설정 시) 테이블/메뉴/예약금 안내 처리, 방문 목적/약관 동의, 유료 예약금 포함 결제 진행, 최종 `예약하기` 확정.
+- 자동화가 하지 않는 일: 로그인, CAPTCHA/대기열 우회, 설정과 다른 인원 대체, 추가 상품 수량 변경, 실측되지 않은 미지원 화면 조작.
 - `HANDED_OFF` 전환 후에는 모든 타이머/observer를 정리하고 다시 개입하지 않는다. 새 실행만 새 RunContext를 만든다.
 - 전체 규칙은 `docs/specs/automation-boundary.md`.
 

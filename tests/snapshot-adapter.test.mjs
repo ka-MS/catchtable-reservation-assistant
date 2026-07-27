@@ -77,3 +77,29 @@ test("fingerprint normalizes dynamic numbers", async () => {
   const second = captureStageSnapshot(doc).fingerprint;
   assert.equal(first, second);
 });
+
+test("CatchPay PIN surface compact snapshot은 keypad 순서와 입력 상태를 수집하지 않는다", async () => {
+  const dom = await loadFixture("catchpay-pin.html");
+  const doc = dom.window.document;
+  const dialog = doc.querySelector('[role="dialog"]');
+  dialog.setAttribute("aria-hidden", "true");
+  dialog.setAttribute("inert", "");
+  const first = captureStageSnapshot(doc);
+  const digitButtons = [...dialog.querySelectorAll("button")]
+    .filter((button) => /^\d$/.test(button.textContent?.trim() ?? ""));
+  digitButtons.reverse().forEach((button) => dialog.append(button));
+  dialog.querySelector("h2").textContent = "보안 인증";
+  dialog.removeAttribute("role");
+  const second = captureStageSnapshot(doc);
+
+  for (const snapshot of [first, second]) {
+    assert.deepEqual(snapshot.headings, []);
+    assert.deepEqual(snapshot.buttons, []);
+    assert.deepEqual(snapshot.disabledButtons, []);
+    assert.equal(snapshot.disabledButtonCount, 0);
+    assert.equal(snapshot.dialogLabel, "credential_surface");
+    assert.equal(snapshot.dialogTitle, "");
+    assert.equal(snapshot.textSnippet, "");
+  }
+  assert.equal(first.fingerprint, second.fingerprint);
+});

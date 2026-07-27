@@ -22,6 +22,9 @@ import { BatchTraceProcessor } from "./telemetry/batch-processor.js";
 import { PortTraceTransport } from "./telemetry/port-transport.js";
 import { TraceLogger } from "./telemetry/trace-logger.js";
 import { capturePreparationPageContext } from "./preparation-observation.js";
+import { ReservationFormAdapter } from "./adapter/reservation-form.js";
+import { CompletionCoordinator } from "./completion-coordinator.js";
+import type { CompletionDispatchAck } from "../shared/run-control/protocol.js";
 
 declare global {
   interface Window {
@@ -53,6 +56,34 @@ if (!window.__ctReserveInjected) {
 
   const sendControl = (message: AttemptControlMessage): Promise<unknown> =>
     chrome.runtime.sendMessage(message);
+
+  const completion = new CompletionCoordinator({
+    adapter: new ReservationFormAdapter(document),
+    now: () => Date.now(),
+    sleep: abortableSleep,
+    claim: async (phase, fingerprint) => {
+      const current = attempt;
+      if (!current) return false;
+      try {
+        const ack = await sendControl({
+          type: "COMPLETION_DISPATCH_CLAIM",
+          logicalRunId: current.logicalRunId,
+          attemptId: current.attemptId,
+          phase,
+          fingerprint,
+        }) as CompletionDispatchAck;
+        return ack.ok && ack.dispatchGranted;
+      } catch {
+        return false;
+      }
+    },
+    telemetry: (phase, attributes) => {
+      traceLogger.record("ACTION_PERFORMED", "info", "예약 완주 단계를 관측했습니다.", {
+        state: "COMPLETING_RESERVATION",
+        attributes: { completionPhase: phase, ...attributes },
+      });
+    },
+  });
 
   // flush 완료 뒤에만 전송하고, ACK 없으면 제한 재시도, {ok:false}는 중단(§5.4).
   // 끝내 ACK가 없으면 reset 없이 현재 terminal을 유지한다 — GET_ATTEMPT_STATUS가 겸수신.
@@ -106,6 +137,13 @@ if (!window.__ctReserveInjected) {
       }
     },
     capturePreparationContext: () => capturePreparationPageContext(document),
+    readShopDisplayName: () => {
+      const headings = Array.from(document.querySelectorAll("h1"))
+        .map((heading) => heading.textContent?.trim() ?? "")
+        .filter(Boolean);
+      return headings.length === 1 ? headings[0] : null;
+    },
+    completion,
     attemptPhase: (phase) => {
       if (!attempt) return;
       attempt.phase = phase;
@@ -168,7 +206,7 @@ if (!window.__ctReserveInjected) {
           phase: "PREPARING",
         }).catch(() => undefined);
       }
-      void orchestrator.start(message.config, message.runId, message.executionContext)
+      void orchestrator.start(message.config, message.runId, message.executionContext, message.authorization)
         .then(async (result) => {
           if (!control) return;
           control.phase = "FINISHING";

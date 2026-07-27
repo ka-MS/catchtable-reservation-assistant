@@ -19,6 +19,7 @@ const config = {
   dryRun: false,
   preOpenLeadMs: 3000,
   toggleIntervalMs: 150,
+  requiredFormDefaultAnswer: "trace descriptor에 남으면 안 되는 답변",
 };
 
 function descriptor(runId, startedAt) {
@@ -94,6 +95,8 @@ test("repository prunes old runs and their events", async () => {
   assert.equal(terminalEvents.at(-1).seq, 2);
   assert.equal(terminalEvents.at(-1).state, "STOPPED");
   assert.equal(published.at(-1).events[0].component, "background");
+  const stored = (await repository.listRuns(20)).find((run) => run.runId === "run-3");
+  assert.equal(stored.config.requiredFormDefaultAnswer, "");
 });
 
 test("repository can read every event from runs larger than the UI limits", async () => {
@@ -110,4 +113,22 @@ test("repository can read every event from runs larger than the UI limits", asyn
   assert.equal(visible.length, 100);
   assert.equal(visible[0].seq, 402);
   assert.equal(visible.at(-1).seq, 501);
+});
+
+test("background failure trace redacts the shared form answer from descriptor, message and error", async () => {
+  const repository = new IndexedDbTraceRepository(indexedDB);
+  const ingestor = new TraceIngestor(repository, { publish: () => undefined }, () => "0.2.0");
+  const answer = config.requiredFormDefaultAnswer;
+  await ingestor.recordBackgroundFailure(
+    "run-background-secret",
+    config,
+    `failed: ${answer}`,
+    new Error(`cause: ${answer}`),
+  );
+
+  const run = (await repository.listRuns(100)).find((item) => item.runId === "run-background-secret");
+  const events = await repository.readEvents("run-background-secret", 100);
+  assert.equal(run.config.requiredFormDefaultAnswer, "");
+  assert.equal(JSON.stringify({ run, events }).includes(answer), false);
+  await repository.deleteRun("run-background-secret");
 });

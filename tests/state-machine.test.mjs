@@ -68,3 +68,56 @@ test("background navigation is a valid pre-configuration state", () => {
   machine.transition("CONFIGURED", "loaded");
   assert.equal(machine.state, "CONFIGURED");
 });
+
+test("ADVANCING_RESERVATION → COMPLETING_RESERVATION is allowed for opt-in completion", () => {
+  const machine = new RunStateMachine({ dryRun: false, now: () => 1 });
+  machine.transition("CONFIGURED", "configured");
+  machine.transition("VALIDATING", "validating");
+  machine.transition("SYNCING_CLOCK", "clock");
+  machine.transition("PREPARING_PAGE", "page");
+  machine.transition("WAITING_FOR_OPEN", "wait");
+  machine.transition("REFRESHING_SLOTS", "refresh");
+  machine.transition("SLOT_DETECTED", "detected");
+  machine.transition("SLOT_CLICK_DISPATCHED", "clicked");
+  machine.transition("SLOT_TRANSITION_CONFIRMED", "confirmed");
+  machine.transition("ADVANCING_RESERVATION", "advancing");
+  machine.transition("COMPLETING_RESERVATION", "completing");
+  assert.equal(machine.state, "COMPLETING_RESERVATION");
+});
+
+test("COMPLETING_RESERVATION safe terminal transitions match the design's exit matrix", () => {
+  const outcomes = ["COMPLETED", "STOPPED", "TIMED_OUT", "HANDED_OFF", "FAILED"];
+  for (const outcome of outcomes) {
+    const machine = new RunStateMachine({ dryRun: false, now: () => 1 });
+    machine.transition("CONFIGURED", "configured");
+    machine.transition("VALIDATING", "validating");
+    machine.transition("SYNCING_CLOCK", "clock");
+    machine.transition("PREPARING_PAGE", "page");
+    machine.transition("WAITING_FOR_OPEN", "wait");
+    machine.transition("REFRESHING_SLOTS", "refresh");
+    machine.transition("SLOT_DETECTED", "detected");
+    machine.transition("SLOT_CLICK_DISPATCHED", "clicked");
+    machine.transition("SLOT_TRANSITION_CONFIRMED", "confirmed");
+    machine.transition("ADVANCING_RESERVATION", "advancing");
+    machine.transition("COMPLETING_RESERVATION", "completing");
+    machine.transition(outcome, `to ${outcome}`);
+    assert.equal(machine.state, outcome);
+    assert.throws(() => machine.transition("STOPPED", "after terminal"), /종료 상태/);
+  }
+});
+
+test("COMPLETING_RESERVATION rejects unlisted transitions", () => {
+  const machine = new RunStateMachine({ dryRun: false, now: () => 1 });
+  machine.transition("CONFIGURED", "configured");
+  machine.transition("VALIDATING", "validating");
+  machine.transition("SYNCING_CLOCK", "clock");
+  machine.transition("PREPARING_PAGE", "page");
+  machine.transition("WAITING_FOR_OPEN", "wait");
+  machine.transition("REFRESHING_SLOTS", "refresh");
+  machine.transition("SLOT_DETECTED", "detected");
+  machine.transition("SLOT_CLICK_DISPATCHED", "clicked");
+  machine.transition("SLOT_TRANSITION_CONFIRMED", "confirmed");
+  machine.transition("ADVANCING_RESERVATION", "advancing");
+  machine.transition("COMPLETING_RESERVATION", "completing");
+  assert.throws(() => machine.transition("REFRESHING_SLOTS", "invalid"), /허용되지 않는 상태 전이/);
+});

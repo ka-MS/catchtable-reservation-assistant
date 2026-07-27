@@ -6,7 +6,10 @@ import { epochToLocalInput, localInputToEpoch } from "../shared/time.js";
 import type { ActiveRun, AvailabilityProbeMode, CommandResponse, EntryMode, PanelCommand, PaymentMethodPolicy, ReservationConfig, RunEvent, RunState, ScheduledJob, ShopSnapshot, TablePreference } from "../shared/types.js";
 import { countdownModel } from "./countdown.js";
 import { formatEventDetail, formatEventTime } from "./event-format.js";
-import { configFromFormValues, configSnapshotFromFormValues, quickPrepConfig, DEFAULT_FORM_VALUES, type FormValues } from "./form-model.js";
+import {
+  configFromFormValues, configSnapshotFromFormValues, quickPrepConfig, takeOneShotAuthorization,
+  DEFAULT_FORM_VALUES, type FormValues,
+} from "./form-model.js";
 import { jobCardModel } from "./job-card.js";
 import { jobListModel, miniLogModel } from "./job-list-model.js";
 import { SavedConfigsView } from "./saved-configs-view.js";
@@ -80,7 +83,13 @@ const fields = {
   dryRun: byId<HTMLInputElement>("dry-run"),
   preOpenLeadMs: byId<HTMLInputElement>("pre-open-lead"),
   toggleIntervalMs: byId<HTMLInputElement>("toggle-interval"),
+  reservationCompletionEnabled: byId<HTMLInputElement>("reservation-completion-enabled"),
+  maxPaymentAmountKrw: byId<HTMLInputElement>("max-payment-amount-krw"),
+  requiredFormDefaultAnswer: byId<HTMLInputElement>("required-form-default-answer"),
 };
+const reservationCompletionOptions = byId<HTMLElement>("reservation-completion-options");
+// 영속 폼 model(FormValues)과 분리된 일회성 입력 — draft/favorite/작업 저장 경로가 읽지 않는다.
+const catchPayPinInput = byId<HTMLInputElement>("catchpay-pin");
 const paymentMethodPolicyFieldset = byId<HTMLFieldSetElement>("payment-method-policy-options");
 const paymentMethodPolicyOptions = Array.from(
   document.querySelectorAll<HTMLInputElement>('input[name="payment-method-policy"]'),
@@ -140,6 +149,7 @@ const STATE_LABEL: Record<RunState, string> = {
   SLOT_TRANSITION_CONFIRMED: "후속 예약 화면을 확인했습니다.",
   SLOT_SELECTED: "슬롯을 선택했습니다.",
   ADVANCING_RESERVATION: "예약 폼으로 이동 중입니다.",
+  COMPLETING_RESERVATION: "예약을 완주하는 중입니다.",
   DRY_RUN_COMPLETED: "Dry-run 감지를 완료했습니다.",
   HANDED_OFF: "사용자 조작으로 인계했습니다.",
   COMPLETED: "완료했습니다.",
@@ -165,6 +175,7 @@ const STATE_BADGE: Record<RunState, string> = {
   SLOT_TRANSITION_CONFIRMED: "화면 전환 확인",
   SLOT_SELECTED: "슬롯 선택",
   ADVANCING_RESERVATION: "예약 진행",
+  COMPLETING_RESERVATION: "완주 진행",
   DRY_RUN_COMPLETED: "점검 완료",
   HANDED_OFF: "사용자 인계",
   COMPLETED: "완료",
@@ -255,6 +266,9 @@ function readValues(): FormValues {
     preOpenLeadMs: fields.preOpenLeadMs.value,
     toggleIntervalMs: fields.toggleIntervalMs.value,
     availabilityProbeMode: selectedAvailabilityProbeMode(),
+    reservationCompletionEnabled: fields.reservationCompletionEnabled.checked,
+    maxPaymentAmountKrw: fields.maxPaymentAmountKrw.value,
+    requiredFormDefaultAnswer: fields.requiredFormDefaultAnswer.value,
   };
 }
 
@@ -276,8 +290,12 @@ function applyValues(values: FormValues): void {
   fields.preOpenLeadMs.value = values.preOpenLeadMs;
   fields.toggleIntervalMs.value = values.toggleIntervalMs;
   selectAvailabilityProbeMode(values);
+  fields.reservationCompletionEnabled.checked = values.reservationCompletionEnabled ?? false;
+  fields.maxPaymentAmountKrw.value = values.maxPaymentAmountKrw ?? "0";
+  fields.requiredFormDefaultAnswer.value = values.requiredFormDefaultAnswer ?? "";
   priorityTimes = [...values.priorityTimes];
   syncPostSlotFields();
+  syncReservationCompletionFields();
   renderPriorities();
   renderSummary();
   syncTimePresetButtons();
@@ -309,6 +327,9 @@ function valuesFromConfig(config: ReservationConfig): FormValues {
     preOpenLeadMs: String(config.preOpenLeadMs),
     toggleIntervalMs: String(config.toggleIntervalMs),
     availabilityProbeMode: resolveAvailabilityProbeMode(config),
+    reservationCompletionEnabled: config.reservationCompletionEnabled ?? false,
+    maxPaymentAmountKrw: String(config.maxPaymentAmountKrw ?? 0),
+    requiredFormDefaultAnswer: config.requiredFormDefaultAnswer ?? "",
   };
 }
 
@@ -324,6 +345,14 @@ function syncPostSlotFields(): void {
   fields.tablePreference.disabled = !enabled;
   fields.menuKeyword.disabled = !enabled;
   postSlotOptions.dataset.enabled = String(enabled);
+}
+
+function syncReservationCompletionFields(): void {
+  const enabled = fields.reservationCompletionEnabled.checked;
+  fields.maxPaymentAmountKrw.disabled = !enabled;
+  fields.requiredFormDefaultAnswer.disabled = !enabled;
+  catchPayPinInput.disabled = !enabled;
+  reservationCompletionOptions.dataset.enabled = String(enabled);
 }
 
 function renderPriorities(): void {
@@ -831,6 +860,10 @@ fields.postSlotEnabled.addEventListener("change", () => {
   syncPostSlotFields();
   saveDraft();
 });
+fields.reservationCompletionEnabled.addEventListener("change", () => {
+  syncReservationCompletionFields();
+  saveDraft();
+});
 fields.paymentMethodAutoAdvance.addEventListener("change", syncPostSlotFields);
 form.addEventListener("input", (event) => {
   renderSummary();
@@ -844,7 +877,8 @@ form.addEventListener("submit", async (event) => {
   startButton.disabled = true;
   try {
     const config = configFromFormValues(readValues(), Date.now());
-    const response = await send({ type: "PANEL_START", config });
+    const authorization = takeOneShotAuthorization(catchPayPinInput);
+    const response = await send({ type: "PANEL_START", config, ...(authorization ? { authorization } : {}) });
     if (!response.ok) throw new Error(response.error ?? "실행을 시작할 수 없습니다.");
     stateBadge.textContent = STATE_BADGE.CONFIGURED;
     stateBadge.dataset.state = "CONFIGURED";
@@ -924,6 +958,7 @@ resetFormButton.addEventListener("click", async () => {
   editingJobId = null;
   formTitle.textContent = "새 예약 작업";
   applyValues(DEFAULT_FORM_VALUES);
+  catchPayPinInput.value = "";
   saveDraft();
   const response = await send({ type: "CLEAR_RUN_EVENTS" });
   if (!response.ok) formError.textContent = response.error ?? "실행 기록을 지울 수 없습니다.";
@@ -985,6 +1020,7 @@ void chrome.storage.local.get([
     applyValues(valuesFromConfig(config));
   }
   syncPostSlotFields();
+  syncReservationCompletionFields();
   scheduledJobsState = sanitizeScheduledJobs(stored.scheduledJobs);
   runConfigOpenAtMs = config ? config.openAtMs : null;
   renderJobs();

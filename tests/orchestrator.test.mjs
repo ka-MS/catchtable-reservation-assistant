@@ -54,6 +54,9 @@ function config(overrides = {}) {
     dryRun: true,
     preOpenLeadMs: 300,
     toggleIntervalMs: 400,
+    reservationCompletionEnabled: false,
+    maxPaymentAmountKrw: 0,
+    requiredFormDefaultAnswer: "",
     ...overrides,
   };
 }
@@ -133,6 +136,8 @@ function harness({
   calendarOverride = null,
   onSleep = () => undefined,
   attemptPhase = null,
+  completion = null,
+  readShopDisplayName = () => "케아",
 } = {}) {
   let now = 0;
   let monotonicNow = 0;
@@ -215,6 +220,8 @@ function harness({
     flushTrace: async () => undefined,
     captureSnapshot,
     capturePreparationContext,
+    readShopDisplayName,
+    ...(completion ? { completion } : {}),
     ...(diagnostics ? { diagnostics } : {}),
     ...(attemptPhase ? { attemptPhase } : {}),
     runId: () => "run-1",
@@ -1454,6 +1461,118 @@ test("actual mode clicks one slot and hands off at the reservation form", async 
   assert.equal(handedOff?.data?.openDeltaMs, handedOff?.data?.timingServerAtMs - 1_000);
 });
 
+test("completion opt-in은 실제 선택 슬롯 intent를 전달하고 성공 근거 뒤 COMPLETED로 종료한다", async () => {
+  const calls = [];
+  const h = harness({
+    completion: {
+      run: async (receivedConfig, intent) => {
+        calls.push({ receivedConfig, intent });
+        return { kind: "completed", message: "성공 근거 확인" };
+      },
+    },
+  });
+  const result = await h.orchestrator.start(config({
+    dryRun: false,
+    reservationCompletionEnabled: true,
+    maxPaymentAmountKrw: 500_000,
+  }));
+
+  assert.equal(result.state, "COMPLETED");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].intent.shopSlug, "kea");
+  assert.equal(calls[0].intent.shopDisplayName, "케아");
+  assert.equal(calls[0].intent.selectedMinutes, 1140);
+  assert.deepEqual(h.events.filter((event) => event.kind === "state").slice(-2)
+    .map((event) => event.data?.state), ["COMPLETING_RESERVATION", "COMPLETED"]);
+});
+
+test("completion opt-in에서 매장 표시명을 확정하지 못하면 제출 없이 form failure snapshot을 남긴다", async () => {
+  const failures = [];
+  const h = harness({
+    readShopDisplayName: () => null,
+    diagnostics: {
+      breadcrumb: () => undefined,
+      failure: (...args) => { failures.push(args); return "ds-shop-name"; },
+      forceFlush: async () => undefined,
+    },
+    completion: {
+      run: async () => { throw new Error("completion must not run"); },
+    },
+  });
+
+  const result = await h.orchestrator.start(config({
+    dryRun: false,
+    reservationCompletionEnabled: true,
+    maxPaymentAmountKrw: 500_000,
+  }));
+  const terminal = h.events.at(-1);
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0][0], "ADVANCING_RESERVATION");
+  assert.equal(terminal?.data?.diagnosticSnapshotId, "ds-shop-name");
+});
+
+test("completion 안전 인계는 예약 폼 failure snapshot을 terminal event에 연결한다", async () => {
+  const calls = { breadcrumbs: [], failures: [] };
+  const diagnostics = {
+    breadcrumb: (stage) => calls.breadcrumbs.push(stage),
+    failure: (...args) => { calls.failures.push(args); return "ds-completion"; },
+    forceFlush: async () => undefined,
+  };
+  const h = harness({
+    diagnostics,
+    completion: {
+      run: async () => ({
+        kind: "handed_off",
+        message: "예약 폼을 안전하게 확인하지 못했습니다. (catchpay_not_ready)",
+        claimed: false,
+      }),
+    },
+  });
+
+  const result = await h.orchestrator.start(config({
+    dryRun: false,
+    reservationCompletionEnabled: true,
+    maxPaymentAmountKrw: 500_000,
+  }));
+  const terminal = h.events.at(-1);
+
+  assert.equal(result.state, "HANDED_OFF");
+  assert.ok(calls.breadcrumbs.includes("COMPLETING_RESERVATION"));
+  assert.equal(calls.failures.length, 1);
+  assert.equal(calls.failures[0][0], "COMPLETING_RESERVATION");
+  assert.equal(terminal?.data?.completionClaimed, false);
+  assert.equal(terminal?.data?.diagnosticSnapshotId, "ds-completion");
+});
+
+test("completion timeout도 예약 폼 failure snapshot을 terminal event에 연결한다", async () => {
+  const calls = { failures: [] };
+  const diagnostics = {
+    breadcrumb: () => undefined,
+    failure: (...args) => { calls.failures.push(args); return "ds-timeout"; },
+    forceFlush: async () => undefined,
+  };
+  const h = harness({
+    diagnostics,
+    completion: {
+      run: async () => ({ kind: "timed_out", message: "성공 후조건 확인 시간이 끝났습니다." }),
+    },
+  });
+
+  const result = await h.orchestrator.start(config({
+    dryRun: false,
+    reservationCompletionEnabled: true,
+    maxPaymentAmountKrw: 500_000,
+  }));
+  const terminal = h.events.at(-1);
+
+  assert.equal(result.state, "TIMED_OUT");
+  assert.equal(calls.failures.length, 1);
+  assert.equal(calls.failures[0][0], "COMPLETING_RESERVATION");
+  assert.equal(terminal?.data?.diagnosticSnapshotId, "ds-timeout");
+});
+
 test("disabled post-slot automation confirms the transition without advancing", async () => {
   let inspections = 0;
   const h = harness({
@@ -1908,4 +2027,20 @@ test("attemptPhase는 준비 완료 후 WAITING_FOR_OPEN 전에 1회 EXECUTING�
   assert.equal(result.state, "DRY_RUN_COMPLETED");
   assert.equal(result.message.length > 0, true);
   assert.deepEqual(phases, [{ phase: "EXECUTING", beforeWaiting: true }]);
+});
+
+// 실제 PIN처럼 보일 수 있는 리터럴을 소스에 남기지 않도록 자릿수를 런타임에 조합한다.
+function runtimePinSentinel(digits) {
+  return digits.map(String).join("");
+}
+
+test("RunSession은 authorization을 받아도 dry-run 결과·이벤트에 PIN을 노출하지 않는다", async () => {
+  const h = harness();
+  const pin = runtimePinSentinel([6, 3, 9, 5]);
+  const result = await h.orchestrator.start(config(), "run-1", undefined, { catchPayPin: pin });
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
+  const serializedEvents = JSON.stringify(h.events);
+  const serializedTraces = JSON.stringify(h.traces);
+  assert.equal(serializedEvents.includes(pin), false);
+  assert.equal(serializedTraces.includes(pin), false);
 });

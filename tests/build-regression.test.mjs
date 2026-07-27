@@ -13,11 +13,18 @@ test("manifest uses MV3 and on-demand content injection", async () => {
   assert.deepEqual([...icon.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 });
 
-test("content script is an import-free IIFE bundle", async () => {
+test("content script is an import-free IIFE bundle with opt-in completion safety gates", async () => {
   const content = await readFile("dist/content/index.js", "utf8");
+  const decoded = content.replace(/\\u([0-9a-f]{4})/gi, (_match, hex) =>
+    String.fromCharCode(Number.parseInt(hex, 16)));
   assert.doesNotMatch(content, /^\s*import\s/m);
   assert.match(content, /__ctReserveInjected/);
-  assert.doesNotMatch(content, /모두 동의합니다\.|자동결제로 예약하기/);
+  assert.match(content, /reservationCompletionEnabled/);
+  assert.match(content, /COMPLETION_DISPATCH_CLAIM/);
+  assert.match(decoded, /자동결제로 예약하기/);
+  assert.match(decoded, /자동결제로 예약을 완료했습니다/);
+  assert.match(content, /\/ct\/mydining\/my\/planned/);
+  assert.doesNotMatch(content, /main h1/);
 });
 
 test("sidepanel exposes an explicit entry mode instead of pagePrepared", async () => {
@@ -76,4 +83,59 @@ test("dry-run is disabled by default in the sidepanel", async () => {
   const html = await readFile("dist/sidepanel/sidepanel.html", "utf8");
   assert.match(html, /id="dry-run" type="checkbox"/);
   assert.doesNotMatch(html, /id="dry-run"[^>]*checked/);
+});
+
+test("reservation completion opt-in, cap and shared default answer exist and are off by default", async () => {
+  const html = await readFile("dist/sidepanel/sidepanel.html", "utf8");
+  assert.match(html, /id="reservation-completion-enabled" type="checkbox"/);
+  assert.doesNotMatch(html, /id="reservation-completion-enabled"[^>]*checked/);
+  assert.match(html, /id="max-payment-amount-krw"[^>]*min="0"[^>]*max="500000"/);
+  assert.match(html, /id="required-form-default-answer"/);
+});
+
+test("one-shot CatchPay PIN input is a disposable password field separate from the persistent form", async () => {
+  const html = await readFile("dist/sidepanel/sidepanel.html", "utf8");
+  assert.match(html, /id="catchpay-pin"[^>]*type="password"/);
+  assert.match(html, /id="catchpay-pin"[^>]*inputmode="numeric"/);
+  assert.match(html, /id="catchpay-pin"[^>]*autocomplete="off"/);
+});
+
+test("dist bundles never contain a hardcoded PIN test sentinel", async () => {
+  const files = [
+    "dist/sidepanel/index.js",
+    "dist/sidepanel/form-model.js",
+    "dist/background/run-supervisor.js",
+    "dist/background/index.js",
+    "dist/content/index.js",
+    "dist/shared/config.js",
+  ];
+  for (const file of files) {
+    const source = await readFile(file, "utf8");
+    assert.doesNotMatch(source, /catchPayPin\s*[:=]\s*["'`]\d{4}["'`]/);
+  }
+});
+
+test("terminal cleanup disposes the one-shot authorization before the async trace/diagnostic flush", async () => {
+  const source = await readFile("dist/content/orchestrator.js", "utf8");
+  const disposeIndex = source.indexOf("this.authorizationHandle.dispose();");
+  const flushIndex = source.indexOf("await Promise.allSettled([");
+  assert.ok(disposeIndex >= 0, "authorizationHandle.dispose() call not found");
+  assert.ok(flushIndex >= 0, "terminal Promise.allSettled flush not found");
+  assert.ok(disposeIndex < flushIndex, "dispose must run before the terminal async flush starts");
+  // 우연한 순서 일치를 배제하기 위해 같은 finally 블록 안(합리적 거리)인지도 확인한다.
+  assert.ok(flushIndex - disposeIndex < 800, "dispose and the terminal flush should belong to the same finally block");
+});
+
+test("OpenRunOrchestrator.start() discards the raw authorization parameter before awaiting session.execute()", async () => {
+  const source = await readFile("dist/content/orchestrator.js", "utf8");
+  const sessionIndex = source.indexOf("new RunSession(");
+  const resetIndex = source.indexOf("authorization = undefined;");
+  const awaitIndex = source.indexOf("return await session.execute();");
+  assert.ok(sessionIndex >= 0, "RunSession construction not found");
+  assert.ok(resetIndex >= 0, "authorization parameter reset (authorization = undefined;) not found");
+  assert.ok(awaitIndex >= 0, "return await session.execute() not found");
+  assert.ok(sessionIndex < resetIndex, "authorization must be reset only after constructing the session");
+  assert.ok(resetIndex < awaitIndex, "authorization must be reset before awaiting session.execute()");
+  // 우연한 순서 일치를 배제하기 위해 같은 start() 메서드 범위(합리적 거리) 안인지도 확인한다.
+  assert.ok(awaitIndex - sessionIndex < 800, "session construction, the parameter reset and the await should be in the same start() method");
 });

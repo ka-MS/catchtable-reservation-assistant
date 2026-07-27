@@ -26,7 +26,9 @@ const ALLOWED: Record<RunState, RunState[]> = {
   SLOT_TRANSITION_CONFIRMED: ["ADVANCING_RESERVATION", "HANDED_OFF"],
   // Persisted runs may still contain this legacy state, but new runs do not enter it.
   SLOT_SELECTED: ["ADVANCING_RESERVATION", "HANDED_OFF"],
-  ADVANCING_RESERVATION: ["HANDED_OFF", "STOPPED", "FAILED"],
+  ADVANCING_RESERVATION: ["COMPLETING_RESERVATION", "HANDED_OFF", "STOPPED", "FAILED"],
+  // claim 뒤에는 결제·예약 발생 가능성이 있어 FAILED/STOPPED로 단정하지 않는다(20-design §10~11).
+  COMPLETING_RESERVATION: ["COMPLETED", "STOPPED", "TIMED_OUT", "HANDED_OFF", "FAILED"],
   DRY_RUN_COMPLETED: [],
   HANDED_OFF: [],
   COMPLETED: [],

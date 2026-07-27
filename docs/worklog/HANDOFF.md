@@ -1,8 +1,8 @@
 # HANDOFF
 
-**갱신:** 2026-07-23
-**브랜치:** `main`
-**최신 작업 로그:** `docs/worklog/2026-07-23-01-reset-config.md`
+**갱신:** 2026-07-27
+**브랜치:** `codex/feat-catchpay-reservation-completion`
+**최신 작업 로그:** `docs/worklog/2026-07-27-01-catchpay-completion.md`
 **최신 UI 편의:** Side Panel "새 예약 작업" 타이틀 옆에 `초기화` 버튼 완료(하드코딩 기본값 + 실행 기록 초기화, 실행 중 비활성화). GitHub PR 코드리뷰로 race condition·`editingJobId` 미초기화 등 4건 발견·수정. 병합 후 실사용 중 draft 미저장 버그(PR #2 후속 커밋), `예약 저장` 버튼 실행 중 미차단(PR #3), `지금 시작`/`예약 저장` disabled·hidden 불일치(PR #4)를 추가 발견·수정. 실행 중 액션바 버튼은 이제 전부 `disabled`로 통일. blocking backlog 아님.
 **이전 UI 편의:** Side Panel "02 어떤 자리를 찾을까요?"에 점심/저녁/전체 시간대 프리셋 버튼 + 30분 단위 제한(프리셋 버튼 UX만 유지, `step` 속성은 기존 저장 데이터 제출 차단 버그로 코드리뷰에서 제거됨) + 프리셋 활성 표시 완료. 순수 UI 변경, 실행 로직 무변경. blocking backlog 아님.
 **최신 편의 기능:** `docs/specs/reservation-quick-actions/10-design.md` — Side Panel "현재 탭에서 가져오기"·"식당으로 이동하기" 완료, 사용자 수동 테스트로 뷰 전환·타이밍 경쟁·버튼 UX 4건 보완 후 검증됨. `PANEL_START`/`PANEL_STOP`·orchestrator·coordinator·adapter·RunSupervisor 무변경으로 재사용했고, "식당으로 이동하기"는 `dryRun:true`/`entryMode:"auto"`를 항상 강제해 실클릭을 구조적으로 차단한다. blocking backlog 아님.
@@ -21,6 +21,37 @@
 **최신 RT-10M 분석:** `docs/worklog/2026-07-15-01-rt10m-nuwa-measurement.md`
 **최신 short-cut:** `docs/specs/run-telemetry/60-csv-export-shortcut.md`
 **최신 호환성 수정:** `docs/specs/reservation-flow-compatibility/01-calendar-dom-compatibility/60-long-range-month-transition.md`
+
+## CatchPay 예약 완주 완료 (2026-07-27)
+
+- **예약 완주 blocking backlog를 해제했다.** Task 1~6, 자동 검증,
+  통제된 Chrome E2E, 자체 적대적 리뷰, storage/diagnostic 대조를
+  완료했다.
+- Codex가 `ab5e825` 이후 구현·검수를 단독 수행했다. stale intent,
+  중복 제출, 성공 오판, PIN 비영속성, credential redaction과 live
+  PIN 접근성 격리 변형을 회귀로 고정했다.
+- 최신 `npm run check`는 518/518, typecheck, dist validation,
+  MAIN/ISOLATED independence를 통과했고 `git diff --check`도 통과했다.
+- 통제된 Chrome 결과:
+  - `민석 + woo_blanc_` 0원 실예약 생성, 사용자 취소
+  - `ms + woo_blanc_` 비로그인 `login_required`, 최종 제출 0회
+  - `민석 + pizzeriamarket` 20,000원 유료: outer/PIN submit 각 1회,
+    성공 path·정확한 문구·방문예정 일치 뒤 `COMPLETED`, 사용자 취소
+- 성공 run 진단은 event 63개, `seq=1..63`, snapshot 0개였다.
+  세 Chrome 프로필의 extension storage와 IndexedDB에 `catchPayPin`
+  key가 없었고 telemetry에는 제공 여부 boolean만 남았다.
+- 남은 제품 제약은 유료 scheduled job 미지원, 잘못된 PIN·CatchPay
+  미등록 변형의 무재시도 인계와 full reload 결과불명 정책이다.
+- 기준 문서는
+  `docs/specs/catchpay-reservation-completion/40-verification.md`와
+  `50-adversarial-review.md`다.
+
+## 방향 전환 이력 (2026-07-23)
+
+- **정책 방향이 "예약 완주"로 전환되었다.** 종전의 "이 확장은 예약을 완료하지 않는다" 원칙은 폐기됐다(`docs/specs/automation-boundary.md`, `CLAUDE.md`, `README.md` 반영 완료). 목표는 약관 동의·결제(유료 예약금 포함)·최종 `예약하기`까지 자동 완주다.
+- 당시 문서가 코드보다 앞서 있었던 예약 완주 gap은 2026-07-27
+  `catchpay-reservation-completion` 패키지 구현·검증으로 종결했다.
+- **`availabilityProbeMode` 기본 활성은 의도된 것이다(리그레션 아님).** `src/sidepanel/form-model.ts`의 신규 폼 기본값 `empty_exit`(커밋 `b0bbbd9`)는 XHR probe를 기본 활성으로 두려는 의도적 결정이며, RT-14 당시의 "기본값 `off` 유지, 동등 비교군 검증 전까지 기본 비활성" 결정을 **의식적으로 뒤집은 것**이다. 아래 RT-14 계열 기록의 "기본값 off" 서술은 당시 상태를 기록한 이력이며 현재 기본값과는 다르다 — 코드 수정 대상 아님. (성능 이득·요청 증가량 실측은 여전히 후속 non-blocking 측정 과제로 남는다.)
 
 ## 현재 상태
 

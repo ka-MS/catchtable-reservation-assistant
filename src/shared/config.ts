@@ -1,6 +1,8 @@
-import type { AvailabilityProbeMode, ReservationConfig } from "./types.js";
+import type { AvailabilityProbeMode, OneShotRunAuthorization, ReservationConfig } from "./types.js";
 
 const TEN_MINUTES_MS = 10 * 60 * 1_000;
+const MAX_PAYMENT_AMOUNT_KRW = 500_000;
+const CATCHPAY_PIN_PATTERN = /^\d{4}$/;
 
 export function defaultStopAt(openAtMs: number): number {
   return openAtMs + TEN_MINUTES_MS;
@@ -26,7 +28,24 @@ export function normalizeReservationConfig(config: ReservationConfig): Reservati
     availabilityProbeMode: config.availabilityProbeMode === undefined
       ? resolveAvailabilityProbeMode(config)
       : config.availabilityProbeMode,
+    reservationCompletionEnabled: config.reservationCompletionEnabled ?? false,
+    maxPaymentAmountKrw: config.maxPaymentAmountKrw ?? 0,
+    requiredFormDefaultAnswer: (config.requiredFormDefaultAnswer ?? "").trim(),
   };
+}
+
+/**
+ * PIN 형식 실패는 정적 오류 메시지만 반환한다 — 값·길이를 포함하지 않는다.
+ * `undefined`만 "부재"로 취급한다. 그 외 값은 메시지 전달 경계(직렬화)를 거치므로
+ * object·string 여부를 직접 검증해 malformed 입력에서도 예외 없이 정적 거부로 응답한다.
+ */
+export function validateOneShotAuthorization(authorization: OneShotRunAuthorization | undefined): string | null {
+  if (authorization === undefined) return null;
+  const pin = (authorization as { catchPayPin?: unknown } | null)?.catchPayPin;
+  if (typeof pin !== "string" || !CATCHPAY_PIN_PATTERN.test(pin)) {
+    return "캐치페이 비밀번호는 숫자 4자리여야 합니다.";
+  }
+  return null;
 }
 
 function isValidDate(value: string): boolean {
@@ -107,6 +126,19 @@ export function validateReservationConfig(config: ReservationConfig, nowMs: numb
   if (config.availabilityProbeEnabled !== undefined
     && typeof config.availabilityProbeEnabled !== "boolean") {
     errors.push("XHR 응답 모드 설정을 확인하세요.");
+  }
+  if (typeof config.reservationCompletionEnabled !== "boolean") {
+    errors.push("예약 완주 자동 진행 설정을 확인하세요.");
+  }
+  if (
+    !Number.isInteger(config.maxPaymentAmountKrw)
+    || config.maxPaymentAmountKrw < 0
+    || config.maxPaymentAmountKrw > MAX_PAYMENT_AMOUNT_KRW
+  ) {
+    errors.push(`예약금 상한은 0원에서 ${MAX_PAYMENT_AMOUNT_KRW.toLocaleString("ko-KR")}원 사이의 정수여야 합니다.`);
+  }
+  if (typeof config.requiredFormDefaultAnswer !== "string") {
+    errors.push("공통 필수 답변 형식을 확인하세요.");
   }
   return errors;
 }

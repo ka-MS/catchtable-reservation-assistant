@@ -18,6 +18,7 @@ const config = {
   dryRun: false,
   preOpenLeadMs: 3000,
   toggleIntervalMs: 150,
+  requiredFormDefaultAnswer: "trace에 남으면 안 되는 답변",
 };
 
 test("trace logger strips URL query and bounds error and attribute data", () => {
@@ -35,11 +36,17 @@ test("trace logger strips URL query and bounds error and attribute data", () => 
   const error = new Error("failure");
   error.stack = "x".repeat(10_000);
   logger.record("RUN_FAILED", "error", "failed", { error, attributes: { detail: "y".repeat(1_000) } });
+  logger.record("RUN_FAILED", "error", `failed: ${config.requiredFormDefaultAnswer}`, {
+    error: new Error(`cause: ${config.requiredFormDefaultAnswer}`),
+    attributes: { detail: config.requiredFormDefaultAnswer },
+  });
   processor.flush();
 
   assert.equal(batches[0].run.config.targetUrl, "https://app.catchtable.co.kr/ct/shop/kea");
-  assert.equal(batches[0].events.at(-1).attributes.detail.length, 500);
-  assert.equal(batches[0].events.at(-1).error.stack.length, 8_192);
+  assert.equal(batches[0].run.config.requiredFormDefaultAnswer, "");
+  assert.equal(batches[0].events.at(-2).attributes.detail.length, 500);
+  assert.equal(batches[0].events.at(-2).error.stack.length, 8_192);
+  assert.equal(JSON.stringify(batches[0]).includes(config.requiredFormDefaultAnswer), false);
   ack("run-1", batches[0].lastSeq);
 });
 

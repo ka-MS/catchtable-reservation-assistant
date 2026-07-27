@@ -10,7 +10,14 @@ import type {
 } from "../../shared/diagnostics/types.js";
 import type { TraceError } from "../../shared/telemetry/types.js";
 import { readCalendarCells, readDisplayedCalendarMonth } from "../adapter/calendar-dom.js";
-import { cleanText, fnvHash, isDisabled, isElementHidden, safeText } from "../adapter/dom.js";
+import {
+  cleanText,
+  fnvHash,
+  isDisabled,
+  isElementHidden,
+  isElementVisuallyHidden,
+  safeText,
+} from "../adapter/dom.js";
 import { findActiveDialog, findVisiblePresentationSheet } from "../adapter/dialog.js";
 
 const MAX_ITEMS = 24;
@@ -108,8 +115,43 @@ function elementSummary(element: Element): DiagnosticElement {
   };
 }
 
+function structuralOnly(element: DiagnosticElement): DiagnosticElement {
+  return {
+    ...element,
+    text: "",
+    ariaLabel: "",
+    selectorHint: `${element.tag}${element.role ? `[role="${element.role}"]` : ""}`,
+  };
+}
+
+function reservationFormPaymentControl(element: DiagnosticElement): DiagnosticElement {
+  const structural = structuralOnly(element);
+  return {
+    ...structural,
+    attributes: {
+      ...(element.attributes.type === "radio" ? { type: "radio" } : {}),
+      ...(element.attributes.name === "payment-type" ? { name: "payment-type" } : {}),
+    },
+  };
+}
+
+function redactReservationFormPaymentControls(surface: DiagnosticSurface): DiagnosticSurface {
+  return {
+    ...surface,
+    controls: surface.controls.map((control) =>
+      control.role === "radio" || control.attributes.type === "radio"
+        ? reservationFormPaymentControl(control)
+        : control),
+  };
+}
+
 function visibleElements(document: Document, selector: string): Element[] {
   return Array.from(document.querySelectorAll(selector)).filter((element) => !isElementHidden(element));
+}
+
+function renderedElements(document: Document, selector: string): Element[] {
+  return Array.from(document.querySelectorAll(selector))
+    .filter((element) => !isElementVisuallyHidden(element));
 }
 
 function summaries(document: Document, selector: string): DiagnosticElement[] {
@@ -126,6 +168,17 @@ function queryEvidence(document: Document): DiagnosticQueryEvidence[] {
       visibleMatchCount: elements.filter((element) => !isElementHidden(element)).length,
     };
   });
+}
+
+function hasCatchPayPinSurface(document: Document): boolean {
+  if (renderedElements(document, 'h1, h2, h3, [role="heading"]')
+    .some((element) => safeText(element.textContent) === "캐치페이 비밀번호 입력")) {
+    return true;
+  }
+  const labels = renderedElements(document, "button")
+    .map((button) => safeText(button.textContent));
+  const digits = new Set(labels.filter((label) => /^\d$/.test(label)));
+  return digits.size >= 4 && labels.includes("전체삭제") && labels.includes("결제하기");
 }
 
 function surfaceKind(element: HTMLElement, document: Document): DiagnosticSurface["kind"] {
@@ -222,6 +275,9 @@ function strategyFor(stage: RunState, data?: RunEvent["data"]): { adapter: strin
       evidence: typeof data?.postSlotEvidence === "string" ? data.postSlotEvidence.split(" | ").filter(Boolean).slice(0, 16) : [],
     };
   }
+  if (stage === "COMPLETING_RESERVATION") {
+    return { adapter: "ReservationFormAdapter", strategy: "catchpay-reservation-form-v1", confidence: null, evidence: [] };
+  }
   return { adapter: "OpenRunOrchestrator", strategy: null, confidence: null, evidence: [] };
 }
 
@@ -294,16 +350,28 @@ export function captureDiagnosticSnapshot(
   id: () => string = () => crypto.randomUUID(),
   now: () => number = () => Date.now(),
 ): DiagnosticSnapshot {
-  const headings = summaries(document, 'h1, h2, [role="heading"]');
-  const buttons = summaries(document, "button");
-  const radios = summaries(document, '[role="radio"], input[type="radio"]');
-  const checkboxes = summaries(document, '[role="checkbox"], input[type="checkbox"]');
+  const pinSurface = hasCatchPayPinSurface(document);
+  const reservationForm = urlKind(document) === "reservation_form";
+  const headings = pinSurface ? [] : summaries(document, 'h1, h2, [role="heading"]');
+  const buttons = pinSurface ? [] : summaries(document, "button");
+  const radios = pinSurface
+    ? []
+    : summaries(document, '[role="radio"], input[type="radio"]')
+      .map((radio) => reservationForm ? reservationFormPaymentControl(radio) : radio);
+  const checkboxes = pinSurface ? [] : summaries(document, '[role="checkbox"], input[type="checkbox"]');
   const calendarCells = readCalendarCells(document);
   const slotElements = Array.from(document.querySelectorAll<HTMLButtonElement>("button[data-busy]"));
   const availableSlots = slotElements.filter((element) => element.dataset.busy === "false" && !element.disabled && !isElementHidden(element));
   const rich = request.kind === "failure";
-  const diagnosticSurfaces = surfaces(document, rich);
-  const queryData = queryEvidence(document);
+  const diagnosticSurfaces: DiagnosticSurface[] = pinSurface ? [{
+    kind: "dialog",
+    label: "credential_surface",
+    title: "",
+    elementCount: 0,
+    controls: [],
+  }] : surfaces(document, rich)
+    .map((surface) => reservationForm ? redactReservationFormPaymentControls(surface) : surface);
+  const queryData = pinSurface ? [] : queryEvidence(document);
   const decision = strategyFor(request.stage, request.data);
   const fingerprint = `ds-${fnvHash(JSON.stringify({
     stage: request.stage,
@@ -313,7 +381,12 @@ export function captureDiagnosticSnapshot(
     surfaces: diagnosticSurfaces.map((item) => [item.kind, item.label, item.title]),
   }))}`;
   const traceError = cleanError(request.error);
-  const html = rich ? fragment(document, request.stage) : undefined;
+  const html = rich && !pinSurface ? fragment(document, request.stage) : undefined;
+  const diagnosticEnvironment = environment(document);
+  if (pinSurface) diagnosticEnvironment.activeElement = null;
+  else if (reservationForm && diagnosticEnvironment.activeElement) {
+    diagnosticEnvironment.activeElement = structuralOnly(diagnosticEnvironment.activeElement);
+  }
   return {
     schemaVersion: 1,
     snapshotId: id(),
@@ -328,7 +401,7 @@ export function captureDiagnosticSnapshot(
     confidence: decision.confidence,
     evidence: decision.evidence,
     queries: queryData,
-    environment: environment(document),
+    environment: diagnosticEnvironment,
     headings,
     buttons,
     radios,
@@ -336,14 +409,14 @@ export function captureDiagnosticSnapshot(
     surfaces: diagnosticSurfaces,
     calendar: {
       displayedMonth: readDisplayedCalendarMonth(document),
-      dateCellCount: calendarCells.length,
-      availableDates: calendarCells.filter((cell) => cell.available).map((cell) => cell.date).slice(0, 42),
-      selectedDates: calendarCells.filter((cell) => cell.selected).map((cell) => cell.date).slice(0, 4),
+      dateCellCount: pinSurface ? 0 : calendarCells.length,
+      availableDates: pinSurface ? [] : calendarCells.filter((cell) => cell.available).map((cell) => cell.date).slice(0, 42),
+      selectedDates: pinSurface ? [] : calendarCells.filter((cell) => cell.selected).map((cell) => cell.date).slice(0, 4),
     },
     slots: {
-      candidateCount: slotElements.length,
-      availableCount: availableSlots.length,
-      labels: availableSlots.map((element) => cleanDiagnosticText(element.textContent, 80)).filter(Boolean).slice(0, MAX_ITEMS),
+      candidateCount: pinSurface ? 0 : slotElements.length,
+      availableCount: pinSurface ? 0 : availableSlots.length,
+      labels: pinSurface ? [] : availableSlots.map((element) => cleanDiagnosticText(element.textContent, 80)).filter(Boolean).slice(0, MAX_ITEMS),
     },
     fingerprint,
     previousFingerprint: request.previousFingerprint ?? null,

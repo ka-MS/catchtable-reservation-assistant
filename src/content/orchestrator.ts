@@ -12,7 +12,7 @@ import { nextTogglePlan } from "../shared/toggle-schedule.js";
 import type { SlotRefreshWatchPort } from "./adapter/slot-refresh-watch.js";
 import type { SlotDomMutationWatchPort } from "./adapter/slot-dom-mutation-watch.js";
 import type { ReferenceClockPort } from "./reference-clock-sampler.js";
-import type { ReservationConfig, RunEvent, RunExecutionContext, RunState } from "../shared/types.js";
+import type { OneShotRunAuthorization, ReservationConfig, RunEvent, RunExecutionContext, RunState } from "../shared/types.js";
 import type { TraceCode } from "../shared/telemetry/codes.js";
 import type { TraceAttributes, TraceSeverity } from "../shared/telemetry/types.js";
 import type { CalendarInspection } from "./adapter/calendar.js";
@@ -31,6 +31,10 @@ import {
   type AvailabilityWakeSignal,
 } from "./availability-dom-wake.js";
 import type { PreparationPageContext } from "./preparation-observation.js";
+import type {
+  CompletionResult,
+  ReservationCompletionIntent,
+} from "./completion-coordinator.js";
 
 interface CalendarPort {
   inspect(targetDate: string): CalendarInspection;
@@ -72,6 +76,15 @@ interface DiagnosticsPort {
   forceFlush(): Promise<void>;
 }
 
+interface CompletionPort {
+  run(
+    config: ReservationConfig,
+    intent: ReservationCompletionIntent,
+    signal: AbortSignal,
+    takePin: () => string | undefined,
+  ): Promise<CompletionResult>;
+}
+
 interface Dependencies {
   clock: Clock;
   monotonicClock: Clock;
@@ -93,6 +106,8 @@ interface Dependencies {
   flushTrace?(): Promise<boolean>;
   captureSnapshot?(): StageSnapshot | null;
   capturePreparationContext?(): PreparationPageContext;
+  readShopDisplayName?(): string | null;
+  completion?: CompletionPort;
   /** attempt 제어 신호(Control Plane) — 준비 완료 후 실행영역 진입을 알린다. */
   attemptPhase?(phase: "EXECUTING"): void;
   diagnostics?: DiagnosticsPort;
@@ -142,6 +157,7 @@ const DIAGNOSTIC_BREADCRUMB_STATES = new Set<RunState>([
   "SLOT_CLICK_DISPATCHED",
   "SLOT_TRANSITION_CONFIRMED",
   "ADVANCING_RESERVATION",
+  "COMPLETING_RESERVATION",
 ]);
 
 function postSlotEventData(inspection: PostSlotInspection): NonNullable<RunEvent["data"]> {
@@ -184,6 +200,25 @@ type ToggleCycleOutcome =
   | { kind: "retry" }
   | { kind: "slot"; candidate: SlotCandidate };
 
+/** initial manual attempt에만 존재하는 일회성 PIN의 disposable wrapper — 사용 후 참조를 폐기한다. */
+class OneShotAuthorizationHandle {
+  private value: OneShotRunAuthorization | null;
+
+  constructor(authorization?: OneShotRunAuthorization) {
+    this.value = authorization ?? null;
+  }
+
+  takePin(): string | undefined {
+    const pin = this.value?.catchPayPin;
+    this.value = null;
+    return pin;
+  }
+
+  dispose(): void {
+    this.value = null;
+  }
+}
+
 class RunSession {
   readonly controller = new AbortController();
   private readonly runId: string;
@@ -208,18 +243,21 @@ class RunSession {
   private readonly runStartMonoMs: number;
   private readonly availabilityCorrelation = new AvailabilityCorrelationTracker();
   private readonly availabilityWake = new AvailabilityDomWake();
+  private readonly authorizationHandle: OneShotAuthorizationHandle;
 
   constructor(
     private readonly deps: Dependencies,
     private readonly config: ReservationConfig,
     requestedRunId?: string,
     private readonly executionContext?: RunExecutionContext,
+    authorization?: OneShotRunAuthorization,
   ) {
     this.runId = requestedRunId ?? deps.runId();
     this.machine = new RunStateMachine({ dryRun: config.dryRun, now: () => deps.clock.now() });
     this.serverClock = new MonotonicEpochClock(deps.monotonicClock);
     // frame 1(monotonic): 기준시계 오차·wall-clock 점프와 무관한 실제 경과.
     this.runStartMonoMs = deps.monotonicClock.now();
+    this.authorizationHandle = new OneShotAuthorizationHandle(authorization);
   }
 
   private monoFromRunStartMs(): number {
@@ -426,6 +464,9 @@ class RunSession {
       }
       return this.finish();
     } finally {
+      // PIN 참조는 나머지 cleanup(비동기 flush 포함)보다 먼저, 그 안의 예외와 무관하게
+      // 즉시 폐기한다 — dispose() 자체는 절대 던지지 않으므로 이 위치가 가장 이르고 안전하다.
+      this.authorizationHandle.dispose();
       try {
         this.deps.availabilityShadow?.stop();
       } catch {
@@ -1175,6 +1216,9 @@ class RunSession {
     const serverClock = this.serverClock;
     const slotDetectedAt = serverClock.now();
     const clockData = this.detectionClockData();
+    const shopDisplayName = config.reservationCompletionEnabled
+      ? this.deps.readShopDisplayName?.() ?? null
+      : null;
     this.transition("SLOT_DETECTED", `${candidate.label} 슬롯을 감지했습니다.`, {
       data: slotDetectedEventData(
         slotDetectedAt, this.adjacentTiming, this.targetTiming, config.openAtMs,
@@ -1264,7 +1308,7 @@ class RunSession {
       );
     }
     this.transition("ADVANCING_RESERVATION", "예약 폼까지 선택적 중간 단계를 진행합니다.");
-    return this.advancePostSlot(slotTransition.inspection, postSlotDeadline);
+    return this.advancePostSlot(slotTransition.inspection, postSlotDeadline, candidate, shopDisplayName);
   }
 
   private async waitForSlotTransition(deadline: number): Promise<SlotTransitionResult> {
@@ -1286,6 +1330,8 @@ class RunSession {
   private async advancePostSlot(
     initialInspection: PostSlotInspection,
     initialDeadline: number,
+    candidate: SlotCandidate,
+    shopDisplayName: string | null,
   ): Promise<RunResult> {
     const config = this.config;
     const controller = this.controller;
@@ -1310,11 +1356,51 @@ class RunSession {
           if (!(await this.deps.sleep(20, controller.signal))) break;
           continue;
         }
-        return this.handOff("예약 폼에 도착했습니다. 약관 확인과 최종 예약은 직접 진행하세요.", {
+        const formData = {
           ...postSlotEventData(inspection),
           openDeltaMs: Math.round(formSeenAtMs - config.openAtMs),
           timingServerAtMs: formSeenAtMs,
+        };
+        if (!config.reservationCompletionEnabled) {
+          return this.handOff("예약 폼에 도착했습니다. 약관 확인과 최종 예약은 직접 진행하세요.", formData);
+        }
+        if (!this.deps.completion || !shopDisplayName) {
+          return this.diagnosticHandOff("예약 매장 표시명을 확정할 수 없어 최종 제출하지 않습니다.", formData);
+        }
+        if (serverClock.now() >= config.stopAtMs) {
+          return this.timedOut("최종 제출 전에 감시 종료 시각에 도달했습니다.");
+        }
+        let shopSlug = "";
+        try {
+          const segments = new URL(config.targetUrl).pathname.split("/").filter(Boolean);
+          shopSlug = segments.at(-1) ?? "";
+        } catch {
+          shopSlug = "";
+        }
+        if (!shopSlug) return this.diagnosticHandOff("예약 매장 식별자를 확정할 수 없어 최종 제출하지 않습니다.", formData);
+        this.transition("COMPLETING_RESERVATION", "예약 내용과 CatchPay를 최종 검증하고 예약 완주를 진행합니다.", {
+          data: { ...formData, completionEnabled: true },
         });
+        const completion = await this.deps.completion.run(config, {
+          shopSlug,
+          shopDisplayName,
+          reservationDate: config.reservationDate,
+          selectedMinutes: candidate.minutes,
+          personCount: config.personCount,
+        }, controller.signal, () => this.authorizationHandle.takePin());
+        if (completion.kind === "completed") {
+          this.transition("COMPLETED", completion.message);
+          return this.finish();
+        } else if (completion.kind === "stopped") {
+          this.transition("STOPPED", completion.message, { userStopped: true });
+          return this.finish();
+        } else if (completion.kind === "timed_out") {
+          return this.timedOut(completion.message);
+        } else {
+          return this.diagnosticHandOff(completion.message, {
+            completionClaimed: completion.claimed,
+          });
+        }
       }
       if (inspection.kind === "unknown") {
         return this.diagnosticHandOff(`${inspection.label} 화면은 자동 진행하지 않습니다.`, postSlotEventData(inspection));
@@ -1526,9 +1612,13 @@ export class OpenRunOrchestrator {
     config: ReservationConfig,
     requestedRunId?: string,
     executionContext?: RunExecutionContext,
+    authorization?: OneShotRunAuthorization,
   ): Promise<RunResult> {
     if (this.activeController) throw new Error("이미 실행 중입니다.");
-    const session = new RunSession(this.dependencies, config, requestedRunId, executionContext);
+    const session = new RunSession(this.dependencies, config, requestedRunId, executionContext, authorization);
+    // RunSession(handle)에 전달한 직후 이 async frame의 raw 참조를 폐기한다 —
+    // await session.execute() 동안 suspended frame에 secret이 남지 않게 한다.
+    authorization = undefined;
     this.activeController = session.controller;
     try {
       return await session.execute();

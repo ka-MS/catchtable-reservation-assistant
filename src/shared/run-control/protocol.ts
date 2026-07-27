@@ -7,6 +7,9 @@ export type TerminalRunState = Extract<RunState,
   "DRY_RUN_COMPLETED" | "HANDED_OFF" | "COMPLETED" | "STOPPED" | "TIMED_OUT" | "FAILED">;
 export type AttemptPhase = "PREPARING" | "EXECUTING";
 
+/** 완주 외부/내부 제출 클릭 권한 phase — PIN은 이 채널을 지나가지 않는다(20-design §8). */
+export type CompletionDispatchPhase = "outer" | "pin";
+
 export type AttemptOutcome =
   | {
     kind: "preparation_failed";
@@ -24,6 +27,10 @@ export type AttemptControlMessage =
   | {
     type: "ATTEMPT_FINISHED"; logicalRunId: string; attemptId: string;
     outcome: AttemptOutcome; flush: { ok: boolean };
+  }
+  | {
+    type: "COMPLETION_DISPATCH_CLAIM"; logicalRunId: string; attemptId: string;
+    phase: CompletionDispatchPhase; fingerprint: string;
   };
 
 /** sendResponse = ACK. ACK = "결정이 영속 접수됨"(행동 완료 아님).
@@ -38,6 +45,16 @@ export type AttemptFinishedAck =
 export type AttemptPhaseChangedAck =
   | { ok: true }
   | { ok: false; reason: AttemptAckFailureReason };
+
+/** ACK = "클릭 권한이 영속 접수됨"(클릭 성공이 아니다). PIN·secret은 이 채널에 없다.
+ * dispatchGranted=true는 이번 호출로 새로 영속된 권한 — content는 이때만 클릭한다.
+ * dispatchGranted=false는 같은 phase·fingerprint의 멱등 재ACK(예: ACK 유실 뒤 재전송) —
+ * 이미 이전에 권한이 부여됐다는 뜻이므로 content는 다시 클릭하지 않는다. */
+export type CompletionDispatchAckFailureReason =
+  | "unknown_logical_run" | "stale_attempt" | "fingerprint_mismatch" | "phase_order" | "stop_requested";
+export type CompletionDispatchAck =
+  | { ok: true; dispatchGranted: boolean }
+  | { ok: false; reason: CompletionDispatchAckFailureReason };
 
 // background → content (SW bootstrap reconcile 전용 — PING은 주입 여부만 증명한다)
 export interface AttemptStatusRequest { type: "GET_ATTEMPT_STATUS"; attemptId: string; }

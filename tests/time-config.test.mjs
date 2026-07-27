@@ -10,6 +10,7 @@ import {
   defaultStopAt,
   normalizeReservationConfig,
   resolveAvailabilityProbeMode,
+  validateOneShotAuthorization,
   validateReservationConfig,
 } from "../dist/shared/config.js";
 
@@ -51,6 +52,9 @@ function validConfig() {
     dryRun: true,
     preOpenLeadMs: 3_000,
     toggleIntervalMs: 400,
+    reservationCompletionEnabled: false,
+    maxPaymentAmountKrw: 0,
+    requiredFormDefaultAnswer: "",
   };
 }
 
@@ -81,6 +85,89 @@ test("availability probe modes normalize legacy settings without retaining the b
   assert.equal("availabilityProbeEnabled" in missing, false);
   assert.equal("availabilityProbeEnabled" in enabled, false);
   assert.equal(resolveAvailabilityProbeMode(current), "empty_exit");
+});
+
+test("legacy config missing completion fields normalizes to off/0/empty", () => {
+  const legacy = validConfig();
+  delete legacy.reservationCompletionEnabled;
+  delete legacy.maxPaymentAmountKrw;
+  delete legacy.requiredFormDefaultAnswer;
+  const normalized = normalizeReservationConfig(legacy);
+  assert.equal(normalized.reservationCompletionEnabled, false);
+  assert.equal(normalized.maxPaymentAmountKrw, 0);
+  assert.equal(normalized.requiredFormDefaultAnswer, "");
+});
+
+test("completion default answer is trimmed", () => {
+  const normalized = normalizeReservationConfig({
+    ...validConfig(),
+    requiredFormDefaultAnswer: "  방문 목적입니다  ",
+  });
+  assert.equal(normalized.requiredFormDefaultAnswer, "방문 목적입니다");
+});
+
+test("completion default answer has no unfounded length cap — normalize only trims and validate only checks the type", () => {
+  const longAnswer = "가".repeat(200);
+  const normalized = normalizeReservationConfig({ ...validConfig(), requiredFormDefaultAnswer: longAnswer });
+  assert.equal(normalized.requiredFormDefaultAnswer, longAnswer);
+  assert.deepEqual(validateReservationConfig({ ...validConfig(), requiredFormDefaultAnswer: longAnswer }, 1_000_000), []);
+  const nonString = validateReservationConfig({ ...validConfig(), requiredFormDefaultAnswer: 12345 }, 1_000_000);
+  assert.ok(nonString.some((error) => error.includes("공통 필수 답변")));
+});
+
+test("max payment amount only accepts an integer between 0 and 500,000", () => {
+  const base = validConfig();
+  assert.deepEqual(validateReservationConfig({ ...base, maxPaymentAmountKrw: 0 }, 1_000_000), []);
+  assert.deepEqual(validateReservationConfig({ ...base, maxPaymentAmountKrw: 500_000 }, 1_000_000), []);
+  const tooLarge = validateReservationConfig({ ...base, maxPaymentAmountKrw: 500_001 }, 1_000_000);
+  assert.ok(tooLarge.some((error) => error.includes("예약금 상한")));
+  const negative = validateReservationConfig({ ...base, maxPaymentAmountKrw: -1 }, 1_000_000);
+  assert.ok(negative.some((error) => error.includes("예약금 상한")));
+  const fractional = validateReservationConfig({ ...base, maxPaymentAmountKrw: 1_000.5 }, 1_000_000);
+  assert.ok(fractional.some((error) => error.includes("예약금 상한")));
+});
+
+test("reservation completion opt-in must be a boolean", () => {
+  const base = validConfig();
+  const errors = validateReservationConfig({ ...base, reservationCompletionEnabled: "yes" }, 1_000_000);
+  assert.ok(errors.some((error) => error.includes("완주")));
+});
+
+// 실제로 존재할 법한 PIN 리터럴을 소스에 남기지 않도록 자릿수를 런타임에 조합한다.
+function runtimePinSentinel(digits) {
+  return digits.map(String).join("");
+}
+
+test("one-shot authorization accepts only a 4-digit PIN and never echoes the value", () => {
+  assert.equal(validateOneShotAuthorization(undefined), null);
+  assert.equal(validateOneShotAuthorization({ catchPayPin: runtimePinSentinel([3, 0, 8, 1]) }), null);
+  const tooShort = validateOneShotAuthorization({ catchPayPin: runtimePinSentinel([1, 2, 3]) });
+  const nonDigit = validateOneShotAuthorization({ catchPayPin: "abcd" });
+  const empty = validateOneShotAuthorization({ catchPayPin: "" });
+  for (const error of [tooShort, nonDigit, empty]) {
+    assert.equal(typeof error, "string");
+    assert.doesNotMatch(error, /\d{3,}/);
+  }
+});
+
+test("one-shot authorization treats only undefined as absent — malformed non-undefined shapes reject without throwing", () => {
+  // null, 배열, 원시값, catchPayPin이 숫자·누락인 경우 모두 존재하는 것으로 취급해 엄격히 거부한다.
+  const malformedShapes = [
+    null,
+    {},
+    { catchPayPin: 3081 }, // 숫자는 문자열 타입 계약 위반이다 — 우연히 4자리 숫자여도 거부한다.
+    { catchPayPin: null },
+    { catchPayPin: [3, 0, 8, 1] },
+    "not-an-object",
+    42,
+  ];
+  for (const shape of malformedShapes) {
+    let error;
+    assert.doesNotThrow(() => {
+      error = validateOneShotAuthorization(shape);
+    });
+    assert.equal(typeof error, "string");
+  }
 });
 
 test("invalid time relationships and unsafe settings are rejected", () => {

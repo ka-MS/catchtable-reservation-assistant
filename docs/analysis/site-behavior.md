@@ -312,3 +312,442 @@ t=193ms  테이블 dialog DOM 제거, 다음 dialog 활성
 ## 11. 2026-07-10 읽기 전용 재확인
 
 태오 광안리 DINING 페이지에서 `main button[data-busy]` 49개를 확인했다. 표시 슬롯은 `aria-hidden`이 없고 캐러셀 복제본은 `aria-hidden="true"`였으며 `data-duplicate-index`와 `오후 H:MM` 텍스트가 유지됐다. 달력 모달은 닫혀 있어 날짜 셀은 이 재확인에서 제외했다. 어떤 버튼도 클릭하지 않았다.
+
+## 12. CatchPay 예약 완주 실측 (2026-07-24)
+
+CatchPay 예약 완주(`docs/specs/catchpay-reservation-completion/`) 통제 실측 세션에서 관측한 사실이다. 원본 인벤토리는 [2026-07-24 catchpay-recon](../evidence/live-runs/2026-07-24/catchpay-recon/README.md)에 보관한다. 이 세션은 **비로그인 대조(C) → 로그인 0원(A) → 로그인 유료(B)** 순서로 순차 진행했다. C는 예약 폼 로그인 게이트에서 최종 제출 없이 종료했고, A(우블랑 0원)와 B(더피제리아마켓 유료)는 통제 범위 안에서 각각 외부 최종 제출(`자동결제로 예약하기`) 1회로 실예약을 생성했다(B의 CatchPay PIN 입력과 내부 결제는 사용자가 직접 수행). 개인정보·OAuth 값·raw PIN·raw 예약번호는 기록하지 않는다.
+
+### 12.1 우블랑(`woo_blanc_`) 필수 메뉴 선택 dialog `[실측: 우블랑 2026-07-24]`
+
+슬롯(8월 10, 오후 12:00, 2명) 클릭 직후 `div[role="dialog"][aria-label="메뉴 선택"][aria-modal]`가 열렸다. 헤딩은 `[필수 선택] 메인 메뉴`이며 코스별로 다음 구조를 갖는다.
+
+- 코스명 heading + 1인당 예약금 금액(숫자) + `코스가격은 N원이며 해당 금액은 예약금입니다.` 안내
+- `button[aria-label="<메뉴명> 수량 감소"]`(수량 0에서 disabled), `spinbutton[aria-label="<메뉴명> 수량"]`, `button[aria-label="<메뉴명> 수량 추가"]`
+- 우블랑 메인 코스와 1인당 예약금: 평일 런치 테이스팅 40,000 / 런치 시그니쳐 50,000 / 우블랑 비즈니스 70,000 / 우블랑 A 70,000 / 우블랑 BLANC 80,000 / 우블랑 VIP 100,000. `추가 메뉴` 무알콜 샹그리아 24,000(선택).
+- 하단 총합은 필수 수량 미달 시 `총 N원 (메인 메뉴를 선택해주세요.)`, 필수 수량(=예약 인원 2)을 채우면 안내 문구가 사라지고 `총 80,000원`만 남으며 `다음`으로 진행 가능. 즉 이 매장 최단 슬롯(런치)은 메뉴 단계에서 1인당 예약금이 붙는다(구조는 돗가비누각 수량형 메뉴와 동일). `[실측: 우블랑 2026-07-24]`
+
+### 12.2 결제 방식 선택 dialog와 CatchPay 선택 판정 `[실측: 우블랑 2026-07-24]`
+
+메뉴 `다음` 직후 `div[role="dialog"][aria-modal="true"][aria-label="결제 방식 선택"]`가 열렸다.
+
+- 두 옵션 모두 aria 없는 **네이티브 라디오** `input[type="radio"][name="catch-pay-auto-payment"]`이며, `role`/`aria-label`/`value`/`data-*`가 없다. 선택 판정은 네이티브 `input[name="catch-pay-auto-payment"]:checked`로 한다. `[실측]`
+  - 옵션 1 `예약금 0원 + 자동결제`: **기본 checked**. 보조 문구 `예약금 0원 · 카드 등록하면 이용 가능`, `식사 후 자동결제 시, 최대 100% 할인`, `방문 7일 전부터 취소/노쇼 시 수수료가 결제됩니다.`
+  - 옵션 2 `예약금 결제`(예약금 80,000원): 미선택.
+- 즉 우블랑의 `예약금 0원`은 이 `예약금 0원 + 자동결제`(CatchPay 자동결제) 방식이 기본 선택된 상태를 뜻하며, 메뉴 단계 예약금(80,000원)은 즉시 과금이 아니라 자동결제 보증액이다. `[실측+해석]`
+- 결제 dialog와 sibling 프로모션 오버레이(`전액 할인의 주인공은 누구?` 랜덤 할인, `닫기` 버튼과 `…이 방식으로 예약` CTA)가 함께 렌더될 수 있다(문서 7.5 패턴과 동일, `[role="dialog"]` 2개). `닫기`로 오버레이만 닫고 결제 dialog의 `다음`으로 진행했다. `[실측]`
+- `다음` 클릭 후 URL은 `/ct/reservation/form?isDepositFree=1`(이번 관측에는 `openRegisterCard` 파라미터 없음)로 전이했다. `[실측]`
+
+### 12.3 예약 폼 — 비로그인/회원가입 게이트 변형 `[실측: 우블랑 2026-07-24, 비로그인 세션]`
+
+이 세션의 연결 프로필은 예약 기준으로 **비로그인**이었다. 매장/홈 화면 localStorage에는 OAuth 키 이름(`O_AUTH_CODE`, `O_AUTH_REF`, `LST_OAUTH_KEY`, `isOAuth`)이 존재했으나 예약 폼은 게스트로 취급했다(값은 기록하지 않음). 네트워크의 `GET https://ct-api.catchtable.co.kr/api/v1/collections/count → 401`이 비로그인을 뒷받침한다. `[실측]`
+
+`/ct/reservation/form?isDepositFree=1`에서 관측한 구조:
+
+- 상단 `예약 정보`: `08월 10일 (월) · 오후 12시 · 2명`, 하단 요약 `08월 10일(월) · 오후 12:00 · 2명`. `[실측]`
+- `방문 목적 *복수 선택 가능`: `checkbox` 9개(데이트/친목/가족식사/생일/기념일/여행/비즈니스미팅/소개팅/기타). 어느 것도 `[필수]` 표기가 없어 방문 목적은 (적어도 이 변형에서) 필수가 아닌 다중선택으로 보인다. `[실측]`
+- **로그인 게이트**: `로그인하고 예약하기`/`로그인` 문구와, `h3` `회원가입하며 예약하기` 섹션. 이름* `textbox`(placeholder `한글, 영문만 입력해 주세요.`), 휴대폰 번호* `textbox`(placeholder `숫자만 입력해 주세요.`) + `인증번호 요청` 버튼(disabled), 비밀번호* `textbox` 2개, `가입하기` 버튼. 이름/휴대폰 값은 비어 있음(게스트). `[실측]`
+- 회원가입 약관 `checkbox`: `[필수]` 만 14세 이상 / 캐치테이블 이용약관 / 개인정보 수집·이용 / 개인정보 제3자 제공 / 위치정보 이용약관 (5개). `[선택]` 전화·링크 예약 앱 연동 제3자 제공 / 미식 성향 정보 제3자 제공 / 마케팅 정보·메일·SMS 수신 (3개) + `[선택]` 연동하기. 상단 `이용자 약관 전체 동의` 일괄 동의 control. `[실측]`
+- 매장 유의사항 `[필수] 확인해주세요.` `checkbox` 7개(10분 지연/이용시간 1시간30분/예약금 전액 환불/당일·단체 전화/당일 인원·코스 변경 불가/일부 도착 시 코스 시작/연말·주말 조기 도착). `[실측]`
+- `[필수]` multiline `textbox` 여러 개(알러지, VVIP 룸, 테이블 이용 안내 등)와 선택 textbox(고기굽기, 레터링). `[실측]`
+- 하단 `결제금액`: `80,000원` → `0원`(실결제 now = 0원, 80,000원은 자동결제 보증/예약금). 최종 버튼 텍스트는 **`자동결제로 예약하기`**(`결제하기` 아님, disabled=false). `N분간 예약 찜! 시간 내 예약을 완료해주세요.` 점유 타이머(7:00 카운트다운)가 표시된다. `[실측]`
+
+주의: 위 필수/선택 약관 집합은 **회원가입(비로그인, 시나리오 C) 변형**이다. 로그인(민석) 상태의 예약 폼이 노출하는 필수 약관 집합과 prefill 차이는 §§12.4-12.5에서 실측했다(비교 참고). 시나리오 C(비로그인)에서는 자동 로그인·회원가입 없이 이 게이트에서 **최종 제출 0회**로 종료했다. `[실측: C 무제출]`
+
+### 12.4 예약 폼 — 로그인(민석) 변형과 CatchPay 판정 `[실측: 우블랑 2026-07-24, 로그인 세션]`
+
+같은 조건(우블랑, 08-10 오후12:00, 2명, 평일 런치 테이스팅 x2)을 로그인 세션으로 다시 진행했다. 메뉴 `확인` 직후 별도 결제 방식 dialog 없이 곧바로 `/ct/reservation/form?isDepositFree=1&openRegisterCard=0`로 전이했다(등록 결제수단이 있어 기본 방식이 자동 적용된 것으로 보임). 비로그인 변형과 달리 로그인/회원가입 게이트가 없다.
+
+- 예약 정보: `08월 10일 (월) · 오후 12시 · 2명`. 방문 목적은 여전히 `checkbox` 9개, `[필수]` 없음(비필수 다중선택). `[실측]`
+- `자동결제 할인` 섹션: `switch` "자동결제 할인" checked, `할인 복권 (1개 사용 가능)`, `랜덤 할인(최대 전액)`, 예약금 `80,000` → `0원`. `[실측]`
+- 결제 방식: `예약금 0원 + 자동결제`(옆에 `변경` link), `예약금 0원 예약도 취소·노쇼 시 취소 수수료가 결제됩니다`. `[실측]`
+- **결제 수단 판정**: 네이티브 `input[type="radio"][name="payment-type"]` 2개. 1번 `캐치페이`가 **기본 checked**(등록 카드 표시: 카드 brand 이미지 + 마스킹된 카드 라벨 + `이 카드로 식사 금액이 자동결제 됩니다`), 2번 `일반결제`는 **disabled**. 즉 로그인+등록 CatchPay 상태에서 CatchPay는 `input[name="payment-type"]:checked`로, 일반결제 비활성은 해당 radio의 `disabled`로 판정한다. (중간 dialog의 `input[name="catch-pay-auto-payment"]`와 폼의 `input[name="payment-type"]`는 다른 앵커다.) 카드 식별정보는 기록하지 않는다. `[실측]`
+- 총 결제 금액: `80,000원` → `0원`. 안내 `캐치페이 결제 수단 확인을 위해 예약 시 및 방문 당일 100원 결제 후 즉시 취소됩니다.` — **0원 예약도 카드 검증용 100원 승인 후 즉시 취소가 발생**한다(별도 청구 없음). `[실측]`
+- 로그인 변형의 **필수 약관은 [필수] checkbox 10개**: 매장 유의사항 7개 + 결제 영역 3개(`[필수] 예약 취소/변경에 대한 취소 수수료 정책 동의`, `[필수] 개인정보 제3자 제공 동의 (와드)`, `[필수] 개인정보 제3자 제공 동의 (캐치테이블페이)`). `[선택]`은 없다(비로그인 회원가입 변형의 만14세·이용약관·위치정보 등은 로그인 변형에 없음). 상단 `모두 동의합니다`(결제 영역 일괄 동의) control은 개별 [필수] 3개를 모두 체크하면 자동 checked된다. `[실측]`
+- `[필수]` multiline `textbox` 3개(알러지/VVIP 룸/테이블 이용)는 필수 입력이며 `없음` 등 내용이 있어야 한다. 고기굽기·레터링 textbox는 비필수. `[실측]`
+- 취소수수료 정책 표: `8일 전 취소 수수료 없음`, `7일 전~1일 전 40,000원`, `당일/노쇼 80,000원`. `[실측]`
+- 최종 버튼: **`자동결제로 예약하기`**(`결제하기` 아님). 필수 미충족 상태에서도 DOM상 `disabled=false`로 렌더되며 실제 검증은 클릭 시 이뤄진다(활성 여부만으로 완료 판정 불가). `[실측]`
+- 상단에 `N분간 예약 찜! 시간 내 예약을 완료해주세요.` 점유 타이머(약 7분). 만료 시 `예약 찜 시간이 만료되었습니다. 예약현황에 따라 예약이 어려울 수 있습니다.`로 바뀐다(타이머 만료 후 제출은 성공 불확실로 취급). `[실측]`
+- 참고: `fill_form` 일괄 체크 시 매장 유의사항 마지막 2개 checkbox가 간헐적으로 토글되지 않아 개별 클릭 보정이 필요했다(커스텀 checkbox 배치 tail 타이밍 이슈로 추정). `[실측: 도구 동작]`
+
+### 12.5 0원 CatchPay 최종 제출과 성공 후조건 `[실측: 우블랑 2026-07-24, 로그인, 실예약]`
+
+허용 범위 안에서 최종 `자동결제로 예약하기`를 1회 클릭한 결과:
+
+- **PIN 화면 없이** 바로 완료로 진행됐다(0원 CatchPay = PIN-less 제출 확인). `[실측]`
+- 성공 후조건: 예약 폼에서 **URL이 `/ct/mydining/my/planned`(마이다이닝 나의 예약, 방문예정 탭)로 전이**했다. document 전체 reload인지 SPA navigation인지는 **미측정**이다(전이 여부만 관측). `[실측: URL 전이 / 방식 미측정]`
+- 완료 표식: `자동결제로 예약을 완료했습니다` + `식사 후 사장님께 자동결제 요청해주세요.` 문구와 초대장 공유 오버레이(`초대장 편집`/`링크로 공유`/`카카오톡으로 공유`). `[실측]`
+- 방문예정 목록에 새 예약이 `우블랑 · 동탄 · 한우오마카세 2026.08.10 (월) · 오후 12:00 · 2명` (`D-17`, `예약`·`자동결제`)로 등재됐다. 하단 탭 `마이다이닝` 배지 수가 증가했다. `[실측]`
+- raw 예약번호는 이 완료 화면 텍스트에 노출되지 않았고 기록하지 않는다. 클릭(dispatch) 성공과 실제 예약 성공은 위 완료 URL/DOM 등재로 구분했다. `[실측]`
+- 이 예약은 실제 생성되었으며 자동화로 취소하지 않는다. 우블랑 예약 취소는 **사용자가 직접 수행해 확인됨**(취소 수수료 없는 구간). `[운영 메모+사용자 확인]`
+
+### 12.6 유료 CatchPay 예약 폼 (`pizzeriamarket`) `[실측: 더피제리아마켓 하남미사 2026-07-24, 로그인]`
+
+- 더피제리아마켓 하남미사. **월요일은 모두 휴무(달력 disabled)**라 창(08-10~08-31) 최단 가능일 = **8월 11(화)**, 최단 허용 슬롯 = **오전 11:00**, 2명. `[실측]`
+- 슬롯 클릭 → `div[role="dialog"][aria-label="예약금 안내"][aria-modal]`: `1인당 예약금 10,000원 × 총 예약 인원 2명 = 총 예약금 20,000원`, 환불정책(노쇼 환불불가 / 당일 20% / 1일 전 50% / 2일 전 100%), `취소`·`확인` 버튼. `확인`은 안내 확인일 뿐 결제가 아니다. `[실측]`
+- `확인` → `/ct/reservation/form?openRegisterCard=0` (0원과 달리 `isDepositFree` 파라미터 없음). `[실측]`
+- 결제 방식 `자동결제`(최대 100% 할인). 결제 수단 `input[name="payment-type"]`에서 `캐치페이` checked·`일반결제` disabled(0원 폼과 동일 앵커). 등록 카드(마스킹, 미기록) 표시. `[실측]`
+- **총 결제 금액 20,000원(실결제)**. "…까지 취소 시 예약금 100% 환불 가능" 기한 안내. `[실측]`
+- 필수 약관은 **[필수] 3개만**: `예약 취소/변경에 대한 환불 정책 동의` / `개인정보 제3자 제공 동의 (와드)` / `개인정보 제3자 제공 동의 (캐치테이블페이)`. `[선택]`·마케팅·매장 유의 필수 체크·필수 자유입력이 **없다**. 상단 `모두 동의합니다` select-all은 이 폼에서 정확히 위 3개 [필수]만 포함한다(그룹에 [선택] 0개를 사전 확인). 방문 목적 checkbox 9개는 비필수. `[실측]`
+- [도구 이슈] 이 폼의 개인정보 제3자 [필수] 2개(와드/캐치테이블페이)는 a11y checkbox 노드 클릭·라벨 텍스트 클릭·`fill_form`(.checked) 어느 것으로도 토글되지 않았다(히든 React 제어 input이고 보이는 토글이 별도 a11y 노드로 노출되지 않음). 그룹 컨트롤 `모두 동의합니다` 클릭으로만 정확히 3개 [필수]가 체크됐다. `woo_blanc_`의 동일 명칭 체크박스가 `fill_form`으로 체크됐던 것과 대비되어 매장/폼별 변형이 있다. `[실측: 도구 동작]`
+- 최종 버튼 `자동결제로 예약하기`. `[실측]`
+
+### 12.7 유료 CatchPay PIN UI와 성공 후조건 `[실측: 더피제리아마켓 2026-07-24, 로그인, 실결제 20,000원]`
+
+최종 `자동결제로 예약하기`를 1회 클릭한 뒤 CatchPay PIN 화면이 나타났다. raw PIN·예약번호·개인정보는 기록하지 않는다.
+
+- **origin·iframe·문서**: 최상위와 **동일 오리진·동일 문서**(`app.catchtable.co.kr/ct/reservation/form`), **iframe 0개**. cross-origin PIN iframe이 아니라 같은 문서 위 오버레이다(현재 manifest host permission 범위 안). `[실측]`
+- **입력 방식**: 일반 password `input` 없음(passwordInputCount=0). **커스텀 보안 키패드**(숫자 `button` 10개 + `전체삭제`). 문구 `캐치페이 비밀번호 입력`, `비밀번호를 입력해 주세요`. `[실측]`
+- **배열**: 숫자 버튼 시각 배열이 **1표본에서 비순차**(관측 순서 `4,5,6,1,3,9,7,8,2,0`). 렌더 간 무작위화(재셔플)는 1표본만으로 확인 불가 — **다중 렌더 무작위성 미확인**. `[실측: 1표본 비순차 / 무작위성 미확인]`
+- `결제하기` 버튼은 PIN 입력 전 `disabled`, `취소` 존재, `예약을 진행 중입니다` 처리 오버레이 공존. `[실측]`
+- **PIN 입력·재개**: 자동화는 키패드/PIN을 조작·기록하지 않는다. 사용자가 브라우저에서 직접 PIN을 입력하고 내부 `결제하기`를 눌렀다. 입력은 같은 문서에서 이뤄졌고 별도 실행 context 재생성 없이 이어졌다. `[실측+정책]`
+- **성공 후조건**: 결제 성공 후 **URL이 `/ct/mydining/my/planned`로 전이**(document reload vs SPA navigation은 미측정), `자동결제로 예약을 완료했습니다` 문구와 초대장 공유 오버레이, 방문예정 목록에 `더피제리아마켓 하남미사 · 하남 · 피자 2026.08.11 (화) · 오전 11:00 · 2명`(`D-18`, `예약`·`자동결제`) 등재. 0원(`woo_blanc_`)과 완료 URL·표식 구조가 동일하다. `[실측: URL 전이 / 방식 미측정]`
+- 실결제 20,000원이 발생했다(2일 전까지 100% 환불 구간). 이 예약 취소는 **사용자가 직접 수행해 확인됨**(자동 취소하지 않음). 환불 완료 여부는 별도로 확인하지 않았다. `[운영 메모+사용자 확인]`
+
+### 12.8 예약 폼 매장 표시명 DOM anchor (0원·유료 변형 교차확인) `[실측: 우블랑·더피제리아마켓 2026-07-24, 로그인, read-only]`
+
+두 예약 폼 변형에서 매장 표시명 위치만 read-only로 재확인했다(최종 `자동결제로 예약하기`·PIN·결제·예약 생성 없음). 우블랑 0원 폼 `/ct/reservation/form?isDepositFree=1&openRegisterCard=0`, 더피제리아마켓 유료 폼 `/ct/reservation/form?openRegisterCard=0`. 두 변형의 표시명 구조는 동일했다.
+
+- 매장 표시명은 **최상단 top bar의 네이티브 `<header>`(접근성 landmark `banner`) 안 단일 `<h1>`**이다. role은 기본 heading(`aria-level` 1), 접근성 이름은 요소 textContent 그대로(우블랑 = `우블랑`, 더피제리아마켓 = `더피제리아마켓 하남미사`). `id`·`aria-label` 없음이고 `aria-labelledby`로 참조되지도 않는다(이름원천 = 자체 텍스트). `header` 내부에는 이 `h1`과 `닫기` 버튼만 있다. `[실측]`
+- **유일성**: 폼 문서 전체에서 매장명 텍스트는 **정확히 1회**만 등장한다(매장명을 포함하는 leaf 요소 1개, 본문 텍스트 매칭 1회). 두 변형 모두 동일. `[실측]`
+- **구조적 관계**: 표시명 `h1`은 top-bar `header`에 있고 폼 본문 `main`(단일 landmark) 밖이다. `예약 정보` 섹션에는 매장명이 **없다**(날짜·시간·인원 요약과 `더보기`만 존재). 즉 매장 identity는 예약 정보 섹션이 아니라 top-bar 제목으로만 노출된다. `[실측]`
+- `document.title`은 두 변형 모두 매장명이 없는 일반 문자열 `캐치테이블 | 즐거운 미식 생활의 시작`이다 — 폼에서 매장 판별에 document title을 쓸 수 없다. `[실측]`
+- 안정 anchor 후보: 폼 문서 내 **단일 `header > h1`의 textContent**(generated class 비의존). 표시명이 top bar에만 있고 폼 본문/예약 정보에는 없으므로, 폼 화면에서 매장 판별 근거는 이 top-bar `h1`이 유일하다. `h1`이 없거나 텍스트가 비면 다른 heading·title로 임의 대체하지 않는다(현재 관측에서는 두 변형 모두 존재). `[실측+지침]`
+
+### 12.9 미실측(남은 항목) `[미실측]`
+
+- PIN 키패드 숫자 배열의 렌더 간 무작위성(다표본), 잘못된 PIN·취소·timeout 시 화면과 재시도 정책.
+- 0원/유료 공통: 완료 화면의 raw 예약번호 없이 재조회(reload) 후 동일 결과 재판독 가능성.
+- 예약 폼 top-bar `h1`과 폼 본문(`main`) 사이 프로그램적 연결(aria-labelledby 등) 부재의 안정성(다매장 교차 확인).
+
+### 12.10 매장 상세 표시명 DOM anchor `[실측: 우블랑 2026-07-25, 로그인, read-only]`
+
+구현 후 통제 E2E 착수 시 `https://app.catchtable.co.kr/ct/shop/woo_blanc_`를
+read-only로 재확인했다.
+
+- 문서 전체의 `h1`은 `우블랑` 하나뿐이고 textContent가 매장 표시명이다.
+- 이 `h1`에는 `id`, `aria-label`, `data-*`가 없으며 `main` 아래에도 있지
+  않다. 따라서 매장 상세에서 `main h1`은 표시명을 찾지 못한다.
+- 예약 전 매장 표시명 anchor는 generated class가 아니라 **문서 전체의
+  유일하고 비어 있지 않은 `h1` textContent**로 한정한다. 부재·중복·빈
+  값이면 추측하지 않고 인계한다.
+
+### 12.11 0원 폼의 중복 금액 요약 `[실측: 우블랑 2026-07-25, 로그인, read-only]`
+
+완주 opt-in 실행이 안전 인계된 뒤 제출 없이 폼 DOM을 확인했다.
+
+- 본문 `h3`의 `총 결제 금액`과 고정 하단 `span`의 `결제금액`이 동시에
+  존재한다.
+- 두 anchor 모두 이전 보증액 `80,000원`과 현재 결제금액 `0원`을
+  표시하며, 이전 금액은 취소선이고 현재 금액은 취소선이 아니다. 본문
+  이전 금액은 네이티브 `<del>`이고, 고정 하단 이전 금액은 일반
+  `<span>`에 computed `text-decoration-line: line-through`가 적용된다.
+- 각 금액 요소의 시각 textContent는 `80,000원`/`0원`이지만 React DOM은
+  숫자와 `원`을 같은 요소 안의 인접 text node로 분리할 수 있다. 금액은
+  개별 text node가 아니라 가장 작은 금액 요소의 전체 textContent로
+  읽어야 한다.
+- 따라서 금액 라벨의 개수 자체를 1개로 제한할 수 없다. 각 anchor에서
+  취소선이 아닌 현재 KRW 값이 정확히 하나이고, 모든 anchor의 현재값이
+  서로 같은 경우에만 단일 현재 결제금액으로 판정한다. anchor별 값이
+  없거나 복수이거나 서로 다르면 인계한다.
+
+### 12.12 예약 폼 top bar wrapper 변형 `[실측: 우블랑 2026-07-25, 로그인, read-only]`
+
+후속 통제 E2E 폼에서 매장명 `우블랑`은 여전히 문서의 유일한 `h1`이고
+네이티브 `header` 안에 있었지만, `header > div > div > h1`처럼 중간
+wrapper가 추가돼 있었다. wrapper에는 안정적인 ARIA/data anchor가 없다.
+따라서 top bar anchor는 direct-child 깊이를 고정하지 않고
+**유일하고 비어 있지 않은 `header h1`**로 판정한다.
+
+### 12.13 결제수단 radio label 변형 `[실측: 우블랑 2026-07-25, 로그인, read-only]`
+
+- `input[type=radio][name="payment-type"]`는 정확히 2개다.
+- 선택된 첫 radio는 두 겹의 빈 `label` 안에 있어 자체 accessible/label
+  text가 없다. 같은 행에는 등록 카드와 `이 카드로 식사 금액이 자동결제
+  됩니다` 문구가 있다.
+- 선택되지 않고 disabled인 둘째 radio는 바깥 `label` text가
+  `일반결제`다.
+- 따라서 명시적 `캐치페이` label이 없을 때는 정확히 2개 중 유일하게
+  `일반결제`로 식별되는 radio의 반대편만 CatchPay 후보로 삼는다.
+  등록 자동결제 문구는 이 표본에서 관측된 표시 사실이지만 준비 상태의
+  hard gate로 사용하지 않는다. CatchPay 후보가 checked이고 일반결제가
+  선택되지 않았으며 최종 버튼이 정확히 `자동결제로 예약하기`일 때만
+  진행한다. 결제수단 선택·전환 action은 하지 않는다. 명시적인
+  CatchPay 등록 필요 화면은 아직 미실측이므로 관측 전 selector를
+  추측해서 추가하지 않는다.
+
+### 12.14 React 제어 입력과 전체동의 문구 변형 `[실측: 우블랑 2026-07-25, 로그인, 자동화 action 후 read-only]`
+
+- textarea에 인스턴스 `.value=` 후 `input`을 보낸 실행은 action 성공을
+  반환했지만 값이 빈 문자열로 남아 반복 상한에 도달했다. React 제어
+  입력은 native textarea value setter를 사용하고 action 뒤 실제 value
+  일치를 확인해야 한다.
+- 같은 폼에서 native setter 후 bubbling `InputEvent("input")`와
+  `change`를 보낸 값은 다음 관측에서도 유지됐다.
+- 개별 매장 유의사항 7개와 취소수수료 동의 1개는 checked가 됐지만,
+  개인정보 제3자 제공 2개는 unchecked로 남았다.
+- 전체동의 label은 기존 관측의 `모두 동의합니다`와 달리
+  `모두 동의합니다.`(마침표 포함)다. 두 문구를 같은 명시적 group
+  변형으로 취급한다.
+- group은 semantic `fieldset`/`section`이 아니라 두 단계 위 일반
+  `div`에 group 자신과 필수 3개가 함께 있다. group부터 위로 올라가
+  visible checkbox가 2개 이상인 첫 ancestor가 이 4-control 집합이다.
+- 개별 required 클릭 뒤 checked가 되지 않으면 성공으로 보지 않는다.
+  같은 section의 group 구성원이 모두 required이고 optional이 0개인
+  경우에만 해당 group으로 fallback한다.
+
+### 12.15 필수 textarea 구조와 전체동의 비동기 반영 `[실측: 우블랑 2026-07-25, 로그인, 무제출]`
+
+통제 E2E는 필수약관 처리 단계에서 `completionClaimed=false`로
+인계됐고 최종 제출은 없었다. 종료 뒤 현재 DOM과 action 반영 시점을
+확인했다.
+
+- visible textarea는 6개였고 native `required`, `aria-required`,
+  `aria-label`, `aria-labelledby`와 wrapping `label`이 모두 없었다.
+- 각 매장 질문은 가장 가까운 일반 `div` 안에 direct child `h4` 하나와
+  해당 textarea를 감싼 `div` 하나를 둔다. 그 질문 container 안의
+  textarea는 정확히 하나다.
+- 첫 3개 질문의 `h4`는 `[필수]`로 시작하고, 다음 2개 질문과 별도
+  `고객 요청사항` textarea에는 `[필수]`가 없다. 따라서 이 변형에서는
+  가장 가까운 단일-textarea 질문 container의 유일한 direct heading이
+  필수 여부의 구조적 근거다.
+- 위 구조로 찾은 필수 textarea는 3개였다. native textarea value
+  setter와 bubbling `InputEvent`·`change`로 `없음`을 넣은 첫 값은
+  150ms 뒤와 약관 group 재렌더 150ms 뒤에도 유지됐다.
+- `모두 동의합니다.` group과 그 필수 member 3개가 모두 checked인
+  상태에서 group 해제는 동기 반영됐다. 다시 group을 클릭한 뒤
+  group과 member 3개의 checked가 모두 반영되기까지 이 표본에서는
+  약 76.6ms가 걸렸다.
+- 따라서 group click 직후의 동기 checked 값만으로 action 실패를
+  판정할 수 없다. 동일 optional baseline을 유지한 채 짧고 제한된
+  확인 구간에서 group과 required member 전부의 반영을 관측해야 하며,
+  확인되지 않으면 재클릭하지 않고 인계한다.
+
+### 12.16 0원 구현 E2E 성공 문구 DOM 변형 `[실측: 우블랑 2026-07-25, 로그인, 실예약]`
+
+확장 구현으로 우블랑 2026-08-10 오후 12:00, 2명 예약의 외부 최종
+버튼을 한 번 제출했다. terminal trace는 `completionClaimed=true`였고
+결과 불명 인계 뒤 재제출하지 않았다. 실제 화면은
+`/ct/mydining/my/planned`로 전이했고 방문예정 목록에 같은 우블랑
+예약이 등재돼 실예약 생성이 확인됐다.
+
+- 완료 문구는 heading이나 `[role=heading]`이 아니다. role·aria-label이
+  없는 일반 `div` 하나가 `strong` `자동결제`, text node `로`, `br`,
+  `span` `예약을 완료했습니다`를 자식으로 가진다.
+- 이 가장 작은 `div`의 normalized textContent는 정확히
+  `자동결제로 예약을 완료했습니다`다. 부모 `div`에는 후속 안내
+  `식사 후 사장님께 자동결제 요청해주세요.`까지 포함된다.
+- 방문예정 항목은 native `li` 하나이며 normalized textContent에
+  `우블랑`, `2026.08.10 (월)`, `오후 12:00`, `2명`이 모두 있었다.
+- 기존 heading-only 완료 문구 판정은 path와 목록이 일치해도
+  `matchedMessage=false`가 되어 안전 인계했다. 성공 path 안에서
+  가장 작은 visible element의 exact normalized text로 문구를
+  판정해야 한다. 부분 문자열이나 부모의 추가 안내까지는 허용하지
+  않는다.
+- 이 실행에서는 제출 전 document marker를 설치하지 않아 full reload와
+  SPA navigation의 구분은 여전히 미측정이다.
+- 이 예약은 자동 취소하지 않았고, 사용자가 직접 취소 완료했다고
+  확인했다. 환불 완료 여부는 별도로 확인하지 않았다.
+
+### 12.17 비로그인 구현 E2E의 안전 인계와 진단 스냅샷 `[실측: 우블랑 2026-07-25, 비로그인, 무제출]`
+
+`ms` 비로그인 프로필에서 확장을 우블랑 2026-08-10, 2명,
+11:00~21:00 조건으로 실행했다. 첫 번째 선택 가능한 메뉴를 2개로
+설정하고 예약 폼 `/ct/reservation/form?isDepositFree=1`까지 도달했다.
+
+- 예약 폼에는 `로그인하고 예약하기`와 `로그인`이 표시됐고,
+  `login_required`로 `HANDED_OFF` 됐다.
+- 외부 최종 제출 claim과 `자동결제로 예약하기` dispatch는 없었으며
+  예약은 생성되지 않았다.
+- terminal 진단은 stage `COMPLETING_RESERVATION`과 failure snapshot
+  `ss-e06b7fd6`를 기록했다. 스냅샷 요약에는 프로모션 오버레이의
+  `닫기`와 `전액 할인의 기회 이 방식으로 예약` 버튼 구조가 남았다.
+- 이 negative-control은 예약 폼의 로그인 인계도 공통 진단 경로를
+  통과하며 DOM 스냅샷을 남긴다는 구현 후 증거다.
+
+### 12.18 유료 구현 E2E의 PIN 제목 중복 변형 `[실측: 더피제리아마켓 2026-07-27, 로그인, 무결제]`
+
+최신 dist로 더피제리아마켓 2026-08-11 오전 11:00, 2명, 예약금
+20,000원 실행을 진행했다. 예약 폼은 CatchPay 선택, 일반결제 미선택,
+필수 약관 3개와 금액을 확인한 뒤 외부 `자동결제로 예약하기`를 한 번
+dispatch했고 PIN 오버레이가 나타났다. raw PIN과 카드 식별정보는
+기록하지 않았다.
+
+- PIN 오버레이의 접근성 tree에는 exact text가 같은
+  `캐치페이 비밀번호 입력` heading이 **2개** 있었다. 하나는 오버레이
+  상단 제목, 하나는 본문 제목에 해당한다. 두 heading과 키패드를
+  감싸는 접근성 `dialog` 경계는 노출되지 않았다.
+- 같은 화면에는 `취소`, 비활성 `결제하기`, `전체삭제`와 숫자 keypad가
+  함께 있었다. 별도 origin 전이나 iframe은 관측되지 않았다.
+- 구현은 PIN heading이 문서에서 정확히 하나일 때만 credential
+  surface를 찾도록 되어 있어 이 화면을 PIN으로 분류하지 못했다.
+  outer claim/dispatch 뒤 PIN claim, 숫자 입력과 내부 submit은 모두
+  발생하지 않았다.
+- 약 15초의 결과 관측 뒤
+  `결제 제출 뒤 성공 결과를 확인하지 못했습니다. 자동 재제출하지 않습니다.`
+  로 `HANDED_OFF` 됐다. terminal snapshot은 `credential_surface`로
+  redaction됐고 `completionClaimed=true`였다.
+- 사용자는 PIN을 입력하거나 내부 `결제하기`를 누르지 않았으므로 이
+  실행에서 결제와 예약은 생성되지 않았다.
+
+같은 날 10:04 최신 dist에서 `role=dialog` 하나에 모든 중복 heading이
+포함될 때만 허용하도록 바꾼 빌드를 재실행했지만 결과는 같았다.
+outer claim/dispatch 뒤 PIN claim·digit·내부 submit은 0회였고,
+credential surface redaction과 결과 불명 인계로 끝났다. 이 실행에서도
+결제·예약은 생성되지 않았다. 따라서 `role=dialog` containment는 live
+PIN identity 근거로 사용할 수 없다.
+
+해석: PIN identity는 heading container가 아니라 top-level 문서의
+완전하고 유일한 credential control 집합으로 판정해야 한다. exact
+heading이 하나 이상 있고 visible 숫자 button 0~9가 각각 하나,
+`전체삭제`와 내부 `결제하기`가 각각 하나일 때만 한 surface로 인정한다.
+숫자·clear·내부 submit이 중복되거나 누락되면 복수/불완전 surface로
+거부한다. heading의 개수·조상 role·생성 class는 identity로 사용하지
+않는다.
+
+같은 날 10:29 control-set 수정 dist의 재실행에서는 `pin_surface`가
+정상 기록됐다. facts는 same-origin·same-document, iframe 0,
+password input 0, 숫자 button 10개였다. 화면 픽셀에는 dim 처리된
+예약 정보가 PIN overlay 뒤에 남았지만, credential redaction snapshot의
+visible button 목록에는 바깥 예약 폼 control이 없었다. 바깥 폼을
+접근성/가시성 tree에서 제외한 정확한 DOM 속성은 측정하지 않았다.
+구현은 PIN 전용 facts를 확인한 다음 바깥 폼의 전체 ready fingerprint를
+다시 요구해 `PIN 화면 아래 예약 내용 또는 결제금액이 변경돼 자동
+입력하지 않습니다.`로 인계했다. PIN 숫자 action, pin claim과 내부
+`결제하기` submit은 없었고 결제·예약도 생성되지 않았다.
+
+이 표본이 확정하는 사이트 사실은 PIN modal이 열리면 바깥 예약 폼의
+모든 visible control을 PIN 이전과 같은 형태로 계속 열거할 수 없다는
+점이다. PIN 전후 안전 검증은 modal 표시로 사라질 수 있는 바깥 최종
+button·점유 타이머·약관 control의 visible shape가 아니라, 같은 문서에
+남은 매장·예약 요약·현재 금액·선택된 결제수단 anchor만 대상으로 해야
+한다. 이 anchor가 없거나 복수 값으로 갈리거나 제출 전 값과 다르면
+계속 거부한다.
+
+10:42 사용자가 stable-context 수정 dist를 reload한 뒤 같은 조건으로
+새 수동 실행을 시작했다. 20,000원, CatchPay selected, 일반결제
+unselected와 일회성 authorization 제공을 확인하고 outer claim/dispatch를
+각각 한 번 수행했다. 이번에는 PIN surface가 관측되지 않고
+`예약을 진행 중입니다. 잠시만 기다려 주세요.` overlay로 바로 전환됐다.
+15초 동안 성공 path·문구·방문예정 일치가 없어서 자동 재제출 없이
+결과 불명 `HANDED_OFF`로 끝났다. 사용자는 실제 결제와 예약이 발생하지
+않았다고 확인했다.
+
+이 한 표본만으로 유료 outer가 PIN을 조건부로 생략한다고 일반화하지
+않는다. PIN 화면이 렌더되지 않았으므로 stable-context 수정의 live
+통과 근거도 아니다. 구현의 post-claim 결과 불명·무재제출 정책은
+의도대로 동작했다.
+
+11:02 재실행도 outer claim/dispatch 뒤 고정 15초 관측 안에 PIN이나
+성공을 분류하지 못해 결과 불명 인계됐다. 사용자가 terminal 뒤 공유한
+화면에는 입력 전 PIN keypad가 있었지만, 화면 공유 시각은 PIN이 실제로
+나타난 시각이 아니므로 전이 지연은 `15초 초과`로 확정하지 않는다.
+뒤의 11:09 표본에서는 같은 PIN surface가 outer dispatch 91ms 뒤
+관측됐다.
+
+11:09 같은 매장·날짜·시간·인원·20,000원 조건의 최신 dist 재실행은
+PIN keypad 조작 경계를 더 좁혔다.
+
+- 진단 event의 outer dispatch는 11:09:48.326, `pin_surface`는
+  11:09:48.417이었다. same-origin·same-document, iframe/password
+  input 0, digit button 10개, 내부 `결제하기` 비활성이었다.
+- terminal은 11:09:48.437에
+  `PIN 입력 뒤 결제 화면을 확인할 수 없어 자동 제출하지 않습니다.`로
+  끝났다. PIN surface 관측부터 종료까지 20ms뿐이었다.
+- terminal 직후 화면에는 PIN 진행 점이 하나만 채워져 있었다. 따라서
+  첫 digit click은 사이트에 반영됐지만, 나머지 digit click을 같은
+  동기 호출 묶음으로 보낸 뒤 즉시 검사한 내부 `결제하기`는 활성화되지
+  않았다.
+- `pin_claim`, 내부 submit과 성공 관측은 없었다. terminal diagnostic
+  snapshot은 `credential_surface`로 분류돼 heading/button/control과
+  HTML fragment가 모두 비어 있었고 raw PIN·keypad 배열을 보존하지
+  않았다.
+
+해석: live keypad는 숫자 click 사이에 React 상태 반영 시간이 필요하다.
+좌표나 최초 배열을 재사용하지 않고 각 digit 직전에 현재 0~9 control
+집합과 해당 숫자 button을 다시 찾는 원칙은 유지한다. 각 click 뒤에는
+짧고 bounded한 settle을 거친 뒤 surface와 stable payment context를
+재검증해야 하며, 네 번째 입력 뒤 내부 `결제하기` 활성화를 확인하지
+못하면 자동 제출하지 않는다. 이 표본은 PIN surface 자체가 느리게
+나타난다는 근거가 아니므로 15초 결과 관측 상한 변경 근거로 사용하지
+않는다.
+
+11:21 재실행은 당시 PIN surface 전이 지연 표본으로 해석했으나,
+뒤의 11:37 동일 탭 교차 관측으로 그 해석이 철회됐다.
+
+- outer dispatch는 11:21:45.224였다. 15.065초 뒤인 11:22:00.289
+  terminal snapshot에는 `예약을 진행 중입니다` presentation과
+  button 0개만 있었고 `pin_surface` event는 없었다.
+- 사용자가 공유한 11:22:08.431 화면에는 같은 예약 폼 위에 입력 전
+  PIN surface가 나타나 있었다. 네 진행 점은 모두 비어 있었고 내부
+  `결제하기`는 비활성이었다.
+- 이 두 시각만으로는 PIN mount가 outer dispatch 후 15초보다 늦었다고
+  확정할 수 없다. terminal snapshot과 PIN matcher가 같은 접근성
+  가시성 필터를 공유하므로, PIN이 먼저 렌더됐지만 두 경로가 함께
+  제외했을 가능성을 당시 구분하지 못했다.
+- 실행은 이미 결과 불명 `HANDED_OFF`였으므로 digit, pin claim, 내부
+  submit과 성공 관측은 모두 없었다. outer submit 재클릭도 없었다.
+
+### 12.19 시각 PIN과 접근성 tree 불일치 `[실측: 더피제리아마켓 2026-07-27, 로그인, 무결제]`
+
+11:37 최신 dist 실행은 같은 예약 폼 탭에서 PIN surface의 시각 표시와
+접근성 tree를 교차 관측했다. outer dispatch는 11:37:12.939였고,
+30.114초 뒤인 11:37:43.053에 `pin_surface` 없이 결과 불명 인계됐다.
+사용자는 PIN 창이 늦게 열린 것이 아니라 outer 제출 뒤 바로 보였다고
+관측했다.
+
+종료 뒤 PIN 창을 그대로 둔 상태에서 활성 Chrome 탭을 읽었다.
+
+- 주소는 같은 실행 대상인
+  `/ct/reservation/form?openRegisterCard=0`이었다.
+- Side Panel에는 같은 11:37 실행의 outer claim/dispatch와 terminal이
+  표시됐다. 다른 Catchtable 탭의 화면을 잘못 대조한 것이 아니었다.
+- 화면 픽셀에는 exact PIN heading 두 개, 비어 있는 진행 점 네 개,
+  `취소`, 비활성 `결제하기`, `전체삭제`와 고유 숫자 0~9 keypad가
+  보였다.
+- 같은 시각 Chrome 접근성 tree의 예약 폼 문서에는 PIN heading과
+  keypad button이 하나도 없었다. 대신
+  `예약을 진행 중입니다. 잠시만 기다려 주세요.` presentation만
+  노출됐다.
+- PIN surface를 접근성 tree에서 제외한 정확한 DOM 속성은 아직 직접
+  측정하지 않았다. 다만 구현의 공통 visibility 판정은 조상의
+  `aria-hidden=true` 또는 `inert`를 CSS 비표시와 동일하게 제외하며,
+  PIN matcher와 terminal snapshot이 이 판정을 공유한다.
+
+해석: 11:21과 11:37의 `button 0개` snapshot은 PIN 미렌더나 늦은
+mount의 증거가 아니다. 현재 결함은 시각적으로 렌더된 PIN credential
+surface를 접근성 격리 상태 때문에 matcher와 diagnostic이 함께 놓치는
+false negative다. 유료 PIN 대기를 30초로 늘려도 해결되지 않는다.
+
+PIN identity에 한해서는 배경 stable payment context와 같은 전용
+rendered 판정을 사용한다. 이 판정은 조상의 `aria-hidden`/`inert`만
+visibility 제외 사유에서 빼고, HTML `hidden`, CSS `display:none`과
+`visibility:hidden`은 계속 거부한다. exact heading 하나 이상, 문서
+전체의 고유 숫자 0~9, `전체삭제` 하나와 내부 `결제하기` 하나라는
+control-set 계약은 그대로 유지한다. diagnostic의 credential redaction
+탐지도 같은 판정을 써서 keypad text·배열·fragment를 저장하지 않는다.
+
+### 12.20 유료 구현 E2E 완주 `[실측: 더피제리아마켓 2026-07-27, 로그인, 실결제 후 사용자 취소]`
+
+접근성 격리 PIN surface 수정 dist로 더피제리아마켓 2026-08-11
+오전 11:00, 2명, 예약금 20,000원 실행을 완료했다. raw PIN, 카드
+식별정보와 예약 식별자는 기록하지 않았다.
+
+- `form_ready`는 20,000원, CatchPay selected, 일반결제 unselected,
+  필수 약관 3개를 기록했다.
+- outer claim/dispatch는 각각 한 번이었다. outer dispatch
+  127ms 뒤 같은 origin·같은 document의 PIN surface를 관측했다.
+  iframe과 password input은 0개, 숫자 keypad button은 10개였다.
+- PIN surface 관측 485ms 뒤 pin claim과 내부 submit을 각각 한 번
+  수행했다. outer submit 재클릭은 없었다.
+- 내부 submit 2.566초 뒤 `/ct/mydining/my/planned`, 정확한
+  `자동결제로 예약을 완료했습니다` 메시지와 매장·날짜·시간·인원이
+  일치하는 방문예정 항목을 모두 관측했다.
+- 같은 시각 terminal은 `COMPLETED`였고 success path·message·listing
+  boolean이 모두 true였다. 클릭 dispatch만으로 완료 처리하지 않았다.
+- 사용자는 생성된 예약을 직접 취소했다고 확인했다. 취소 조작은
+  자동화하지 않았고 환불의 금융기관 정산 상태는 별도로 판정하지
+  않았다.
+
+이 표본은 PIN surface가 늦게 mount됐다는 앞선 추론을 반증하고,
+시각적으로 렌더된 접근성 격리 control 집합을 전용 rendered 판정으로
+읽는 수정이 live에서 작동함을 확인한다.
