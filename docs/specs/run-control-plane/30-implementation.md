@@ -1291,7 +1291,7 @@ private async preparePerson(): Promise<RunResult | null> {
 
 **Files:**
 - Modify: `docs/worklog/HANDOFF.md` (RT-16 항목에 Phase 1 완료 추가, 다음 단계 = Phase 2 control plane)
-- Create: `docs/worklog/2026-MM-DD-NN-run-control-plane-phase1.md` (날짜·순번은 작성 시점 기준)
+- Create: `docs/worklog/2026-07-17-01-run-control-plane-phase1.md`
 - Modify: `docs/plans/next-development.md` §6 (준비영역 책임 분리 완료, supervisor·URL 재진입은 Phase 2로 명시)
 
 - [ ] **Step 1: 작업 로그 작성** — 변경 요약, 테스트 수 변화, hot path diff 0 확인 결과, 다음 단계(Phase 2 계획 = `31-control-plane-implementation.md`) 기록.

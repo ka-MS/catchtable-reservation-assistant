@@ -6,6 +6,10 @@
 
 현재 저장소는 기준 커밋 이전에 Git 이력이 없었다. 따라서 `cb15c27`을 재구축 전 상태의 보존 지점으로 사용한다. DELETE 항목은 이 커밋에서 언제든 복원할 수 있다.
 
+> 2026-07-28 문서 정리에서 폐기 안내문과 초기 범용 플러그인을
+> working tree에서 제거했다. 아래 경로 표는 현재 파일 목록이 아니라
+> `cb15c27` 당시 자산과 재구축 판단을 기록한 역사 인벤토리다.
+
 | 경로 | 분류 | 판단 근거 | 보존/폐기 및 대체 문서 | 처리 커밋 |
 |---|---|---|---|---|
 | `.agents/plugins/marketplace.json` | KEEP | 개발 도구 설정이며 제품 동작과 독립적 | 그대로 보존 | `cb15c27` |
@@ -72,4 +76,3 @@
 - `docs/design/architecture.md`
 - `docs/testing/test-strategy.md`
 - `docs/plans/mvp-implementation.md`
-

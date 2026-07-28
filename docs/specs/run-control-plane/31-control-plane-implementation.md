@@ -508,13 +508,16 @@ export function markTerminalEffectsCompleted(run: LogicalRun, nowMs: number): Lo
 - Modify: `src/shared/telemetry/codes.ts` (`RECOVERY_DECIDED`, `RECOVERY_DISPATCHED` 추가)
 - Modify: `src/background/telemetry/trace-ingestor.ts` (`recordRecovery()` 추가)
 - Modify: `src/content/orchestrator.ts`의 `Dependencies.flushTrace` 타입을 `() => Promise<boolean>`으로 (호출부는 반환값을 쓰지 않으므로 동작 불변)
-- Test: `tests/trace-batch.test.mjs`(또는 기존 batch 테스트 파일)에 케이스 추가
+- Test: `tests/trace-batch-processor.test.mjs`,
+  `tests/port-trace-transport.test.mjs`에 케이스 추가
 
 **Interfaces:**
 - Produces: `BatchTraceProcessor.forceFlush(timeoutMs?): Promise<boolean>` (true = 모든 발행 batch ACK 수신), `TraceLogger.forceFlush(): Promise<boolean>`, `TraceLogger.start(runId, config, scheduledJobId?, attempt?: { logicalRunId: string; attemptIndex: number; resetCause?: string })` — RUN_STARTED attributes에 `logicalRunId`/`attemptIndex`/`resetCause` 기록, `TraceIngestor.recordRecovery(runId, config, code: "RECOVERY_DECIDED" | "RECOVERY_DISPATCHED", message: string, attributes: TraceAttributes, scheduledJobId?)`.
 
 - [ ] **Step 1: 실패하는 테스트 작성** — batch 테스트에 추가: ① ACK가 모두 도착한 forceFlush는 true, ② transport가 ACK를 주지 않으면 timeout 후 false(기존처럼 resolve는 한다), ③ TraceLogger.start의 attempt 인자가 RUN_STARTED attributes로 나간다.
-- [ ] **Step 2: 실패 확인** — Run: `npm run build && node --test tests/trace-batch.test.mjs` (파일명이 다르면 기존 batch/trace-logger 테스트 파일) / Expected: 신규 케이스 FAIL.
+- [ ] **Step 2: 실패 확인** — Run:
+  `npm run build && node --test tests/trace-batch-processor.test.mjs tests/port-trace-transport.test.mjs`
+  / Expected: 신규 케이스 FAIL.
 - [ ] **Step 3: 구현** — `forceFlush`는 내부에서 미ACK batch 수를 추적해 timeout 시점에 `pendingAcks === 0`을 반환한다. `codes.ts` 배열에 두 코드 추가(CRITICAL 아님). `recordRecovery`는 기존 `recordBackgroundFailure`와 동일한 저장 경로로 run 없는 경우도 upsert한다.
 - [ ] **Step 4: 통과 확인** — Run: `npm test` / Expected: 전부 PASS.
 - [ ] **Step 5: Commit** — `git commit -am "feat: add durable flush result and recovery trace codes"`
@@ -984,7 +987,7 @@ export interface SupervisorDependencies {
 
 **Files:**
 - Modify: `docs/worklog/HANDOFF.md`, `docs/plans/next-development.md` §6
-- Create: `docs/worklog/2026-MM-DD-NN-run-control-plane-phase2.md`
+- Create: `docs/worklog/2026-07-17-02-run-control-plane-phase2.md`
 
 - [ ] **Step 1: Chrome DevTools MCP E2E** (`use-chrome-devtools` 스킬, dry-run·실클릭 없음):
   1. `npm run build` 후 확장 재로드, Side Panel에서 auto 모드 + 오픈까지 여유 ≥ 2분 설정.
