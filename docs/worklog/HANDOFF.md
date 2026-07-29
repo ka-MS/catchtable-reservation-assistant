@@ -59,8 +59,8 @@ git diff --check
 
 - 제품: `docs/specs/product-requirements.md`
 - 자동화 경계: `docs/specs/automation-boundary.md`
-- 상태: `docs/design/state-machine.md`
-- 아키텍처: `docs/design/architecture.md`
+- 상태: `docs/architecture/state-machine.md`
+- 아키텍처: `docs/architecture/overview.md`
 - 테스트: `docs/testing/test-strategy.md`
 - 예약 완주: `docs/specs/catchpay-reservation-completion/`
 - control plane: `docs/specs/run-control-plane/`

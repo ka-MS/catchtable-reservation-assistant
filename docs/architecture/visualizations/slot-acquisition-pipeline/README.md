@@ -1,6 +1,9 @@
 # 폴링 기준 하이브리드 슬롯 획득 파이프라인
 
-현재 슬롯 획득 구조와 미구현 3신호 슬롯 감지 후보를 통신 이동으로 비교하는 독립형 시각화다.
+현재 슬롯 획득 구조와 미구현 3신호 슬롯 감지 후보를 통신 이동으로
+비교하는 아키텍처 시각화다. 공식 구조와 실행 상태는
+[아키텍처 개요](../../overview.md)와
+[상태 머신](../../state-machine.md)을 기준으로 판단한다.
 
 ## 실행
 
@@ -39,9 +42,9 @@
 
 ## 근거
 
-- [Tier 2-2 Availability DOM wake-up 설계](../../specs/open-timing-performance/02-availability-hot-path/20-design.md)
-- [3신호 슬롯 감지 구조와 EXACT EMPTY 조기 종료](../../specs/open-timing-performance/02-availability-hot-path/100-three-signal-and-empty-early-exit.md)
-- [RT-14 EXACT EMPTY cycle 조기 종료](../../specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/00-index.md)
+- [Tier 2-2 Availability DOM wake-up 설계](../../../specs/open-timing-performance/02-availability-hot-path/20-design.md)
+- [3신호 슬롯 감지 구조와 EXACT EMPTY 조기 종료](../../../specs/open-timing-performance/02-availability-hot-path/100-three-signal-and-empty-early-exit.md)
+- [RT-14 EXACT EMPTY cycle 조기 종료](../../../specs/open-timing-performance/02-availability-hot-path/03-exact-empty-early-exit/00-index.md)
 
 ## 파일
 

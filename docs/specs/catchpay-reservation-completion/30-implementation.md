@@ -462,7 +462,7 @@ Task 5 결과:
 - 필요한 integration fixture 테스트
 - `docs/specs/product-requirements.md`
 - `docs/specs/automation-boundary.md`
-- `docs/design/state-machine.md`
+- `docs/architecture/state-machine.md`
 - `docs/testing/test-strategy.md`
 - `README.md`
 

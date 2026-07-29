@@ -5,8 +5,8 @@
 1. [제품 요구사항](specs/product-requirements.md)
 2. [자동화 경계](specs/automation-boundary.md)
 3. [실사이트 실측](analysis/site-behavior.md)
-4. [상태 머신](design/state-machine.md)
-5. [아키텍처](design/architecture.md)
+4. [상태 머신](architecture/state-machine.md)
+5. [아키텍처](architecture/overview.md)
 6. [테스트 전략](testing/test-strategy.md)
 7. [현재 HANDOFF](worklog/HANDOFF.md)
 
@@ -37,8 +37,8 @@ worklog과 완료된 spec의 과거 기본값·정책은 당시 상태를 기록
 | 제품·기능 패키지 | [specs/](specs/README.md) |
 | 실사이트 사실 | [site-behavior.md](analysis/site-behavior.md) |
 | 실측 원본 | [evidence/](evidence/README.md) |
-| 상태 머신 | [state-machine.md](design/state-machine.md) |
-| 아키텍처 | [architecture.md](design/architecture.md) |
+| 상태 머신 | [state-machine.md](architecture/state-machine.md) |
+| 아키텍처 | [overview.md](architecture/overview.md), [ADR·시각화](architecture/README.md) |
 | 테스트 | [test-strategy.md](testing/test-strategy.md) |
 | Chrome E2E 운영 | [chrome-devtools-mcp-ai-guide.md](testing/chrome-devtools-mcp-ai-guide.md) |
 | 브랜치 전략 | [branch-strategy.md](development/branch-strategy.md) |

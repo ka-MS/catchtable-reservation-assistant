@@ -14,4 +14,3 @@ TypeScript strict, 순수 HTML/CSS, Chrome MV3 확장으로 구현한다. 런타
 ## 영향
 
 Content Script 번들과 MV3 Service Worker 수명주기를 별도로 검증해야 한다.
-

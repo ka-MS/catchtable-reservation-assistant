@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- shared core는 `chrome.*`/`window`/`document` 참조 금지 (`docs/design/architecture.md`).
+- shared core는 `chrome.*`/`window`/`document` 참조 금지 (`docs/architecture/overview.md`).
 - adapter 외 모듈은 `querySelector` 호출 금지.
 - `waitForOpen()` 이후 코드(토글·슬롯·post-slot)는 diff 0이어야 한다.
 - 사용자 가시 메시지·상태 전이 순서는 현행 유지 (각 Task에 원문 명시). **`preparationErrorCode`는 의도된 계약 변경** — 구 fallback `DATE_PREPARATION_BLOCKED`가 세분화된다(Task 5의 매핑 표를 따르고 테스트로 고정).

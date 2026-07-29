@@ -24,7 +24,7 @@
 
 ## 수정한 finding
 
-정식 `docs/design/state-machine.md`가 과거 `SLOT_SELECTED = click 완료` 계약을 계속 설명하고 있었다. 신규 상태와 전이, legacy 의미, hold 비증명 문구로 갱신했다. 과거 worklog와 완료 spec은 당시 기록이므로 수정하지 않았다.
+정식 `docs/architecture/state-machine.md`가 과거 `SLOT_SELECTED = click 완료` 계약을 계속 설명하고 있었다. 신규 상태와 전이, legacy 의미, hold 비증명 문구로 갱신했다. 과거 worklog와 완료 spec은 당시 기록이므로 수정하지 않았다.
 
 ## 잔여 위험
 

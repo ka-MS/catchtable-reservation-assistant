@@ -1,4 +1,10 @@
-# 예약 자동화 아키텍처
+# 예약 자동화 아키텍처 개요
+
+이 문서는 현재 시스템 구조의 공식 개요다. 전체 문서 지도와 결정
+기록은 [아키텍처 인덱스](README.md), 실행 전이는
+[상태 머신](state-machine.md), 슬롯 획득 상세 흐름은
+[대화형 시각화](visualizations/slot-acquisition-pipeline/README.md)에서
+확인한다.
 
 ## 구성
 

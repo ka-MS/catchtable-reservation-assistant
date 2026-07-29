@@ -82,7 +82,7 @@
   - `COMPLETED`는 terminal 상태다.
   - `ADVANCING_RESERVATION`의 허용 전이는 `HANDED_OFF | STOPPED | FAILED`뿐이다.
   - `COMPLETING_RESERVATION` 상태는 아직 없다.
-- `docs/design/state-machine.md`
+- `docs/architecture/state-machine.md`
   - `COMPLETED`를 향후 실측용, MVP 미사용 상태로 설명한다.
   - 예약 폼에서 최종 예약 버튼을 누르지 않는 것을 불변식으로 둔다.
 

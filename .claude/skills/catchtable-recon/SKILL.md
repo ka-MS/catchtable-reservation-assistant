@@ -45,6 +45,6 @@ AI가 `$use-chrome-devtools`로 확장 업데이트·새로고침, Side Panel �
 ## 포인터
 
 - 사이트 사실: `docs/analysis/site-behavior.md` (단일 출처)
-- 주입 정책: `docs/design/decisions/ADR-004-on-demand-content.md`
+- 주입 정책: `docs/architecture/decisions/ADR-004-on-demand-content.md`
 - DOM 재현 fixture: `tests/fixtures/`
-- 파이프라인 상태 정의: `docs/design/state-machine.md`
+- 파이프라인 상태 정의: `docs/architecture/state-machine.md`

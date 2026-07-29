@@ -23,9 +23,9 @@
 | `plugins/karpathy-guidelines-ko/skills/karpathy-guidelines-ko/SKILL.md` | KEEP | 개발 행동 지침 | 그대로 보존 | `cb15c27` |
 | `docs/README.md` | REVISE | 문서 인덱스는 필요하나 구조가 변경됨 | 새 공식 문서 인덱스로 교체 | 새 기준 문서 커밋 |
 | `docs/01-overview.md` | DEPRECATE | 시작/종료 시간 중심의 과거 제품 설명 | 이력만 보존, `docs/specs/product-requirements.md`로 대체 | 폐기 기준 커밋 |
-| `docs/02-architecture.md` | DEPRECATE | 상시 Content Script와 구 상태 모델 전제 | `docs/design/architecture.md`로 대체 | 폐기 기준 커밋 |
+| `docs/02-architecture.md` | DEPRECATE | 상시 Content Script와 구 상태 모델 전제 | `docs/architecture/overview.md`로 대체 | 폐기 기준 커밋 |
 | `docs/05-roadmap.md` | DEPRECATE | 새 단계 범위와 우선순위 불일치 | `docs/plans/mvp-implementation.md`로 대체 | 폐기 기준 커밋 |
-| `docs/06-decisions.md` | DEPRECATE | 실측 전 결정과 현 기준 혼재 | `docs/design/decisions/` ADR로 대체 | 폐기 기준 커밋 |
+| `docs/06-decisions.md` | DEPRECATE | 실측 전 결정과 현 기준 혼재 | `docs/architecture/decisions/` ADR로 대체 | 폐기 기준 커밋 |
 | `docs/08-status.md` | DEPRECATE | 실패 구현을 완료 상태로 표현 | `docs/worklog/HANDOFF.md`로 대체 | 폐기 기준 커밋 |
 | `docs/phases/README.md` | DELETE | 새 구현 계획과 중복되는 빈 구조 | Git 이력만 보존 | 폐기 기준 커밋 |
 | `docs/phases/01-extension-foundation.md` | DEPRECATE | 잘못된 1차 구현 완료 기준 | `docs/plans/mvp-implementation.md`로 대체 | 폐기 기준 커밋 |
@@ -72,7 +72,7 @@
 - `docs/specs/ui-requirements.md`
 - `docs/specs/automation-boundary.md`
 - `docs/analysis/site-behavior.md`
-- `docs/design/state-machine.md`
-- `docs/design/architecture.md`
+- `docs/architecture/state-machine.md`
+- `docs/architecture/overview.md`
 - `docs/testing/test-strategy.md`
 - `docs/plans/mvp-implementation.md`
