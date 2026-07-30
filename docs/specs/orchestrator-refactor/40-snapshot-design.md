@@ -148,7 +148,7 @@ private timedOut(reason: string): RunResult {
 
 ## 사이드패널 표시
 
-[event-format.ts](src/sidepanel/event-format.ts) `formatEventMessage`에 unknown post-slot 진단 표시가 이미 있다. generic 스냅샷용으로 `formatEventDetail`에 한 줄 추가:
+[event-format.ts](../../../src/sidepanel/event-format.ts) `formatEventMessage`에 unknown post-slot 진단 표시가 이미 있다. generic 스냅샷용으로 `formatEventDetail`에 한 줄 추가:
 
 ```
 스냅샷: <dialogTitle||dialogLabel||"제목 없음"> · 버튼 <snapshotButtons||"없음"> · "<snapshotTextSnippet 앞 40자>…"

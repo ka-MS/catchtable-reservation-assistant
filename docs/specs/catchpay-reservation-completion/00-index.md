@@ -51,13 +51,16 @@ HANDOFF·backlog 확인
 1. 실사이트 실측 결과
 2. [제품 요구사항](../product-requirements.md)
 3. [자동화 경계](../automation-boundary.md)
-4. [상태 머신](../../design/state-machine.md)
-5. [아키텍처](../../design/architecture.md)
+4. [상태 머신](../../architecture/state-machine.md)
+5. [아키텍처](../../architecture/overview.md)
 6. [테스트 전략](../../testing/test-strategy.md)
 7. 구현 계획
 8. 기존 코드와 폐기 문서
 
-현재 제품 요구사항·상태 머신·테스트 전략에는 과거 “예약 폼 인계” 경계가 남아 있다. 자동화 경계와 README는 완주 목표로 먼저 바뀌었으며, 이 패키지가 실측과 설계로 충돌을 해소한다.
+2026-07-28 문서 정리에서 제품 요구사항·상태 머신·아키텍처·
+테스트 전략을 이 완료 패키지와 현재 코드에 맞췄다. 과거 spec과
+worklog의 “예약 폼 인계” 또는 probe 기본값 서술은 당시 상태를
+기록한 이력으로 남긴다.
 
 ## 통제된 실측 범위
 

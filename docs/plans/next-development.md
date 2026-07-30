@@ -1,79 +1,64 @@
-# 후속 개발 우선순위
+# 후속 개발 후보
 
-**기준일:** 2026-07-11
+**갱신일:** 2026-07-28
 
-**갱신일:** 2026-07-16
+현재 기능 완료 상태에서 남은 항목은 모두 non-blocking이다. 실제 착수
+순서는 HANDOFF와 backlog에서 선택하고, 기능 구현 전 별도 spec의
+분석·설계 gate를 거친다.
 
-현재 자동 진입·정밀 오픈런·후속 선택 파이프라인 이후의 권장 개발 순서다.
+## 1. Availability 성능 근거
 
-## 1. 예약 작업 목록과 자동 실행 스케줄러 — 완료 (2026-07-11)
+- RT-11: 동질 actual-open 표본으로 공식 p95와 wake counterfactual
+  측정
+- RT-12: legacy가 아닌 현재 probe-off 구성의 actual-open 확인 표본
+- RT-13: `inactive_cycle` 기회비용과 수락 완화 가능성 분석
 
-`docs/specs/scheduler/`와 `docs/worklog/2026-07-11-16-job-scheduler.md`에 구현을 기록했다.
+성능 이득과 요청 증가량이 측정되기 전에는 polling·burst 상수나
+신호 구조를 추측으로 바꾸지 않는다.
 
-- 여러 예약 작업 저장·수정·삭제
-- Chrome 재시작 후 작업 복구
-- `chrome.alarms`로 오픈 75초 전에 Background 기동
-- 실제 정각 처리는 기존 서버 시계와 Content Script 스케줄러가 담당
-- 등록 시 점유 구간 충돌 차단과 작업별 결과 기록
+기준:
+`docs/specs/open-timing-performance/02-availability-hot-path/70-live-run-analysis.md`,
+`docs/backlog/post-tier2-1-stabilization.md`
 
-## 2. 사전 점검
+## 2. ExecutionPhase control plane
 
-- 로그인, 예약 CTA, 목표 날짜·인원, 인접 토글 날짜, 서버 시계 측정 가능 여부 확인
-- 오픈 전에 문제를 발견해 사용자에게 알림
+Run control plane Phase 1·2는 준비 단계와 RESET_PAGE 복구까지
+완료했다. 슬롯 선택 이후의 세부 실패 원인과 복구 정책은 공식 p95
+하네스와 실제 사례를 확보한 뒤 별도 Phase 3으로 분석한다.
 
-## 3. 취소 자리 감시
+결제·submit claim 뒤에는 자동 RESET·재제출을 허용하지 않는 현재
+결과 불명 정책을 유지한다.
+
+## 3. 사전 점검
+
+실행 전에 로그인, 예약 CTA, 목표 날짜·인원, 토글 가능한 인접 날짜와
+서버 시계 측정 가능 여부를 읽기 전용으로 확인하는 기능이다.
+
+사이트 요청을 늘리거나 실제 예약창을 임의 클릭하지 않는 범위와
+예약 작업 실행 시점의 stale 판정을 먼저 설계해야 한다.
+
+## 4. DOM drift 대응
+
+- 개인정보 없는 unknown 진단을 fixture 후보로 변환
+- adapter fingerprint 변화 판독
+- 매장별 변형을 일반 계약으로 승격하기 위한 교차 실측 기준
+
+진단 원본을 자동으로 코드·fixture로 변환하지 않는다. 실측 검토와
+selector 승인 절차를 유지한다.
+
+## 5. 취소 자리 감시
 
 - 별도 `CANCELLATION` 실행 모드
 - 30초 이상의 제한된 감시 간격
 - 기간·종료 조건·일일 실행 시간 명시
 - 슬롯 발견 뒤 기존 선택·후속 파이프라인 재사용
 
-## 4. 실행 성능 리포트
+현재 오픈런의 25ms polling이나 날짜 토글을 장시간 감시에 그대로
+사용하지 않는다.
 
-- 목표 날짜 클릭, 슬롯 감지·클릭, 예약 폼 도착 지연
-- 식당별 실패 단계와 DOM unknown 빈도
+## 완료된 기반
 
-## 5. DOM 변경 대응 강화
-
-- 개인정보 없는 unknown 진단 내보내기
-- 진단 fixture 변환 도구
-- Adapter strategy/fingerprint 변화 감지
-
-## 6. 런타임 오류 분류와 복구 정책 — run-control-plane Phase 1·2 완료 (2026-07-17)
-
-오류를 하나의 `FAILED` 메시지로 처리하지 않고 원인과 허용된 복구 행동을 구조화한다.
-
-run-control-plane Phase 1(`docs/specs/run-control-plane/`)로 준비영역 책임 분리를 완료했다: Adapter 사실 반환, 실패 원인 분류(classifier 단독 소유), 복구 정책(decide 타입·테스트 고정), 기계 루프(BoundedStepRunner)와 단계 의미(coordinator), telemetry reporter 수렴. RT-16의 bounded retry 상수는 그대로 이식했고 재시도 상태는 run-scoped가 되어 실행 간 상태 누출이 구조적으로 사라졌다.
-
-background RunSupervisor, `AttemptControlMessage` 배선, 동일 탭 URL 재진입(`RESET_PAGE` 실행)과 reconcile을 Phase 2(`31-control-plane-implementation.md`)로 구현·라이브 검증했다. **RT-16 전체를 종결로 판정한다** (`docs/worklog/2026-07-17-02-run-control-plane-phase2.md`). 실행영역(슬롯 이후) 원인 분류와 ExecutionPhase 분해는 Phase 3 범위로 남는다.
-
-- 인증 만료: 자동 재로그인하지 않고 사용자에게 인계
-- 대기열·rate limit: 서버 지시를 존중해 제한된 backoff 또는 중지
-- 일시적 네트워크 오류: 실행 단계와 stopAt을 지키는 bounded retry
-- 좌석 없음: 오류가 아닌 정상 감시 상태로 유지
-- 슬롯 경합 실패: 별도 결과로 기록하고 안전한 경우에만 재감시
-- DOM 계약 변경: 개인정보 없는 snapshot을 남기고 인계
-- 알 수 없는 서버 오류: 세션·쿠키를 자동 삭제하지 않고 진단 후 인계
-
-실측 사례: 예약 CTA 클릭 뒤 달력 전환이 완료되지 않거나 빈 예약 모달이 남는 경우가 있으며, 같은 매장 진입 절차를 다시 수행하면 복구되기도 한다. 이 사례는 다음과 같이 구분한다.
-
-- 화면에 달력 증거가 있는데 Adapter만 인식하지 못함: 재진입으로 숨기지 않고 DOM 계약 변경으로 처리하고 Adapter를 수정
-- 달력 증거 없이 빈 모달 또는 전환 정지가 확인됨: 알려진 닫기 동작 뒤 같은 매장 예약 CTA 재진입을 최대 1회 허용
-- 목표 날짜를 판독하고 클릭했지만 이전 날짜가 계속 선택됨: 날짜 선택 전환 정지로 분류하고, 목표 selected 후조건과 제한된 재시도 정책을 적용
-- 재진입 전후 원인, 시도 횟수와 화면 fingerprint를 trace에 기록
-- 재진입 실패, 인증 화면, 대기열 또는 알 수 없는 화면은 반복하지 않고 사용자에게 인계
-
-2026-07-16 목란의 같은 탭·무새로고침 반복 실행에서 두 준비 실패군을 확인했다.
-
-- `run-18dd8f4a`: 예약 CTA가 실행 시작 약 5.6초 뒤 클릭됐고 약 69ms 뒤 달력 셀 없이 인계됐다.
-- `run-9708d102`, `run-8b87f277`, `run-ec09336f`: 목표 `2026-08-20`은 선택 가능했지만 종료 시 선택값은 모두 `2026-08-19`였다. `run-ec09336f`에는 목표 날짜 클릭 action도 존재한다.
-- 실행마다 `RunSession`은 새로 생성되지만 동일 문서의 `CalendarAdapter`는 재사용된다. 같은 목표 날짜에서는 `pendingDate`가 초기화되지 않아 첫 실패의 대기 상태가 후속 수동 실행으로 누출될 수 있다.
-- 종료 스냅샷의 visible/focused는 캡처 순간의 값이다. 클릭 전후와 준비 구간 전체를 설명하지 않으므로 focus를 직접 원인으로 확정하지 않는다.
-
-세 준비 동작은 공통적으로 `dispatch -> 후조건 확인 -> 오류 분류 -> bounded recovery -> handoff`로 모델링한다. 책임 구조화 후 동일 탭 URL 재진입을 복구 정책의 `RESET_PAGE` 행동으로 연결한다. 상세 분석은 `docs/specs/open-timing-performance/03-runtime-resilience/10-analysis.md`를 기준으로 한다.
-
-오류 분류 code, 사용자 메시지, trace attributes와 recovery decision을 분리한다. 이 항목은 현재 Tier 2-2 성능 판정을 막지 않으며 Tier 3 runtime resilience에서 상세 분석한다.
-
-## 완료된 선행 작업
-
-설정 히스토리와 즐겨찾기를 구현했다. 즐겨찾기는 이후 예약 작업으로 승격할 수 있는 설정 snapshot 기반이 된다.
+예약 작업·스케줄러, 저장 설정, 실행 telemetry·진단, 예약 흐름
+호환성, run control plane과 CatchPay 예약 완주는 완료 spec과
+worklog에서 관리한다. 이 문서에는 완료 기능의 상세 이력을 다시
+복사하지 않는다.

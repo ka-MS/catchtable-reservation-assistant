@@ -6,6 +6,10 @@
 
 현재 저장소는 기준 커밋 이전에 Git 이력이 없었다. 따라서 `cb15c27`을 재구축 전 상태의 보존 지점으로 사용한다. DELETE 항목은 이 커밋에서 언제든 복원할 수 있다.
 
+> 2026-07-28 문서 정리에서 폐기 안내문과 초기 범용 플러그인을
+> working tree에서 제거했다. 아래 경로 표는 현재 파일 목록이 아니라
+> `cb15c27` 당시 자산과 재구축 판단을 기록한 역사 인벤토리다.
+
 | 경로 | 분류 | 판단 근거 | 보존/폐기 및 대체 문서 | 처리 커밋 |
 |---|---|---|---|---|
 | `.agents/plugins/marketplace.json` | KEEP | 개발 도구 설정이며 제품 동작과 독립적 | 그대로 보존 | `cb15c27` |
@@ -19,9 +23,9 @@
 | `plugins/karpathy-guidelines-ko/skills/karpathy-guidelines-ko/SKILL.md` | KEEP | 개발 행동 지침 | 그대로 보존 | `cb15c27` |
 | `docs/README.md` | REVISE | 문서 인덱스는 필요하나 구조가 변경됨 | 새 공식 문서 인덱스로 교체 | 새 기준 문서 커밋 |
 | `docs/01-overview.md` | DEPRECATE | 시작/종료 시간 중심의 과거 제품 설명 | 이력만 보존, `docs/specs/product-requirements.md`로 대체 | 폐기 기준 커밋 |
-| `docs/02-architecture.md` | DEPRECATE | 상시 Content Script와 구 상태 모델 전제 | `docs/design/architecture.md`로 대체 | 폐기 기준 커밋 |
+| `docs/02-architecture.md` | DEPRECATE | 상시 Content Script와 구 상태 모델 전제 | `docs/architecture/overview.md`로 대체 | 폐기 기준 커밋 |
 | `docs/05-roadmap.md` | DEPRECATE | 새 단계 범위와 우선순위 불일치 | `docs/plans/mvp-implementation.md`로 대체 | 폐기 기준 커밋 |
-| `docs/06-decisions.md` | DEPRECATE | 실측 전 결정과 현 기준 혼재 | `docs/design/decisions/` ADR로 대체 | 폐기 기준 커밋 |
+| `docs/06-decisions.md` | DEPRECATE | 실측 전 결정과 현 기준 혼재 | `docs/architecture/decisions/` ADR로 대체 | 폐기 기준 커밋 |
 | `docs/08-status.md` | DEPRECATE | 실패 구현을 완료 상태로 표현 | `docs/worklog/HANDOFF.md`로 대체 | 폐기 기준 커밋 |
 | `docs/phases/README.md` | DELETE | 새 구현 계획과 중복되는 빈 구조 | Git 이력만 보존 | 폐기 기준 커밋 |
 | `docs/phases/01-extension-foundation.md` | DEPRECATE | 잘못된 1차 구현 완료 기준 | `docs/plans/mvp-implementation.md`로 대체 | 폐기 기준 커밋 |
@@ -60,16 +64,17 @@
 - DEPRECATE: 과거 맥락은 남기되 공식 기준으로 사용할 수 없는 문서 14개
 - DELETE: Git 스냅샷 외 보존 가치가 낮거나 잘못된 구현·테스트 12개
 
-## 구현 착수 게이트
+## 구현 착수 게이트 (완료)
 
-다음 문서가 현재 저장소 안에서 완결된 뒤에만 구현 기반을 교체한다.
+다음 목록은 재구축 당시 구현 기반 교체 전에 사용한 역사적 게이트다.
+게이트는 충족됐으며, 현재 작업 기준은 `docs/README.md`와
+`docs/worklog/HANDOFF.md`를 따른다.
 
 - `docs/specs/product-requirements.md`
 - `docs/specs/ui-requirements.md`
 - `docs/specs/automation-boundary.md`
 - `docs/analysis/site-behavior.md`
-- `docs/design/state-machine.md`
-- `docs/design/architecture.md`
+- `docs/architecture/state-machine.md`
+- `docs/architecture/overview.md`
 - `docs/testing/test-strategy.md`
-- `docs/plans/mvp-implementation.md`
-
+- `docs/plans/mvp-implementation.md` (후속 문서 정리에서 제거)

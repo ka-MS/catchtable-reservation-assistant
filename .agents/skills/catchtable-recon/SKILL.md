@@ -57,6 +57,6 @@ Verify reservation-job persistence through `chrome.storage.local.scheduledJobs`,
 
 - Live-site facts: `docs/analysis/site-behavior.md`
 - DevTools E2E guide: `docs/testing/chrome-devtools-mcp-ai-guide.md`
-- Injection policy: `docs/design/decisions/ADR-004-on-demand-content.md`
+- Injection policy: `docs/architecture/decisions/ADR-004-on-demand-content.md`
 - DOM fixtures: `tests/fixtures/`
-- Pipeline states: `docs/design/state-machine.md`
+- Pipeline states: `docs/architecture/state-machine.md`

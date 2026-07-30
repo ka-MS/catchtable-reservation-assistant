@@ -1,132 +1,108 @@
 # 테스트 전략
 
-## 1. 원칙
+## 원칙
 
-- 잘못된 DOM 가정을 테스트로 정당화하지 않는다.
-- Site Adapter fixture는 실측 구조와 출처 주석을 가진다.
-- 핵심 로직은 DOM과 Chrome API 없이 테스트한다.
-- 슬롯 탐색·타이밍·무클릭 검증은 dry-run을 사용한다.
-- 예약창 진입이나 신규 후속 화면의 호환성 검증은 통제된 실제 모드로 예약 폼 도착까지 수행한다.
-- 실제 모드 검증도 예약 폼의 입력·약관·결제 승인·최종 예약 확정은 수행하지 않는다.
+- 실측되지 않은 DOM 가정을 fixture로 정당화하지 않는다.
+- Site Adapter fixture는 출처와 관측 변형을 가진다.
+- shared 정책과 상태 전이는 Chrome·DOM 없이 단위 테스트한다.
+- dry-run, 폼 도착 호환성, 예약 완주 검증을 서로 다른 위험
+  단계로 분리한다.
+- 결제·최종 제출 변경은 자동 테스트만으로 완료하지 않는다.
+- 결과 불명, 중복 제출과 credential 유출을 성공 경로보다 먼저
+  공격한다.
 
-## 2. 단위 테스트
+## 자동 테스트
 
-- 설정값 검증과 `openAt + 10분` 기본 종료 계산
-- 로컬 datetime과 epoch ms 변환
-- 한국어 시간 파싱과 시간 범위 판정
-- 시간 우선순위 선택
-- 서버 Date 초 경계 기반 오프셋 계산, 중앙값 fallback, 오픈 직전 재동기화
-- 단조 서버 epoch 앵커, 재앵커와 실행 중 wall clock 점프 격리
-- 서버 HEAD RTT의 monotonic 측정
-- 오픈 시각에 위상 고정된 150ms 토글 스케줄
-- 상태 전이와 종료 상태 불변식
-- 스케줄러 중단과 종료 시각 처리
-- dry-run 분기
-- 논리 슬롯 중복 방지
-- URL 쿼리·끝 슬래시를 제외한 동일 매장 판정과 탭 load complete 대기
-- 저장 설정 fingerprint 정규화, 중복 대체, 최신순 정렬, 20건 제한
-- 손상된 저장 snapshot 폐기와 fingerprint 복구
-- 히스토리·즐겨찾기 repository의 저장·단건 삭제·전체 삭제
-- 지난 오픈 일시를 포함한 설정 snapshot 복원과 실행 시 재검증
-- 실행 trace의 250ms·20건 batch, ACK 전 보존, queue overflow와 terminal flush
-- IndexedDB batch 멱등 저장, 실행별 조회·삭제와 최근 20건 보존
-- Port disconnect 재연결, URL query 제거와 오류 stack 제한
-- Side Panel trace 증분 렌더링과 최근 100행 제한
+### 순수 로직
 
-## 3. Fixture 통합 테스트
+- 설정 정규화·검증과 로컬 시간 변환
+- 슬롯 시간 범위·우선순위와 논리 중복 방지
+- 서버 Date 표본, ReferenceClock과 토글 계획
+- 상태 전이와 terminal 불변식
+- saved config, scheduled job과 fingerprint
+- 준비 사실 분류, bounded policy와 LogicalRun 전이
+- attempt ACK replay·conflict·stale 판정
+- outer/PIN durable claim 순서와 stop 경쟁
 
-실측 출처를 가진 fixture로 다음을 검증한다.
+### Fixture 통합
 
-- 목표 날짜와 인접 가용 날짜 판독
-- dock 예약 CTA만 클릭하고 웨이팅·본문 예약 버튼은 클릭하지 않음
-- 목표 월 이동 완료 전 중복 클릭 금지와 disabled 월·날짜 중단
-- 정확한 인원 라디오 선택과 대체 인원 click 0회
-- 자동 준비 상태 전이 후 기존 페이지 안전 검증 재사용
-- 날짜 토글 순서
-- `aria-hidden="true"` 슬롯 복제 제거
-- 한 개·복수 슬롯과 우선순위 선택
-- 목표 시간 없음
-- 오픈 전 배너 뒤 슬롯 등장
-- DOM 재렌더링 후 논리 중복 클릭 방지
-- 페이지 지연, 사용자 중지, 감시 종료
-- dry-run에서 click 0회
-- 실제 모드에서 슬롯 click 1회 후 즉시 인계
-- 테이블 타입 아무거나/특정 타입 선택과 미존재 타입 중단
-- 메뉴 첫 항목/키워드 선택
-- 수량형 메뉴의 인원수 채움·타 메뉴 수량 해제·도달 후 진행·추가 불가 중단
-- 메뉴 `확인` 버튼과 비활성 진행 버튼 대기
-- 테이블 타입 뒤 추가 상품 연속 처리와 상품 click 0회
-- 이전 dialog가 남아 있어도 최신 렌더 dialog 우선
-- 예약금 0원 진행과 유료 전용 화면 중단
-- 전환 중 일괄 비활성 선택지(테이블·메뉴·예약금 방법)의 대기 재시도
-- 예약금 안내 dialog의 `확인` 진행
-- 선택적 중간 단계 조합 후 예약 폼 인계
-- 후속 자동 진행 비활성화 시 post-slot 판독 0회와 슬롯 직후 인계
-- 실행 기록 시각의 밀리초 세 자리 표시
-- 시간 슬롯 클릭 성공 시 서버 시각과 오픈 대비 signed ms 기록
-- 최종 인접·목표 날짜 클릭과 슬롯 감지 시각, 계획 대비 signed ms 기록
-- 타이밍 계측이 정밀 토글 루프에 추가 로그 IPC를 만들지 않음
-- 사전 시작 50ms 단위 검증과 고급 설정 도움말 배포
-- 예약 폼 최초 관측 시각 기준 오픈 대비 signed ms 기록
-- 카운트다운 모델의 서버/로컬 기준·긴급 강조·일 단위·단계 전환·경과 표시
-- 일반 후속 처리 제한 시간 직전에 폼이 나타나도 1.5초 홍보 안내 감시 보장
-- 예약 폼 위 홍보 안내(확인했어요) 닫은 뒤 폼 인계
-- 후속 dialog의 aria-label 변경 시 제목+control 구조 fallback 판별
-- inspect 이후 fingerprint 변경 시 click 0회와 재시도
-- hidden dialog 자식 control과 hidden 폼 안내 버튼 제외
-- unknown 구조 진단의 input value·body text·전체 HTML 비수집
-- unknown 진단의 Side Panel 실행 기록 표시
-- 히스토리·즐겨찾기 탭 전환, 폼 복원, 저장·삭제 UI 이벤트
+- 예약 CTA, 달력 월·날짜, 정확한 인원 선택
+- hidden·duplicate 슬롯 제거와 click 직전 재검증
+- 테이블, 메뉴, 추가 상품, 예약금·결제 방식 변형
+- unknown·전환 중·stale fingerprint의 click 0회
+- 예약 폼 필수 입력·필수 약관과 선택 약관 보존
+- 매장·날짜·시간·인원·금액 변경 시 submit 0회
+- CatchPay/일반결제 판정과 PIN surface 변형
+- outer/PIN claim별 dispatch 최대 1회
+- 성공 path·문구·방문예정 세 조건이 모두 있어야 `COMPLETED`
+- 예약 폼·PIN 진단의 credential redaction
 
-## 4. 빌드 회귀 테스트
+### Background·UI·telemetry
 
-- `manifest_version === 3`
-- manifest에 `content_scripts`가 없음
-- 필요한 권한만 존재
-- Content Script IIFE에 정적 import가 없음
-- dist에 manifest, background, content, sidepanel이 모두 존재
-- 예약 폼의 약관·최종 `예약하기` 자동화 코드가 없음
-- 무기한 `PAUSED` 상태가 없음
-- Side Panel 배포물에 최근 설정과 즐겨찾기 control이 존재
+- on-demand injection과 중복 START 거부
+- 예약 작업 저장·복구·충돌·알람 실행
+- RESET_PAGE와 service worker reconcile
+- terminal 효과의 멱등성
+- Port batch, ACK, durable flush와 IndexedDB 저장
+- Side Panel 설정 복원·초기화·버튼 실행 중 비활성화
+- PIN 즉시 비움과 config·storage·trace key 부재
+- 실행 이력, CSV와 진단 ZIP 정제
 
-## 5. 독립성 테스트
+## 빌드 회귀
 
-이관 기록을 제외한 코드·문서·테스트에서 외부 실험 저장소 이름과 절대 경로가 0개인지 검사한다.
+- Manifest V3이며 `content_scripts`가 없다.
+- 필요한 manifest 권한과 배포 파일이 존재한다.
+- Content IIFE에 정적 import가 남지 않는다.
+- MAIN·ISOLATED bundle 경계가 독립적이다.
+- raw PIN 상수·secret key·민감한 진단 필드가 dist에 없다.
+- Side Panel에 현재 설정·완주·작업·로그 control이 존재한다.
+- 무기한 `PAUSED` 상태가 없다.
 
-## 6. 실사이트 검증 체크리스트
+## Chrome 검증 단계
 
-### 6.1 Dry-run 검증
+### Dry-run
 
-1. 확장 로드와 Side Panel 열기
-2. 로그인 후 예약 모달과 인원을 사용자 직접 준비
-3. 1분 뒤 오픈 시각, dry-run으로 시작
-4. 시계 오프셋과 상태 전이 확인
-5. T-450ms부터 목표 날짜 클릭이 T-450/T-300/T-150/T/T+150ms에 정렬되는지 확인
-6. 슬롯 있는 날짜에서 후보 감지 로그와 실제 click 0회 확인
-7. 중지 및 종료 시각 이후 추가 토글 없음 확인
+슬롯 탐색·타이밍·중지·종료 검증은 dry-run으로 수행한다.
 
-실제 슬롯 클릭과 후속 화면은 이 체크리스트에 포함하지 않는다.
+1. 확장 reload와 Side Panel 설정을 확인한다.
+2. 목표 매장·날짜·인원과 오픈 시각을 설정한다.
+3. 날짜 토글과 슬롯 후보 trace를 확인한다.
+4. 슬롯 click 0회와 `DRY_RUN_COMPLETED`를 확인한다.
+5. 중지·종료 뒤 새 DOM action이 없는지 확인한다.
 
-### 6.2 실제 폼 도착 검증
+### 실제 폼 도착
 
-신규 예약창·달력·슬롯 이후 화면을 추가하거나 변경한 경우에는 dry-run 결과만으로 완료 처리하지 않는다.
+새 예약창·슬롯 이후 화면을 지원할 때는 통제된 actual 실행으로 목표
+슬롯 click 1회와 알려진 후속 단계를 확인한다. 예약 완주 opt-in은
+끄고 `/ct/reservation/form`의 `HANDED_OFF`까지 검증한다.
 
-1. 테스트할 Chrome 프로필, 매장, 예약 날짜·인원·시간과 실행 목적을 기록한다.
-2. 실제로 선택 가능한 미래 슬롯을 사용하고 dry-run을 끈다.
-3. 목표 슬롯을 한 번 클릭하고 구현된 후속 단계가 설정대로 진행되는지 확인한다.
-4. `/ct/reservation/form` 도착과 `HANDED_OFF` 전이를 확인한다.
-5. 예약 폼의 방문 목적·약관·결제 승인·최종 `예약하기`는 조작하지 않는다.
-6. `runId`, 프로필 구분, 최종 상태, 주요 trace와 화면 증거를 검증 문서에 남긴다.
+### 예약 완주
 
-예약 폼 전에 나타나는 슬롯·테이블·메뉴·추가 상품·예약금 안내·결제 방식 선택은 자동화 경계에서 명시적으로 허용된 동작만 검증한다. 새로운 중간 단계는 실측 fixture와 실제 폼 도착 증거가 모두 있어야 지원 완료로 판정한다.
+예약 폼·결제·제출 변경은 사용자가 승인한 매장·날짜·인원·금액 범위와
+전용 Chrome 프로필에서만 검증한다.
 
-## 7. 완료 게이트
+1. 0원, 유료, 비로그인 대조 시나리오를 분리한다.
+2. 유료 PIN은 Side Panel의 일회성 input으로만 입력한다.
+3. outer/PIN claim·dispatch 횟수와 success 후조건을 대조한다.
+4. Side Panel terminal, IndexedDB eventCount·seq·finalState를
+   대조한다.
+5. storage, telemetry와 diagnostic에 raw PIN이 없는지 확인한다.
+6. 생성된 실제 예약의 취소는 사용자가 직접 수행한다.
+
+실제 검증 계약과 최신 증거는
+`docs/specs/catchpay-reservation-completion/40-verification.md`를
+따른다.
+
+## 완료 게이트
 
 ```bash
 npm run typecheck
 npm test
 npm run check:dist
 npm run check:independence
+git diff --check
 ```
 
-모든 명령이 성공하고 미실측 영역이 문서화되어야 완료다. 신규 예약창·후속 화면은 6.2의 실제 폼 도착 증거가 없으면 구현 완료와 실제 호환성 검증 완료를 구분해 기록한다.
+모든 자동 명령이 성공하고, 실사이트 동작 변경에는 해당 위험 단계의
+Chrome 증거가 있어야 한다. 신규 화면은 fixture만으로 실제 호환성
+완료를 선언하지 않는다.

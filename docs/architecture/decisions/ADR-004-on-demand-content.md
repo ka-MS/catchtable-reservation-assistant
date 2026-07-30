@@ -14,4 +14,3 @@ manifest 상시 주입을 사용하지 않는다. Background가 START 시 PING�
 ## 영향
 
 manifest에 `scripting` 권한이 필요하고 Content Script에도 전역 주입 가드를 둔다.
-

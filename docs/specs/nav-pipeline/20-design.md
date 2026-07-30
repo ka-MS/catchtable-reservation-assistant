@@ -62,7 +62,7 @@ navigate → inject(기존 ensureContent)  →  enter_reservation → select_dat
 - content에 `EntryPort { inspect(): 진입상태, openReservation(): boolean }` 신설 — 기존 포트 패턴 준수. 진입 앵커는 `aside#dock`의 `예약하기`(텍스트 판별).
 - 날짜 정밀 토글은 기존 `CalendarPort.clickDate`를 유지하고, 준비용 목표 월·날짜 선택 계약을 추가한다.
 - content에 `PersonPort { inspect(personCount), select(personCount) }`를 신설한다.
-- 상태 추가: `NAVIGATING`, `ENTERING_RESERVATION`, `SELECTING_DATE`, `SELECTING_PERSON`. `docs/design/state-machine.md`·사이드패널 라벨(`STATE_LABEL`/`STATE_BADGE`)·이벤트 포맷 동반 수정.
+- 상태 추가: `NAVIGATING`, `ENTERING_RESERVATION`, `SELECTING_DATE`, `SELECTING_PERSON`. `docs/architecture/state-machine.md`·사이드패널 라벨(`STATE_LABEL`/`STATE_BADGE`)·이벤트 포맷 동반 수정.
 - `PREPARING_PAGE` 검증은 안전망으로 유지한다. 자동 진입이 성공하면 이 검증은 통과하고, 실패하면 기존대로 `HANDED_OFF`.
 - 사이드패널: `자동 준비`와 `현재 페이지 사용`을 명시적으로 선택하는 `entryMode` 입력을 제공한다.
 
