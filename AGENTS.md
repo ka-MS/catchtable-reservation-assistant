@@ -89,6 +89,8 @@ LLM 코딩 실수를 줄이기 위한 행동 지침입니다. 프로젝트별 �
 - 코드·배포물 변경 후 `npm run check`와 `git diff --check`를
   실행합니다. 문서 구조 변경 시 내부 링크와 spec 인덱스도
   검증합니다.
+- 커밋 제목은 Conventional Commits 형식을 사용합니다. 호환 기능은
+  `feat:`, 호환 수정은 `fix:`, 파괴적 변경은 `type!:`로 표시합니다.
 - `AGENTS.md`가 모든 AI의 공통 기준입니다. `CLAUDE.md`와
   `.claude/skills/`에는 Claude 전용 사용법만 추가합니다.
 - 도구별 지침이 이 파일과 충돌하면 작업을 중단하고 보고합니다.

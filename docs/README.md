@@ -41,7 +41,7 @@ worklog과 완료된 spec의 과거 기본값·정책은 당시 상태를 기록
 | 아키텍처 | [overview.md](architecture/overview.md), [ADR·시각화](architecture/README.md) |
 | 테스트 | [test-strategy.md](testing/test-strategy.md) |
 | Chrome E2E 운영 | [chrome-devtools-mcp-ai-guide.md](testing/chrome-devtools-mcp-ai-guide.md) |
-| 브랜치 전략 | [branch-strategy.md](development/branch-strategy.md) |
+| 개발·릴리스 | [branch-strategy.md](development/branch-strategy.md), [release-process.md](development/release-process.md) |
 | Backlog | [backlog/](backlog/README.md) |
 | 작업 이력·현재 체크포인트 | [worklog/](worklog/HANDOFF.md) |
 | 초기 재구축 기록 | [legacy-inventory.md](analysis/legacy-inventory.md) |

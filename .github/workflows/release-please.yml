@@ -1,0 +1,88 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-please-main
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run check
+
+  release:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Create or update release pull request
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Check out released commit
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.sha }}
+
+      - name: Set up Node.js for packaging
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        run: npm ci
+
+      - name: Validate released version
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
+        run: node scripts/check-version.mjs "${RELEASE_VERSION}"
+
+      - name: Build extension
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        run: npm run build
+
+      - name: Package and upload extension
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+          RELEASE_VERSION: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
+        run: |
+          archive_path="catchtable-reserve-v${RELEASE_VERSION}.zip"
+          (
+            cd dist
+            python3 -m zipfile -c "../${archive_path}" ./*
+          )
+          gh release upload "${RELEASE_TAG}" "${archive_path}" --clobber
