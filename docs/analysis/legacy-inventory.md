@@ -64,9 +64,11 @@
 - DEPRECATE: 과거 맥락은 남기되 공식 기준으로 사용할 수 없는 문서 14개
 - DELETE: Git 스냅샷 외 보존 가치가 낮거나 잘못된 구현·테스트 12개
 
-## 구현 착수 게이트
+## 구현 착수 게이트 (완료)
 
-다음 문서가 현재 저장소 안에서 완결된 뒤에만 구현 기반을 교체한다.
+다음 목록은 재구축 당시 구현 기반 교체 전에 사용한 역사적 게이트다.
+게이트는 충족됐으며, 현재 작업 기준은 `docs/README.md`와
+`docs/worklog/HANDOFF.md`를 따른다.
 
 - `docs/specs/product-requirements.md`
 - `docs/specs/ui-requirements.md`
@@ -75,4 +77,4 @@
 - `docs/architecture/state-machine.md`
 - `docs/architecture/overview.md`
 - `docs/testing/test-strategy.md`
-- `docs/plans/mvp-implementation.md`
+- `docs/plans/mvp-implementation.md` (후속 문서 정리에서 제거)
