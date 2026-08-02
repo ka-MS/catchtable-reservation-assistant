@@ -1,0 +1,14 @@
+<!-- [화면 증거] 2026-07-31 희옥: 홈 탭 "웨이팅" 섹션 우측에 "새로고침 ⟳" 컨트롤이 있다.
+     정확한 DOM은 미실측이라, 라벨을 포함하는 상위 컨테이너가 함께 clickable인
+     최악의 경우로 재현한다 — 어댑터는 가장 안쪽 컨트롤만 눌러야 한다. -->
+<main>
+  <section data-probe="section" role="button">
+    <h2>웨이팅</h2>
+    <button data-probe="refresh" type="button"><span>새로고침</span><svg></svg></button>
+  </section>
+</main>
+<aside id="dock">
+  <button class="_1sg313o3" disabled type="button">
+    <div><span>온라인 웨이팅</span><span>오전 9시 30분에 오픈</span></div>
+  </button>
+</aside>

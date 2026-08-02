@@ -18,6 +18,8 @@ import { traceCsv, traceCsvFilename } from "./telemetry/trace-csv.js";
 import type { DiagnosticSnapshot } from "../shared/diagnostics/types.js";
 import { diagnosticBundle, diagnosticBundleFilename } from "./diagnostics/bundle.js";
 import { TraceHistoryView } from "./telemetry/trace-view.js";
+import { defaultWaitingStopAt } from "../shared/waiting-config.js";
+import { waitingConfigFromFormValues, type WaitingFormValues } from "./waiting-form-model.js";
 
 function byId<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -144,6 +146,8 @@ const STATE_LABEL: Record<RunState, string> = {
   PREPARING_PAGE: "예약 페이지를 확인 중입니다.",
   WAITING_FOR_OPEN: "예약 오픈 시각을 기다리는 중입니다.",
   REFRESHING_SLOTS: "예약 슬롯을 갱신 중입니다.",
+  WATCHING_WAITING_CTA: "웨이팅 등록 버튼 활성화를 감시 중입니다.",
+  WAITING_CTA_DISPATCHED: "웨이팅 등록 버튼을 클릭했습니다.",
   SLOT_DETECTED: "조건에 맞는 슬롯을 감지했습니다.",
   SLOT_CLICK_DISPATCHED: "슬롯 클릭을 전달했습니다.",
   SLOT_TRANSITION_CONFIRMED: "후속 예약 화면을 확인했습니다.",
@@ -170,6 +174,8 @@ const STATE_BADGE: Record<RunState, string> = {
   PREPARING_PAGE: "페이지 준비",
   WAITING_FOR_OPEN: "오픈 대기",
   REFRESHING_SLOTS: "슬롯 탐색",
+  WATCHING_WAITING_CTA: "웨이팅 감시",
+  WAITING_CTA_DISPATCHED: "등록 클릭",
   SLOT_DETECTED: "슬롯 감지",
   SLOT_CLICK_DISPATCHED: "클릭 전달",
   SLOT_TRANSITION_CONFIRMED: "화면 전환 확인",
@@ -1033,4 +1039,87 @@ void chrome.storage.local.get([
   void refreshTraceHistory((stored.activeRun as ActiveRun | null | undefined)?.runId).catch((error) => {
     formError.textContent = error instanceof Error ? error.message : "실행 이력을 읽을 수 없습니다.";
   });
+});
+
+// --- 온라인 웨이팅 ---
+// 예약 폼과 저장 경로·검증을 공유하지 않는다. 웨이팅 설정은 URL·오픈 시각만 쓰고
+// draftForm/reservationConfig에 섞이지 않도록 waitingForm 키로 따로 보관한다.
+const waitingUrl = byId<HTMLInputElement>("waiting-url");
+const waitingOpenAt = byId<HTMLInputElement>("waiting-open-at");
+const waitingStopAt = byId<HTMLInputElement>("waiting-stop-at");
+const waitingPreOpenLead = byId<HTMLInputElement>("waiting-pre-open-lead");
+const waitingPollInterval = byId<HTMLInputElement>("waiting-poll-interval");
+const waitingRefreshInterval = byId<HTMLInputElement>("waiting-refresh-interval");
+const waitingDryRun = byId<HTMLInputElement>("waiting-dry-run");
+const waitingError = byId<HTMLElement>("waiting-error");
+const waitingStartButton = byId<HTMLButtonElement>("waiting-start");
+const waitingStopButton = byId<HTMLButtonElement>("waiting-stop");
+
+function waitingFormValues(): WaitingFormValues {
+  return {
+    targetUrl: waitingUrl.value,
+    openAt: waitingOpenAt.value,
+    stopAt: waitingStopAt.value,
+    preOpenLeadMs: waitingPreOpenLead.value,
+    pollIntervalMs: waitingPollInterval.value,
+    refreshIntervalMs: waitingRefreshInterval.value,
+    dryRun: waitingDryRun.checked,
+  };
+}
+
+function persistWaitingForm(): void {
+  void chrome.storage.local.set({ waitingForm: waitingFormValues() });
+}
+
+waitingOpenAt.addEventListener("change", () => {
+  const openAtMs = localInputToEpoch(waitingOpenAt.value);
+  if (Number.isFinite(openAtMs) && waitingStopAt.value === "") {
+    waitingStopAt.value = epochToLocalInput(defaultWaitingStopAt(openAtMs));
+  }
+  persistWaitingForm();
+});
+for (const input of [
+  waitingUrl, waitingStopAt, waitingPreOpenLead, waitingPollInterval, waitingRefreshInterval, waitingDryRun,
+]) {
+  input.addEventListener("change", persistWaitingForm);
+}
+
+waitingStartButton.addEventListener("click", () => {
+  waitingError.textContent = "";
+  let config;
+  try {
+    config = waitingConfigFromFormValues(waitingFormValues(), Date.now());
+  } catch (error) {
+    waitingError.textContent = error instanceof Error ? error.message : "웨이팅 설정을 확인하세요.";
+    return;
+  }
+  waitingStartButton.disabled = true;
+  void send({ type: "PANEL_START_WAITING", config }).then((response) => {
+    if (!response.ok) waitingError.textContent = response.error ?? "웨이팅 실행을 시작할 수 없습니다.";
+  }).catch((error) => {
+    waitingError.textContent = error instanceof Error ? error.message : "웨이팅 실행을 시작할 수 없습니다.";
+  }).finally(() => {
+    waitingStartButton.disabled = false;
+  });
+});
+
+waitingStopButton.addEventListener("click", () => {
+  waitingError.textContent = "";
+  void send({ type: "PANEL_STOP_WAITING" }).then((response) => {
+    if (!response.ok) waitingError.textContent = response.error ?? "웨이팅 감시를 중지할 수 없습니다.";
+  }).catch((error) => {
+    waitingError.textContent = error instanceof Error ? error.message : "웨이팅 감시를 중지할 수 없습니다.";
+  });
+});
+
+void chrome.storage.local.get("waitingForm").then((stored) => {
+  const values = stored.waitingForm as WaitingFormValues | undefined;
+  if (!values) return;
+  waitingUrl.value = values.targetUrl ?? "";
+  waitingOpenAt.value = values.openAt ?? "";
+  waitingStopAt.value = values.stopAt ?? "";
+  waitingPreOpenLead.value = values.preOpenLeadMs ?? "3000";
+  waitingPollInterval.value = values.pollIntervalMs ?? "25";
+  waitingRefreshInterval.value = values.refreshIntervalMs ?? "500";
+  waitingDryRun.checked = values.dryRun !== false;
 });

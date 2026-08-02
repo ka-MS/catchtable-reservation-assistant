@@ -22,6 +22,8 @@ import { BatchTraceProcessor } from "./telemetry/batch-processor.js";
 import { PortTraceTransport } from "./telemetry/port-transport.js";
 import { TraceLogger } from "./telemetry/trace-logger.js";
 import { capturePreparationPageContext } from "./preparation-observation.js";
+import { WaitingAdapter } from "./adapter/waiting.js";
+import { createWaitingCtaWake, WaitingRunOrchestrator } from "./waiting-orchestrator.js";
 import { ReservationFormAdapter } from "./adapter/reservation-form.js";
 import { CompletionCoordinator } from "./completion-coordinator.js";
 import type { CompletionDispatchAck } from "../shared/run-control/protocol.js";
@@ -156,6 +158,26 @@ if (!window.__ctReserveInjected) {
     },
     runId: () => crypto.randomUUID(),
   });
+  const waiting = new WaitingRunOrchestrator({
+    clock,
+    monotonicClock,
+    referenceClock: (config) => createReferenceClockSampler(config.targetUrl, { monotonicClock, sleep: abortableSleep }),
+    cta: new WaitingAdapter(document),
+    wake: createWaitingCtaWake(document),
+    sleep: abortableSleep,
+    emit: (event) => {
+      const message: RunEventMessage = { type: "RUN_EVENT", event };
+      dispatchRunEvent((m) => chrome.runtime.sendMessage(m), message);
+    },
+    captureSnapshot: () => {
+      try {
+        return captureStageSnapshot(document);
+      } catch {
+        return null;
+      }
+    },
+    runId: () => crypto.randomUUID(),
+  });
   let running = false;
 
   chrome.runtime.onMessage.addListener((rawMessage, _sender, sendResponse) => {
@@ -249,6 +271,18 @@ if (!window.__ctReserveInjected) {
       sendResponse({ ok: true });
       return;
     }
+    if (message.type === "START_WAITING") {
+      if (running) {
+        sendResponse({ ok: false, error: "이미 실행 중입니다." });
+        return;
+      }
+      running = true;
+      void waiting.start(message.config, message.runId).finally(() => {
+        running = false;
+      });
+      sendResponse({ ok: true });
+      return;
+    }
     if (message.type === "GET_ATTEMPT_STATUS") {
       if (!attempt || attempt.attemptId !== message.attemptId) {
         sendResponse({ attemptId: message.attemptId, running: false, phase: null } satisfies AttemptStatusResponse);
@@ -264,6 +298,7 @@ if (!window.__ctReserveInjected) {
     }
     if (message.type === "STOP") {
       orchestrator.stop();
+      waiting.stop();
       sendResponse({ ok: true });
     }
   });

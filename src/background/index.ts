@@ -8,8 +8,10 @@ import type {
   RunEventMessage,
   RunState,
   ShopSnapshot,
+  WaitingConfig,
 } from "../shared/types.js";
 import { validateReservationConfig } from "../shared/config.js";
+import { validateWaitingConfig } from "../shared/waiting-config.js";
 import { finishJob as finishScheduledJob } from "../shared/scheduled-jobs.js";
 import type { AttemptControlMessage } from "../shared/run-control/protocol.js";
 import { isShopUrl } from "./navigation.js";
@@ -179,6 +181,39 @@ const jobScheduler = new JobScheduler({
   now: () => Date.now(),
 });
 
+/**
+ * 온라인 웨이팅 실행 경로. RunSupervisor의 attempt·RESET_PAGE·durable claim은 예약 완주
+ * 계약이므로 재사용하지 않는다 — 웨이팅은 클릭 1회 후 인계라 탭 하나만 추적한다.
+ */
+async function startWaiting(config: WaitingConfig): Promise<CommandResponse> {
+  const errors = validateWaitingConfig(config, Date.now());
+  if (errors.length > 0) return { ok: false, error: errors.join(" ") };
+  const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  let tabId = isShopUrl(active?.url) && active?.id !== undefined ? active.id : undefined;
+  if (tabId === undefined) {
+    const created = await chrome.tabs.create({ url: config.targetUrl, active: true });
+    if (created.id === undefined) return { ok: false, error: "웨이팅 실행 탭을 만들 수 없습니다." };
+    if (created.windowId !== undefined) await chrome.windows.update(created.windowId, { focused: true });
+    tabId = created.id;
+  }
+  await pageRuntimePort.navigateIfNeeded(tabId, config.targetUrl);
+  await pageRuntimePort.inject(tabId);
+  const command: ContentCommand = { type: "START_WAITING", runId: crypto.randomUUID(), config };
+  const response = await chrome.tabs.sendMessage(tabId, command) as CommandResponse | undefined;
+  if (!response?.ok) return { ok: false, error: response?.error ?? "웨이팅 실행을 시작할 수 없습니다." };
+  await chrome.storage.local.set({ waitingTabId: tabId });
+  return { ok: true };
+}
+
+async function stopWaiting(): Promise<CommandResponse> {
+  const stored = await chrome.storage.local.get("waitingTabId");
+  const tabId = stored.waitingTabId as number | undefined;
+  if (tabId === undefined) return { ok: false, error: "실행 중인 웨이팅 감시가 없습니다." };
+  await chrome.storage.local.remove("waitingTabId");
+  await pageRuntimePort.stopAttempt(tabId);
+  return { ok: true };
+}
+
 async function clearRunEvents(): Promise<void> {
   const stored = await chrome.storage.local.get("activeRun");
   const activeRun = stored.activeRun as ActiveRun | null | undefined;
@@ -260,6 +295,18 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
   if (message.type === "PANEL_STOP") {
     void supervisorReady.then(() => supervisor.stop()).then(sendResponse).catch((error) => {
       sendResponse({ ok: false, error: error instanceof Error ? error.message : "실행을 중지할 수 없습니다." });
+    });
+    return true;
+  }
+  if (message.type === "PANEL_START_WAITING") {
+    void startWaiting(message.config).then(sendResponse).catch((error) => {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : "웨이팅 실행을 시작할 수 없습니다." });
+    });
+    return true;
+  }
+  if (message.type === "PANEL_STOP_WAITING") {
+    void stopWaiting().then(sendResponse).catch((error) => {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : "웨이팅 감시를 중지할 수 없습니다." });
     });
     return true;
   }
