@@ -41,7 +41,7 @@ Chrome에서 `chrome://inspect/#remote-debugging`을 열고 `Allow remote debugg
 | 항목 | 값 |
 |---|---|
 | 이름 | `Catchtable Reserve Assistant` |
-| 현재 manifest 버전 | `0.2.0` |
+| 현재 manifest 버전 | 실행 전 `dist/manifest.json`에서 확인 |
 | 실측 확장 ID | `olbclnjiehfelpfmgmdphfmenapmpaal` |
 | 관리 URL | `chrome://extensions/?id=olbclnjiehfelpfmgmdphfmenapmpaal` |
 | Side Panel | `chrome-extension://olbclnjiehfelpfmgmdphfmenapmpaal/sidepanel/sidepanel.html` |

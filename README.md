@@ -74,6 +74,7 @@ Windows 파일 선택기에서는 다음 경로를 사용할 수 있습니다.
 npm run build
 npm run typecheck
 npm test
+npm run check:version
 npm run check:dist
 npm run check:independence
 npm run check
@@ -93,7 +94,8 @@ src/
 공식 기준은 [문서 인덱스](docs/README.md), 현재 체크포인트는
 [HANDOFF](docs/worklog/HANDOFF.md), 예약 완주 검증은
 [CatchPay 예약 완주 패키지](docs/specs/catchpay-reservation-completion/00-index.md)를
-확인합니다.
+확인합니다. 버전과 배포 절차는
+[릴리스 프로세스](docs/development/release-process.md)를 따릅니다.
 
 ## 알려진 제한사항
 
