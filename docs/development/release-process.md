@@ -38,10 +38,11 @@ Release Please가 만든 릴리스 PR에서는 다음을 확인한다.
 3. Major·Minor·Patch 판정이 위 버전 계약과 일치한다.
 4. CI의 `npm run check`가 통과한다.
 
-기본 `GITHUB_TOKEN`으로 만든 PR 이벤트는 별도 workflow를 자동
-실행하지 않는다. 릴리스 PR을 수동 수정하면 일반 PR CI가 실행되며,
-수정하지 않은 경우에는 필요하면 해당 브랜치에서 CI를 수동 실행한다.
-어느 경우든 병합된 릴리스 커밋은 태그 생성 전에 `main` 검증을 다시
+기본 `GITHUB_TOKEN`으로 만든 PR 이벤트의 CI는 승인 대기 상태가 된다.
+Release Please workflow는 생성·갱신한 PR의 head branch로 CI의
+`workflow_dispatch`를 호출해 같은 검사를 자동 실행한다. 별도 PAT나
+장기 secret은 사용하지 않는다. 자동 실행 결과가 통과한 뒤에만 릴리스
+PR을 병합하며, 병합된 릴리스 커밋도 태그 생성 전에 `main` 검증을 다시
 통과해야 한다.
 
 릴리스할 준비가 될 때만 릴리스 PR을 병합한다. 병합 뒤 Release

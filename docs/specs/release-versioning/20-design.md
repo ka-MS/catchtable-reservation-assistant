@@ -19,7 +19,8 @@ manifest가 같은 `X.Y.Z`를 갖게 한다. Chrome 숫자 범위까지
 
 PR CI는 읽기 권한으로 `npm ci`, `npm run check`를 실행한다.
 `main` push에서는 같은 검증이 끝난 뒤에만 Release Please job에
-쓰기 권한을 부여한다.
+쓰기 권한을 부여한다. Release Please가 릴리스 PR을 생성하거나
+갱신하면 해당 head branch로 PR CI를 자동 dispatch한다.
 
 ### D3. Release Please
 
@@ -29,10 +30,10 @@ prefix 없이 `vX.Y.Z`를 사용한다. 첫 실행의 검색 범위는 문서 �
 완료 커밋 뒤로 제한하며 일회성 `release-as` 설정이 첫 버전만
 `1.0.0`으로 강제한다. 첫 릴리스 PR에서 이 설정을 제거한다.
 
-PAT는 추가하지 않는다. 기본 `GITHUB_TOKEN`으로 만든 릴리스 PR은
-별도 CI 이벤트를 자동 발생시키지 않으므로 수동 수정이나
-workflow_dispatch로 필요 시 PR head를 검사한다. 최종 태그 생성은
-병합 뒤 `main` 전체 검증을 반드시 통과해야 한다.
+PAT는 추가하지 않는다. 기본 `GITHUB_TOKEN`으로 만든 릴리스 PR의
+CI 이벤트는 승인 대기 상태가 되므로, Release Please의 `pr` 출력에서
+head branch를 읽어 기존 CI를 `workflow_dispatch`로 자동 실행한다.
+최종 태그 생성은 병합 뒤 `main` 전체 검증을 반드시 통과해야 한다.
 
 ### D4. 같은 workflow의 배포물
 
@@ -49,6 +50,7 @@ workflow_dispatch로 필요 시 PR head를 검사한다. 최종 태그 생성은
 → main 병합
 → main 전체 검증
 → Release Please 릴리스 PR 생성·갱신
+→ 릴리스 PR head에서 CI 자동 실행
 → 사람의 버전·CHANGELOG 검토
 → 릴리스 PR 병합
 → main 전체 검증
@@ -60,7 +62,8 @@ workflow_dispatch로 필요 시 PR head를 검사한다. 최종 태그 생성은
 ## 4. 실패 정책
 
 - 버전 불일치나 전체 검사 실패 전에는 write job이 실행되지 않는다.
-- Release Please에는 contents·issues·pull-requests 쓰기만 허용한다.
+- Release Please에는 contents·issues·pull-requests 쓰기와 릴리스 PR의
+  CI dispatch에 필요한 actions 쓰기만 허용한다.
 - 외부 Action은 검증한 버전의 전체 commit SHA로 고정한다.
 - 공개 릴리스 태그는 이동·재사용하지 않는다.
 - ZIP 업로드 재실행은 같은 자산 이름을 교체해 멱등하게 처리한다.
