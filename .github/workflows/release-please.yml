@@ -52,8 +52,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_PR_HEAD: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
-        run: gh workflow run ci.yml --ref "${RELEASE_PR_HEAD}"
+          RELEASE_PR_JSON: ${{ steps.release.outputs.pr }}
+        run: |
+          release_pr_head="$(python3 -c 'import json, os; print(json.loads(os.environ["RELEASE_PR_JSON"]).get("headBranchName", ""))')"
+          if [[ -z "${release_pr_head}" ]]; then
+            echo "::error::Release Please did not return a PR head branch."
+            exit 1
+          fi
+          gh workflow run ci.yml --ref "${release_pr_head}"
 
       - name: Check out released commit
         if: ${{ steps.release.outputs.release_created == 'true' }}

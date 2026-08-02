@@ -45,6 +45,11 @@ Release Please workflow는 생성·갱신한 PR의 head branch로 CI의
 PR을 병합하며, 병합된 릴리스 커밋도 태그 생성 전에 `main` 검증을 다시
 통과해야 한다.
 
+Release Please는 자동 생성한 PR의 제목과 release note 형식으로 병합된
+릴리스를 판별한다. 일반 PR의 한국어 작성 원칙과 달리 자동 릴리스 PR의
+제목과 본문은 기계가 생성한 형식을 유지하고, 필요한 한국어 설명은 PR
+댓글에 남긴다.
+
 릴리스할 준비가 될 때만 릴리스 PR을 병합한다. 병합 뒤 Release
 Please workflow는 같은 커밋을 다시 검증하고 태그와 GitHub Release를
 만든 뒤, manifest가 ZIP 루트에 있는
