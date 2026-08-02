@@ -1,10 +1,19 @@
 {
   "manifest_version": 3,
   "name": "Catchtable Reserve Assistant",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "예약 오픈 시각에 목표 슬롯을 감지하고, 허용한 경우 CatchPay 결제와 최종 예약까지 진행합니다.",
-  "permissions": ["storage", "tabs", "sidePanel", "scripting", "notifications", "alarms"],
-  "host_permissions": ["https://app.catchtable.co.kr/*"],
+  "permissions": [
+    "storage",
+    "tabs",
+    "sidePanel",
+    "scripting",
+    "notifications",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://app.catchtable.co.kr/*"
+  ],
   "background": {
     "service_worker": "background/index.js",
     "type": "module"
