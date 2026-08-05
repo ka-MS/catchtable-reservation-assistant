@@ -74,6 +74,7 @@ export class OnboardingTour {
   private readonly next: HTMLButtonElement;
   private readonly close: HTMLButtonElement;
   private activeTarget: HTMLElement | null = null;
+  private returnFocusTarget: HTMLElement | null = null;
   private stepIndex = 0;
   private isActive = false;
 
@@ -107,8 +108,9 @@ export class OnboardingTour {
     return this.isActive;
   }
 
-  start(): void {
+  start(returnFocusTo: HTMLElement): void {
     this.isActive = true;
+    this.returnFocusTarget = returnFocusTo;
     this.stepIndex = 0;
     this.scrim.hidden = false;
     this.card.hidden = false;
@@ -132,6 +134,8 @@ export class OnboardingTour {
     this.document.removeEventListener("keydown", this.handleKeydown);
     if (scrollToTop) this.document.defaultView?.scrollTo({ top: 0, left: 0, behavior: "auto" });
     this.onExit();
+    this.returnFocusTarget?.focus({ preventScroll: true });
+    this.returnFocusTarget = null;
   }
 
   private readonly handleKeydown = (event: KeyboardEvent): void => {

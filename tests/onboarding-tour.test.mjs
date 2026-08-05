@@ -42,7 +42,7 @@ test("tour moves through the actual Side Panel targets without changing form val
   const targetUrl = document.getElementById("target-url");
   targetUrl.value = "https://app.catchtable.co.kr/ct/shop/keep-this-value";
 
-  tour.start();
+  tour.start(document.getElementById("form-title"));
 
   assert.equal(document.getElementById("onboarding-tour").hidden, false);
   assert.equal(document.getElementById("onboarding-scrim").hidden, false);
@@ -90,7 +90,9 @@ test("last step completes once and clears the highlighted target", async () => {
   const document = dom.window.document;
   const scrollCalls = [];
   dom.window.scrollTo = (options) => { scrollCalls.push(options); };
-  tour.start();
+  const returnFocus = document.getElementById("onboarding-help");
+  returnFocus.disabled = false;
+  tour.start(returnFocus);
 
   for (let index = 1; index < 8; index += 1) {
     document.getElementById("onboarding-next").click();
@@ -108,13 +110,21 @@ test("last step completes once and clears the highlighted target", async () => {
   assert.equal(document.getElementById("action-bar").hasAttribute("inert"), false);
   assert.equal(document.querySelector(".onboarding-target"), null);
   assert.equal(tour.active, false);
+  assert.equal(document.activeElement, returnFocus);
   assert.deepEqual(scrollCalls, [{ top: 0, left: 0, behavior: "auto" }]);
 });
 
 test("Escape exits an active tour", async () => {
   let exits = 0;
   const { dom, tour } = await createTour(() => { exits += 1; });
-  tour.start();
+  const returnFocus = dom.window.document.getElementById("form-title");
+  const focus = returnFocus.focus.bind(returnFocus);
+  let focusOptions;
+  returnFocus.focus = (options) => {
+    focusOptions = options;
+    focus(options);
+  };
+  tour.start(returnFocus);
 
   dom.window.document.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape" }));
 
@@ -123,4 +133,16 @@ test("Escape exits an active tour", async () => {
   assert.equal(dom.window.document.getElementById("onboarding-scrim").hidden, true);
   assert.equal(dom.window.document.documentElement.dataset.onboarding, undefined);
   assert.equal(dom.window.document.querySelector("main").hasAttribute("inert"), false);
+  assert.equal(dom.window.document.activeElement, returnFocus);
+  assert.deepEqual(focusOptions, { preventScroll: true });
+});
+
+test("onboarding entry stays unavailable until stored state initialization completes", async () => {
+  const html = await readFile("dist/sidepanel/sidepanel.html", "utf8");
+  const source = await readFile("dist/sidepanel/index.js", "utf8");
+
+  assert.match(html, /id="onboarding-help"[^>]*disabled/);
+  assert.match(html, /id="form-title"[^>]*tabindex="-1"/);
+  assert.match(source, /if \(!onboardingReady\)\s*return;/);
+  assert.match(source, /onboardingReady = true;\s*onboardingHelp\.disabled = false;/);
 });

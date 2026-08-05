@@ -239,18 +239,19 @@ function markOnboardingSeen(): void {
 }
 
 const onboardingTour = new OnboardingTour(document, markOnboardingSeen);
+let onboardingReady = false;
 
-function startOnboarding(): void {
-  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+function startOnboarding(returnFocusTo: HTMLElement): void {
+  if (!onboardingReady) return;
   onboardingWelcome.hidden = true;
   setView("form");
-  onboardingTour.start();
+  onboardingTour.start(returnFocusTo);
 }
 
-onboardingStart.addEventListener("click", startOnboarding);
+onboardingStart.addEventListener("click", () => startOnboarding(formTitle));
 onboardingSkip.addEventListener("click", markOnboardingSeen);
 onboardingHelp.addEventListener("click", () => {
-  if (!onboardingTour.active) startOnboarding();
+  if (!onboardingTour.active) startOnboarding(onboardingHelp);
 });
 
 function formatDate(value: string): string {
@@ -1060,4 +1061,6 @@ void chrome.storage.local.get([
   void refreshTraceHistory((stored.activeRun as ActiveRun | null | undefined)?.runId).catch((error) => {
     formError.textContent = error instanceof Error ? error.message : "실행 이력을 읽을 수 없습니다.";
   });
+  onboardingReady = true;
+  onboardingHelp.disabled = false;
 });
