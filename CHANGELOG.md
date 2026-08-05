@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/ka-MS/catchtable-reserve/compare/v1.1.0...v1.1.1) (2026-08-05)
+
+
+### Bug Fixes
+
+* 애플리케이션 명칭을 Reservation Assistant로 수정 ([#14](https://github.com/ka-MS/catchtable-reserve/issues/14)) ([1f99586](https://github.com/ka-MS/catchtable-reserve/commit/1f9958602b1dc9696aeab5b84267564a19614a03))
+
 ## [1.1.0](https://github.com/ka-MS/catchtable-reserve/compare/v1.0.1...v1.1.0) (2026-08-05)
 
 
