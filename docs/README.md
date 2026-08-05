@@ -1,4 +1,4 @@
-# Catchtable Reserve 문서
+# Catchtable Reservation Assistant 문서
 
 ## 시작 순서
 

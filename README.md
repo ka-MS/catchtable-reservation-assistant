@@ -1,4 +1,4 @@
-# Catchtable Reserve
+# Catchtable Reservation Assistant
 
 예약 오픈 시각에 Catchtable DINING 예약 슬롯을 감지하고, 사용자가 허용한
 범위에서 약관 동의·CatchPay 결제·최종 예약 확정까지 진행하는 개인용

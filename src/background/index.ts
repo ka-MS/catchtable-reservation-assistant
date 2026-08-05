@@ -109,7 +109,7 @@ const supervisor = new RunSupervisor({
       chrome.notifications.create(notificationId, {
         type: "basic",
         iconUrl: chrome.runtime.getURL("assets/icon-128.png"),
-        title: "Catchtable Reserve",
+        title: "Catchtable Reservation Assistant",
         message,
       }, () => {
         if (chrome.runtime.lastError) {
@@ -168,7 +168,7 @@ const jobScheduler = new JobScheduler({
     chrome.notifications.create({
       type: "basic",
       iconUrl: chrome.runtime.getURL("assets/icon-128.png"),
-      title: "Catchtable Reserve",
+      title: "Catchtable Reservation Assistant",
       message,
     }, () => {
       if (chrome.runtime.lastError) {

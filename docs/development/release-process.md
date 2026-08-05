@@ -53,7 +53,7 @@ Release Please는 자동 생성한 PR의 제목과 release note 형식으로 병
 릴리스할 준비가 될 때만 릴리스 PR을 병합한다. 병합 뒤 Release
 Please workflow는 같은 커밋을 다시 검증하고 태그와 GitHub Release를
 만든 뒤, manifest가 ZIP 루트에 있는
-`catchtable-reserve-vX.Y.Z.zip`을 첨부한다.
+`catchtable-reservation-assistant-vX.Y.Z.zip`을 첨부한다.
 
 ## 첫 v1.0.0
 

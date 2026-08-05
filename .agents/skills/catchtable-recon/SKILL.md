@@ -1,6 +1,6 @@
 ---
 name: catchtable-recon
-description: Inspect and E2E-test Catchtable (app.catchtable.co.kr) and the Catchtable Reserve Assistant extension. Use for live DOM reconnaissance, reservation-flow observation, dialog transition measurement, extension update/reload, Side Panel operation, scheduler persistence checks, run-log analysis, Console/Network debugging, or Chrome storage and IndexedDB telemetry verification.
+description: Inspect and E2E-test Catchtable (app.catchtable.co.kr) and the Catchtable Reservation Assistant extension. Use for live DOM reconnaissance, reservation-flow observation, dialog transition measurement, extension update/reload, Side Panel operation, scheduler persistence checks, run-log analysis, Console/Network debugging, or Chrome storage and IndexedDB telemetry verification.
 ---
 
 # Catchtable Recon
