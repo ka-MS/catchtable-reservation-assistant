@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/ka-MS/catchtable-reserve/compare/v1.0.1...v1.1.0) (2026-08-05)
+
+
+### Features
+
+* Side Panel 온보딩 투어 추가 ([#12](https://github.com/ka-MS/catchtable-reserve/issues/12)) ([8c4ab8f](https://github.com/ka-MS/catchtable-reserve/commit/8c4ab8f91abd53366213343136a7c3580b02440c))
+
 ## [1.0.1](https://github.com/ka-MS/catchtable-reserve/compare/v1.0.0...v1.0.1) (2026-08-02)
 
 
