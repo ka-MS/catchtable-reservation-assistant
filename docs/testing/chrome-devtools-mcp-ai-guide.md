@@ -1,6 +1,6 @@
 # Chrome DevTools MCP AI 운영 가이드
 
-이 문서는 AI 에이전트가 Chrome DevTools MCP로 실제 Chrome과 `Catchtable Reserve Assistant`를 제어하고 E2E 검증하는 절차를 정의한다. 사용자용 설명서가 아니다. 도구 이름은 클라이언트마다 접두사가 달라도 Chrome DevTools MCP의 동일 기능을 뜻한다.
+이 문서는 AI 에이전트가 Chrome DevTools MCP로 실제 Chrome과 `Catchtable Reservation Assistant`를 제어하고 E2E 검증하는 절차를 정의한다. 사용자용 설명서가 아니다. 도구 이름은 클라이언트마다 접두사가 달라도 Chrome DevTools MCP의 동일 기능을 뜻한다.
 
 ## 1. 환경과 대상
 
@@ -40,7 +40,7 @@ Chrome에서 `chrome://inspect/#remote-debugging`을 열고 `Allow remote debugg
 
 | 항목 | 값 |
 |---|---|
-| 이름 | `Catchtable Reserve Assistant` |
+| 이름 | `Catchtable Reservation Assistant` |
 | 현재 manifest 버전 | 실행 전 `dist/manifest.json`에서 확인 |
 | 실측 확장 ID | `olbclnjiehfelpfmgmdphfmenapmpaal` |
 | 관리 URL | `chrome://extensions/?id=olbclnjiehfelpfmgmdphfmenapmpaal` |
@@ -99,7 +99,7 @@ chrome-extension://<extension-id>/sidepanel/sidepanel.html
 })
 ```
 
-5. `take_snapshot`으로 `CATCHTABLE RESERVE`, `작업`, `예약 설정`, `실행 로그` UI가 보이는지 확인한다.
+5. `take_snapshot`으로 `CATCHTABLE RESERVATION ASSISTANT`, `작업`, `예약 설정`, `실행 로그` UI가 보이는지 확인한다.
 
 확장 URL은 `new_page`가 성공 메시지를 반환해도 page list에 노출되지 않을 수 있다. 기존 target의 `navigate_page`를 우선한다. page list에 이전 `chrome://extensions` 제목이 남아 있어도 `location.href`가 확장 URL이면 전환된 것이다.
 

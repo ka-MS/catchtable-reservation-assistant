@@ -1,6 +1,6 @@
 ---
 name: use-chrome-devtools
-description: Use Chrome DevTools MCP to control and E2E-test the live Catchtable site and Catchtable Reserve Assistant extension. Use for extension build reload/update, Side Panel operation, scheduled reservation-job setup, favorites, run/stop workflows, Console and Network inspection, service-worker logs, extension IndexedDB telemetry, or UI-log-to-run/event verification. Prefer this over claude-in-chrome for Chrome extension and DevTools work.
+description: Use Chrome DevTools MCP to control and E2E-test the live Catchtable site and Catchtable Reservation Assistant extension. Use for extension build reload/update, Side Panel operation, scheduled reservation-job setup, favorites, run/stop workflows, Console and Network inspection, service-worker logs, extension IndexedDB telemetry, or UI-log-to-run/event verification. Prefer this over claude-in-chrome for Chrome extension and DevTools work.
 ---
 
 # Use Chrome DevTools
@@ -15,7 +15,7 @@ Before substantial work, read `docs/testing/chrome-devtools-mcp-ai-guide.md`. It
 - Windows command: `cmd /c npx -y chrome-devtools-mcp@latest --auto-connect`
 - Required environment: `SystemRoot=C:\Windows`, `PROGRAMFILES=C:\Program Files`
 - Chrome connection: enable remote debugging at `chrome://inspect/#remote-debugging`
-- Extension: `Catchtable Reserve Assistant`
+- Extension: `Catchtable Reservation Assistant`
 - Observed ID: `olbclnjiehfelpfmgmdphfmenapmpaal`
 - Management: `chrome://extensions/?id=<id>`
 - Side Panel: `chrome-extension://<id>/sidepanel/sidepanel.html`

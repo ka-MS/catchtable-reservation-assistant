@@ -95,7 +95,7 @@ jobs:
           RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
           RELEASE_VERSION: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
         run: |
-          archive_path="catchtable-reserve-v${RELEASE_VERSION}.zip"
+          archive_path="catchtable-reservation-assistant-v${RELEASE_VERSION}.zip"
           (
             cd dist
             python3 -m zipfile -c "../${archive_path}" ./*

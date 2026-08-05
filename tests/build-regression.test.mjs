@@ -5,12 +5,29 @@ import test from "node:test";
 test("manifest uses MV3 and on-demand content injection", async () => {
   const manifest = JSON.parse(await readFile("dist/manifest.json", "utf8"));
   assert.equal(manifest.manifest_version, 3);
+  assert.equal(manifest.name, "Catchtable Reservation Assistant");
+  assert.equal(manifest.action.default_title, "Catchtable Reservation Assistant");
   assert.equal("content_scripts" in manifest, false);
   assert.deepEqual(manifest.host_permissions, ["https://app.catchtable.co.kr/*"]);
   assert.equal(manifest.icons["128"], "assets/icon-128.png");
   assert.equal(manifest.action.default_icon["128"], "assets/icon-128.png");
   const icon = await readFile("dist/assets/icon-128.png");
   assert.deepEqual([...icon.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+});
+
+test("sidepanel uses the current application name", async () => {
+  const html = await readFile("dist/sidepanel/sidepanel.html", "utf8");
+  const background = await readFile("dist/background/index.js", "utf8");
+  assert.match(html, /<title>Catchtable Reservation Assistant<\/title>/);
+  assert.match(html, />CATCHTABLE RESERVATION ASSISTANT<\/p>/);
+  assert.match(background, /title: "Catchtable Reservation Assistant"/);
+});
+
+test("package and release artifact use the current application slug", async () => {
+  const packageJson = JSON.parse(await readFile("package.json", "utf8"));
+  const workflow = await readFile(".github/workflows/release-please.yml", "utf8");
+  assert.equal(packageJson.name, "catchtable-reservation-assistant");
+  assert.match(workflow, /catchtable-reservation-assistant-v\$\{RELEASE_VERSION\}\.zip/);
 });
 
 test("content script is an import-free IIFE bundle with opt-in completion safety gates", async () => {
