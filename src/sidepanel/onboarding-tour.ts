@@ -5,6 +5,7 @@ interface TourStep {
   title: string;
   description: string;
   placement?: "bottom" | "top";
+  highlight?: boolean;
 }
 
 const STEPS: readonly TourStep[] = [
@@ -43,6 +44,7 @@ const STEPS: readonly TourStep[] = [
     title: "저장하거나 바로 시작하기",
     description: "예약 저장은 오픈 시각에 자동 실행할 작업을 등록하고, 지금 시작은 즉시 실행합니다. 저장 작업은 CatchPay PIN을 보관하지 않습니다.",
     placement: "top",
+    highlight: false,
   },
   {
     target: "#onboarding-help",
@@ -95,7 +97,7 @@ export class OnboardingTour {
 
     this.previous.addEventListener("click", () => this.move(-1));
     this.next.addEventListener("click", () => {
-      if (this.stepIndex === STEPS.length - 1) this.finish();
+      if (this.stepIndex === STEPS.length - 1) this.finish(true);
       else this.move(1);
     });
     this.close.addEventListener("click", () => this.finish());
@@ -111,12 +113,13 @@ export class OnboardingTour {
     this.scrim.hidden = false;
     this.card.hidden = false;
     this.inactiveRegions.forEach((region) => region.setAttribute("inert", ""));
+    this.document.documentElement.dataset.onboarding = "active";
     this.document.body.dataset.onboarding = "active";
     this.document.addEventListener("keydown", this.handleKeydown);
     this.render();
   }
 
-  finish(): void {
+  finish(scrollToTop = false): void {
     if (!this.isActive) return;
     this.isActive = false;
     this.activeTarget?.classList.remove("onboarding-target");
@@ -124,8 +127,10 @@ export class OnboardingTour {
     this.scrim.hidden = true;
     this.card.hidden = true;
     this.inactiveRegions.forEach((region) => region.removeAttribute("inert"));
+    delete this.document.documentElement.dataset.onboarding;
     delete this.document.body.dataset.onboarding;
     this.document.removeEventListener("keydown", this.handleKeydown);
+    if (scrollToTop) this.document.defaultView?.scrollTo({ top: 0, left: 0, behavior: "auto" });
     this.onExit();
   }
 
@@ -147,7 +152,7 @@ export class OnboardingTour {
 
     this.activeTarget?.classList.remove("onboarding-target");
     this.activeTarget = target;
-    target.classList.add("onboarding-target");
+    if (step.highlight !== false) target.classList.add("onboarding-target");
     if (typeof target.scrollIntoView === "function") target.scrollIntoView({ block: "center" });
 
     this.card.dataset.placement = step.placement ?? "bottom";

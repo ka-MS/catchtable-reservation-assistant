@@ -26,6 +26,16 @@ test("onboarding offer appears only before the current version is seen", () => {
   assert.equal(shouldOfferOnboarding("1"), true);
 });
 
+test("tour stylesheet blocks user scrolling while the guide remains interactive", async () => {
+  const css = await readFile("dist/sidepanel/sidepanel.css", "utf8");
+
+  assert.match(
+    css,
+    /html\[data-onboarding="active"\],\s*body\[data-onboarding="active"\]\s*{[^}]*overflow:\s*hidden/s,
+  );
+  assert.match(css, /\.onboarding-scrim\s*{[^}]*touch-action:\s*none/s);
+});
+
 test("tour moves through the actual Side Panel targets without changing form values", async () => {
   const { dom, tour } = await createTour();
   const document = dom.window.document;
@@ -36,6 +46,7 @@ test("tour moves through the actual Side Panel targets without changing form val
 
   assert.equal(document.getElementById("onboarding-tour").hidden, false);
   assert.equal(document.getElementById("onboarding-scrim").hidden, false);
+  assert.equal(document.documentElement.dataset.onboarding, "active");
   assert.equal(document.querySelector(".app-header").hasAttribute("inert"), true);
   assert.equal(document.querySelector("main").hasAttribute("inert"), true);
   assert.equal(document.getElementById("action-bar").hasAttribute("inert"), true);
@@ -68,7 +79,7 @@ test("tour moves through the actual Side Panel targets without changing form val
 
   document.getElementById("onboarding-next").click();
   assert.equal(document.getElementById("onboarding-progress").textContent, "7 / 8");
-  assert.equal(document.getElementById("action-bar").classList.contains("onboarding-target"), true);
+  assert.equal(document.getElementById("action-bar").classList.contains("onboarding-target"), false);
   assert.equal(document.getElementById("action-bar").hasAttribute("inert"), true);
   assert.equal(document.getElementById("onboarding-tour").dataset.placement, "top");
 });
@@ -77,6 +88,8 @@ test("last step completes once and clears the highlighted target", async () => {
   let exits = 0;
   const { dom, tour } = await createTour(() => { exits += 1; });
   const document = dom.window.document;
+  const scrollCalls = [];
+  dom.window.scrollTo = (options) => { scrollCalls.push(options); };
   tour.start();
 
   for (let index = 1; index < 8; index += 1) {
@@ -89,11 +102,13 @@ test("last step completes once and clears the highlighted target", async () => {
   assert.equal(exits, 1);
   assert.equal(document.getElementById("onboarding-tour").hidden, true);
   assert.equal(document.getElementById("onboarding-scrim").hidden, true);
+  assert.equal(document.documentElement.dataset.onboarding, undefined);
   assert.equal(document.querySelector(".app-header").hasAttribute("inert"), false);
   assert.equal(document.querySelector("main").hasAttribute("inert"), false);
   assert.equal(document.getElementById("action-bar").hasAttribute("inert"), false);
   assert.equal(document.querySelector(".onboarding-target"), null);
   assert.equal(tour.active, false);
+  assert.deepEqual(scrollCalls, [{ top: 0, left: 0, behavior: "auto" }]);
 });
 
 test("Escape exits an active tour", async () => {
@@ -106,5 +121,6 @@ test("Escape exits an active tour", async () => {
   assert.equal(exits, 1);
   assert.equal(tour.active, false);
   assert.equal(dom.window.document.getElementById("onboarding-scrim").hidden, true);
+  assert.equal(dom.window.document.documentElement.dataset.onboarding, undefined);
   assert.equal(dom.window.document.querySelector("main").hasAttribute("inert"), false);
 });
