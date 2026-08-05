@@ -35,8 +35,16 @@ test("tour moves through the actual Side Panel targets without changing form val
   tour.start();
 
   assert.equal(document.getElementById("onboarding-tour").hidden, false);
+  assert.equal(document.getElementById("onboarding-scrim").hidden, false);
+  assert.equal(document.querySelector(".app-header").hasAttribute("inert"), true);
+  assert.equal(document.querySelector("main").hasAttribute("inert"), true);
+  assert.equal(document.getElementById("action-bar").hasAttribute("inert"), true);
   assert.equal(document.getElementById("onboarding-progress").textContent, "1 / 8");
   assert.equal(document.getElementById("onboarding-title").textContent, "새 예약 작업");
+  assert.equal(
+    document.getElementById("onboarding-description").textContent,
+    "예약할 식당과 일정, 원하는 시간, 진행 범위와 실행 방식을 순서대로 설정합니다.",
+  );
   assert.equal(document.getElementById("form-tour-heading").classList.contains("onboarding-target"), true);
   assert.equal(document.getElementById("onboarding-previous").disabled, true);
 
@@ -44,6 +52,8 @@ test("tour moves through the actual Side Panel targets without changing form val
   assert.equal(document.getElementById("onboarding-progress").textContent, "2 / 8");
   assert.equal(document.getElementById("form-tour-heading").classList.contains("onboarding-target"), false);
   assert.equal(document.getElementById("reservation-when-card").classList.contains("onboarding-target"), true);
+  assert.match(document.getElementById("onboarding-description").textContent, /캐치테이블 URL을 입력하세요/);
+  assert.match(document.getElementById("onboarding-description").textContent, /열어 둔 경우/);
 
   document.getElementById("onboarding-previous").click();
   assert.equal(document.getElementById("onboarding-progress").textContent, "1 / 8");
@@ -55,6 +65,12 @@ test("tour moves through the actual Side Panel targets without changing form val
   assert.equal(document.getElementById("onboarding-title").textContent, "실행 모드");
   assert.match(document.getElementById("onboarding-description").textContent, /테스트 작동/);
   assert.match(document.getElementById("onboarding-description").textContent, /실제 예약에서는 끈 상태/);
+
+  document.getElementById("onboarding-next").click();
+  assert.equal(document.getElementById("onboarding-progress").textContent, "7 / 8");
+  assert.equal(document.getElementById("action-bar").classList.contains("onboarding-target"), true);
+  assert.equal(document.getElementById("action-bar").hasAttribute("inert"), true);
+  assert.equal(document.getElementById("onboarding-tour").dataset.placement, "top");
 });
 
 test("last step completes once and clears the highlighted target", async () => {
@@ -72,6 +88,10 @@ test("last step completes once and clears the highlighted target", async () => {
   document.getElementById("onboarding-next").click();
   assert.equal(exits, 1);
   assert.equal(document.getElementById("onboarding-tour").hidden, true);
+  assert.equal(document.getElementById("onboarding-scrim").hidden, true);
+  assert.equal(document.querySelector(".app-header").hasAttribute("inert"), false);
+  assert.equal(document.querySelector("main").hasAttribute("inert"), false);
+  assert.equal(document.getElementById("action-bar").hasAttribute("inert"), false);
   assert.equal(document.querySelector(".onboarding-target"), null);
   assert.equal(tour.active, false);
 });
@@ -85,4 +105,6 @@ test("Escape exits an active tour", async () => {
 
   assert.equal(exits, 1);
   assert.equal(tour.active, false);
+  assert.equal(dom.window.document.getElementById("onboarding-scrim").hidden, true);
+  assert.equal(dom.window.document.querySelector("main").hasAttribute("inert"), false);
 });

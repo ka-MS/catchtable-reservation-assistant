@@ -11,12 +11,12 @@ const STEPS: readonly TourStep[] = [
   {
     target: "#form-tour-heading",
     title: "새 예약 작업",
-    description: "현재 입력값을 바꾸지 않고 예약 설정 화면을 순서대로 살펴봅니다.",
+    description: "예약할 식당과 일정, 원하는 시간, 진행 범위와 실행 방식을 순서대로 설정합니다.",
   },
   {
     target: "#reservation-when-card",
     title: "언제 예약할까요?",
-    description: "현재 탭에서 식당 URL을 가져온 뒤 예약 오픈 일시, 감시 종료 시각, 방문 날짜와 인원을 입력합니다.",
+    description: "예약할 식당의 캐치테이블 URL을 입력하세요. 식당 페이지를 열어 둔 경우 ‘현재 탭에서 가져오기’로 자동 입력할 수도 있습니다. 이어서 오픈 일시, 감시 종료 시각, 방문 날짜와 인원을 설정합니다.",
   },
   {
     target: "#reservation-slot-card",
@@ -62,7 +62,9 @@ export function shouldOfferOnboarding(value: unknown): boolean {
 }
 
 export class OnboardingTour {
+  private readonly scrim: HTMLElement;
   private readonly card: HTMLElement;
+  private readonly inactiveRegions: readonly HTMLElement[];
   private readonly progress: HTMLElement;
   private readonly title: HTMLElement;
   private readonly description: HTMLElement;
@@ -77,7 +79,13 @@ export class OnboardingTour {
     private readonly document: Document,
     private readonly onExit: () => void,
   ) {
+    this.scrim = byId(document, "onboarding-scrim");
     this.card = byId(document, "onboarding-tour");
+    this.inactiveRegions = [
+      byId(document, "app-header"),
+      byId(document, "app-main"),
+      byId(document, "action-bar"),
+    ];
     this.progress = byId(document, "onboarding-progress");
     this.title = byId(document, "onboarding-title");
     this.description = byId(document, "onboarding-description");
@@ -100,7 +108,9 @@ export class OnboardingTour {
   start(): void {
     this.isActive = true;
     this.stepIndex = 0;
+    this.scrim.hidden = false;
     this.card.hidden = false;
+    this.inactiveRegions.forEach((region) => region.setAttribute("inert", ""));
     this.document.body.dataset.onboarding = "active";
     this.document.addEventListener("keydown", this.handleKeydown);
     this.render();
@@ -111,7 +121,9 @@ export class OnboardingTour {
     this.isActive = false;
     this.activeTarget?.classList.remove("onboarding-target");
     this.activeTarget = null;
+    this.scrim.hidden = true;
     this.card.hidden = true;
+    this.inactiveRegions.forEach((region) => region.removeAttribute("inert"));
     delete this.document.body.dataset.onboarding;
     this.document.removeEventListener("keydown", this.handleKeydown);
     this.onExit();

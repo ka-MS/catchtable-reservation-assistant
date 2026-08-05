@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="sidepanel.css" />
   </head>
   <body>
-    <header class="app-header">
+    <header id="app-header" class="app-header">
       <div class="app-header-row">
         <div>
           <p class="eyebrow">CATCHTABLE RESERVE</p>
@@ -31,7 +31,7 @@
       <p id="form-error" class="error" role="alert"></p>
     </header>
 
-    <main>
+    <main id="app-main">
       <section id="view-home" class="view">
         <section id="onboarding-welcome" class="onboarding-welcome" aria-labelledby="onboarding-welcome-title" hidden>
           <div>
@@ -329,8 +329,10 @@
       </section>
     </main>
 
-    <aside id="onboarding-tour" class="onboarding-tour" role="dialog" aria-labelledby="onboarding-title"
-      aria-describedby="onboarding-description" data-placement="bottom" hidden>
+    <div id="onboarding-scrim" class="onboarding-scrim" aria-hidden="true" hidden></div>
+
+    <aside id="onboarding-tour" class="onboarding-tour" role="dialog" aria-modal="true"
+      aria-labelledby="onboarding-title" aria-describedby="onboarding-description" data-placement="bottom" hidden>
       <div class="onboarding-tour-head">
         <span id="onboarding-progress"></span>
         <button id="onboarding-close" type="button" aria-label="가이드 종료">×</button>

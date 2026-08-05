@@ -224,6 +224,17 @@ section {
   gap: 14px;
 }
 
+.onboarding-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  background: rgb(14 38 28 / 18%);
+}
+
+.onboarding-scrim[hidden] {
+  display: none;
+}
+
 .onboarding-tour {
   position: fixed;
   right: 12px;
@@ -296,10 +307,21 @@ section {
 
 .onboarding-target {
   position: relative;
-  z-index: 5;
+  z-index: 8;
   outline: 3px solid #21a36f;
   outline-offset: 4px;
   box-shadow: 0 0 0 7px rgb(33 163 111 / 14%);
+  pointer-events: none;
+  user-select: none;
+}
+
+.onboarding-target * {
+  pointer-events: none;
+}
+
+body[data-onboarding="active"] .app-header:has(.onboarding-target),
+.action-bar.onboarding-target {
+  z-index: 8;
 }
 
 body[data-onboarding="active"][data-view="form"] {
