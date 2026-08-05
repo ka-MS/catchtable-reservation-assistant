@@ -18,6 +18,7 @@ import { traceCsv, traceCsvFilename } from "./telemetry/trace-csv.js";
 import type { DiagnosticSnapshot } from "../shared/diagnostics/types.js";
 import { diagnosticBundle, diagnosticBundleFilename } from "./diagnostics/bundle.js";
 import { TraceHistoryView } from "./telemetry/trace-view.js";
+import { ONBOARDING_VERSION, OnboardingTour, shouldOfferOnboarding } from "./onboarding-tour.js";
 
 function byId<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -66,6 +67,10 @@ const miniLogMore = byId<HTMLButtonElement>("mini-log-more");
 const actionBar = byId<HTMLElement>("action-bar");
 const saveJobButton = byId<HTMLButtonElement>("save-job");
 const navButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".view-nav button"));
+const onboardingWelcome = byId<HTMLElement>("onboarding-welcome");
+const onboardingStart = byId<HTMLButtonElement>("onboarding-start");
+const onboardingSkip = byId<HTMLButtonElement>("onboarding-skip");
+const onboardingHelp = byId<HTMLButtonElement>("onboarding-help");
 
 const fields = {
   targetUrl: byId<HTMLInputElement>("target-url"),
@@ -227,6 +232,27 @@ function setView(view: PanelView): void {
   formError.textContent = "";
   renderCountdown();
 }
+
+function markOnboardingSeen(): void {
+  onboardingWelcome.hidden = true;
+  void chrome.storage.local.set({ onboardingVersion: ONBOARDING_VERSION });
+}
+
+const onboardingTour = new OnboardingTour(document, markOnboardingSeen);
+let onboardingReady = false;
+
+function startOnboarding(returnFocusTo: HTMLElement): void {
+  if (!onboardingReady) return;
+  onboardingWelcome.hidden = true;
+  setView("form");
+  onboardingTour.start(returnFocusTo);
+}
+
+onboardingStart.addEventListener("click", () => startOnboarding(formTitle));
+onboardingSkip.addEventListener("click", markOnboardingSeen);
+onboardingHelp.addEventListener("click", () => {
+  if (!onboardingTour.active) startOnboarding(onboardingHelp);
+});
 
 function formatDate(value: string): string {
   if (!value) return "";
@@ -1010,6 +1036,7 @@ void chrome.storage.local.get([
   "configHistory",
   "configFavorites",
   "scheduledJobs",
+  "onboardingVersion",
 ]).then((stored) => {
   logicalRunStatus = (stored.logicalRun as { status?: string } | null | undefined)?.status ?? null;
   const draft = stored.draftForm as FormValues | undefined;
@@ -1025,6 +1052,7 @@ void chrome.storage.local.get([
   runConfigOpenAtMs = config ? config.openAtMs : null;
   renderJobs();
   setView("home");
+  onboardingWelcome.hidden = !shouldOfferOnboarding(stored.onboardingVersion);
   renderRuntime(stored.activeRun as ActiveRun | null | undefined, (stored.runEvents as RunEvent[] | undefined) ?? []);
   savedConfigsView.render(
     sanitizeSavedConfigs(stored.configHistory),
@@ -1033,4 +1061,6 @@ void chrome.storage.local.get([
   void refreshTraceHistory((stored.activeRun as ActiveRun | null | undefined)?.runId).catch((error) => {
     formError.textContent = error instanceof Error ? error.message : "실행 이력을 읽을 수 없습니다.";
   });
+  onboardingReady = true;
+  onboardingHelp.disabled = false;
 });

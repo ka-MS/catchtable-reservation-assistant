@@ -7,14 +7,17 @@
     <link rel="stylesheet" href="sidepanel.css" />
   </head>
   <body>
-    <header class="app-header">
+    <header id="app-header" class="app-header">
       <div class="app-header-row">
         <div>
           <p class="eyebrow">CATCHTABLE RESERVE</p>
           <h1>예약 오픈런</h1>
           <p id="status-detail">설정 대기 중</p>
         </div>
-        <span id="state" class="state" data-state="IDLE">준비 필요</span>
+        <div class="header-actions">
+          <button id="onboarding-help" class="help-button" type="button" disabled>사용법</button>
+          <span id="state" class="state" data-state="IDLE">준비 필요</span>
+        </div>
       </div>
       <div id="countdown" class="countdown" data-mode="countdown" hidden>
         <strong id="countdown-text"></strong>
@@ -28,8 +31,18 @@
       <p id="form-error" class="error" role="alert"></p>
     </header>
 
-    <main>
+    <main id="app-main">
       <section id="view-home" class="view">
+        <section id="onboarding-welcome" class="onboarding-welcome" aria-labelledby="onboarding-welcome-title" hidden>
+          <div>
+            <strong id="onboarding-welcome-title">예약 설정이 처음인가요?</strong>
+            <p>실제 화면을 따라 8단계로 사용법을 확인할 수 있습니다.</p>
+          </div>
+          <div class="onboarding-welcome-actions">
+            <button id="onboarding-start" class="primary compact" type="button">가이드 시작</button>
+            <button id="onboarding-skip" class="text-link" type="button">건너뛰기</button>
+          </div>
+        </section>
         <div class="view-title-row">
           <h2>예약 작업</h2>
           <button id="new-job" class="primary compact" type="button">+ 새 예약</button>
@@ -40,13 +53,13 @@
       </section>
 
       <section id="view-form" class="view" hidden>
-      <div class="view-title-row">
-        <h2 id="form-title">새 예약 작업</h2>
+      <div id="form-tour-heading" class="view-title-row">
+        <h2 id="form-title" tabindex="-1">새 예약 작업</h2>
         <button id="reset-form" class="text-link" type="button">초기화</button>
       </div>
       <form id="reservation-form">
         <fieldset id="config-fields">
-          <section class="panel-card">
+          <section id="reservation-when-card" class="panel-card">
             <span class="step">01</span>
             <h2>언제 예약할까요?</h2>
             <label class="field wide">
@@ -96,7 +109,7 @@
             </div>
           </section>
 
-          <section class="panel-card">
+          <section id="reservation-slot-card" class="panel-card">
             <span class="step">02</span>
             <h2>어떤 자리를 찾을까요?</h2>
             <div class="grid three time-range-presets" aria-label="시간대 빠른 선택">
@@ -126,7 +139,7 @@
             </div>
           </section>
 
-          <section class="panel-card">
+          <section id="reservation-progress-card" class="panel-card">
             <span class="step">03</span>
             <h2>어떻게 진행할까요?</h2>
             <label class="toggle-row">
@@ -166,7 +179,7 @@
             </div>
           </section>
 
-          <section class="panel-card">
+          <section id="reservation-completion-card" class="panel-card">
             <span class="step">04</span>
             <h2>예약을 완주할까요?</h2>
             <label class="toggle-row">
@@ -191,7 +204,7 @@
             </div>
           </section>
 
-          <section class="panel-card execution-card">
+          <section id="execution-mode-card" class="panel-card execution-card">
             <h2>실행 모드</h2>
             <label class="mode-card">
               <input id="dry-run" type="checkbox" />
@@ -315,6 +328,22 @@
       </section>
       </section>
     </main>
+
+    <div id="onboarding-scrim" class="onboarding-scrim" aria-hidden="true" hidden></div>
+
+    <aside id="onboarding-tour" class="onboarding-tour" role="dialog" aria-modal="true"
+      aria-labelledby="onboarding-title" aria-describedby="onboarding-description" data-placement="bottom" hidden>
+      <div class="onboarding-tour-head">
+        <span id="onboarding-progress"></span>
+        <button id="onboarding-close" type="button" aria-label="가이드 종료">×</button>
+      </div>
+      <h2 id="onboarding-title" tabindex="-1"></h2>
+      <p id="onboarding-description"></p>
+      <div class="onboarding-tour-actions">
+        <button id="onboarding-previous" class="secondary" type="button">이전</button>
+        <button id="onboarding-next" class="primary" type="button">다음</button>
+      </div>
+    </aside>
 
     <footer id="action-bar" class="action-bar" hidden>
       <button id="save-job" class="secondary" type="button">예약 저장</button>
