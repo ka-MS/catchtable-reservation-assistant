@@ -15,9 +15,9 @@
 `npm run check` 573/573 통과하며 **기존 테스트 540개는 무수정**이다.
 특성화 21개와 payload golden 12개를 추가했다.
 
-병합 전 남은 것은 Chrome 수동 로드 dry-run 확인 하나다(성공 기준 7).
-`RunObserver`가 실제 `TraceLogger`·`DiagnosticRecorder`와 결합된 적이
-없어 fake로만 검증됐다.
+실사이트 dry-run 2회(`run-fbce1b4f`, `run-5cd25ceb`)로 실제 `TraceLogger`
+배선에서의 스탬핑과 payload 키 집합을 확인했다. 계약 밖 키 0건이다.
+성공 기준 8개를 전부 충족했다.
 
 **예외 격리는 한 곳도 바꾸지 않았다.** 작업 중 현재 격리가 비대칭임을
 발견했다 — `trace` 호출 10곳 중 6곳만 격리돼 있고, 나머지에서 exporter가

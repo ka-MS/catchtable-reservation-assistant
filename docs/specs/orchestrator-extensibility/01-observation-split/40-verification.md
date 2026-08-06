@@ -1,6 +1,6 @@
 # 01. 관측 분리 검증
 
-**상태:** 자동 검증 완료 / Chrome 수동 확인 대기
+**상태:** 완료
 **검증일:** 2026-08-07
 **브랜치:** `codex/refactor-observation-split`
 **부모 패키지:** [오케스트레이터 확장성 기반](../00-index.md)
@@ -17,7 +17,7 @@
 | 4 | 비격리 보존 테스트 | ✅ 4개 |
 | 5 | 호출 순서 테스트 | ✅ 4개 |
 | 6 | `git diff --check` | ✅ 통과 |
-| 7 | Chrome 수동 로드 dry-run | ⏳ **대기** — 아래 참조 |
+| 7 | Chrome 수동 로드 dry-run | ✅ 실행 2회 — 아래 참조 |
 | 8 | 주장 대조 | ✅ 아래 참조 |
 
 ## 자동 검증
@@ -132,25 +132,90 @@ function pinPayload(actual, expected) {
 re-export했다. `tests/snapshot-data.test.mjs`가 `orchestrator.js`에서 직접
 import하고 있어, 이 조치로 해당 테스트가 무수정으로 남았다.
 
-## Chrome 수동 확인 (성공 기준 7) — 대기
+## Chrome 실사이트 확인 (성공 기준 7)
 
-자동 검증으로 payload·격리·순서를 고정했으나, 확장을 실제로 로드해
-오픈런 dry-run이 정상 종료하는지는 확인하지 않았다.
+사용자가 워크트리(`codex/refactor-observation-split`)에서 빌드한 `dist/`를
+Chrome에 로드해 실행했다. 2026-08-07, 매장 `mangam`, 예약일 `2026-09-03`,
+2명, **dry-run**.
 
-확인 절차는 다음과 같다.
+| 실행 | 설정 차이 | 결과 |
+|---|---|---|
+| `run-fbce1b4f` | `toggleIntervalMs` 400, 완주 off | `DRY_RUN_COMPLETED`, 45 이벤트, dropped 0 |
+| `run-5cd25ceb` | `toggleIntervalMs` 100, 완주 on, 상한 500,000원 | `DRY_RUN_COMPLETED`, 45 이벤트, dropped 0 |
 
-1. `npm run build` 후 `dist/`를 Chrome에 로드
-2. Side Panel에서 임의 매장·미래 날짜로 dry-run 실행
-3. `DRY_RUN_COMPLETED` 종료 확인
-4. 실행 로그에 이벤트가 정상 표시되는지 확인
-5. 진단 ZIP 내보내기로 trace가 기록됐는지 확인
+두 실행 모두 `entryMode: auto`라 진입·날짜·인원 준비 단계를 전부 거쳤다.
+`run-5cd25ceb`은 진단 번들도 함께 받았다.
 
-동작 무변경 리팩터이고 573개 테스트가 payload를 바이트 단위로 고정하고
-있어 위험은 낮다. 다만 **테스트가 덮지 못하는 것**이 하나 있다.
+### 스탬핑
 
-`RunObserver`는 `chrome.runtime` 경계 너머의 실제 `TraceLogger`·
-`DiagnosticRecorder`와 결합된 적이 없다. fake로만 검증했다. 실제 배선에서
-스탬핑(`serverAt`·`state`)이 의도대로 붙는지는 로드해 봐야 확정된다.
+관측 계층이 소유하게 된 부분이다. 두 실행 모두 통과했다.
+
+| 확인 | 결과 |
+|---|---|
+| `CLOCK_SAMPLE`의 `state`가 비어 있음 | ✅ `state: null` 보존. terminal prune 반복 트리거 방지 |
+| `DATE_TOGGLE_CYCLE`의 `state` = `REFRESHING_SLOTS` | ✅ 컨텍스트가 아닌 명시값 보존 |
+| 시계 보정 **전** `serverAt` 빈칸 (4건) | ✅ `ctx.serverAt()`의 `serverClockReady` 분기 |
+| 시계 보정 **후** `serverAt` 채워짐 (39건) | ✅ 빈칸 0 |
+| `AVAILABILITY_SHADOW`가 `SELECTING_DATE`로 스탬프됨 | ✅ `ctx.state()`가 동적으로 동작 |
+| `seq` 연속, `droppedCount` 0 | ✅ run event 유실 없음 |
+| `RUN_TERMINATED` 뒤에 `CLOCK_SAMPLE` 2건 | ✅ `finally` 블록 순서 보존 |
+
+### payload 키 집합
+
+전 trace code에서 **계약 밖 키 0건**이다. 코드가 만들 수 있는 키 집합과
+대조했다.
+
+```
+CLOCK_SYNCED bootstrap   16 = 15 + eventKind
+CLOCK_SYNCED armed       17 = 16 + clockArmLeadMs   ← 마지막에 덧붙는 것까지
+CLOCK_SAMPLE             11 = 11
+DATE_TOGGLE_CYCLE        20 = 20  전부 존재
+SLOT_DETECTED            21 = 19 + eventKind + state
+AVAILABILITY_SHADOW      body 28 / wake_result 20 / dom_compare 22
+PREPARATION_OBSERVED     19건 전부 계약 내
+```
+
+`PREPARATION_OBSERVED`에는 coordinator의 `conditionAttributes`가 뒤에
+펼쳐진다(`preparationTarget`, `targetVisible`, `personControlReady` 등).
+이들은 `main`에도 있던 키이며 관측 계층이 만들지 않는다.
+
+### 실제 배선에서 확인된 관측 경로
+
+`RunObserver`가 fake가 아니라 실제 `TraceLogger`와 결합된 상태다.
+
+| 메서드 | 확인 |
+|---|---|
+| `preparation()` | ✅ 19건. `stage_start`·`condition_changed`·`dispatch_before`·`dispatch_after`·`decision` 전부 |
+| `availabilityBody()` | ✅ 4건. `POPULATED`·`IRRELEVANT` |
+| `wakeResult()` | ✅ |
+| `availabilityDom()` | ✅ |
+| `toggleCycle()` | ✅ |
+| `clockSamples()` | ✅ 2건 |
+| `event()` | ✅ `STATE_CHANGED`·`ACTION_PERFORMED`·`SLOT_DETECTED` |
+
+### 실행으로 덮이지 않은 경로
+
+자동 테스트로는 덮여 있으나 이번 실사이트 실행에서는 트리거되지 않았다.
+
+| 메서드 | 이유 |
+|---|---|
+| `slotClicked()` | dry-run은 슬롯을 클릭하지 않는다 |
+| `runFailed()`, `failureData()` | 실패가 발생하지 않았다 |
+| `emptyExit()` | `EXACT EMPTY` 응답이 없었다 |
+| `stateChanged()` breadcrumb 정책 | 아래 참조 |
+
+`stateChanged()`는 성공한 실행으로는 확인할 수 없다. `DiagnosticRecorder`의
+`breadcrumb()`은 메모리 링에만 쌓고(`recorder.ts:38`), `failure()`가
+일어나야 전송한다. 그래서 `DRY_RUN_COMPLETED` 실행의 진단 번들은
+`dom-snapshots.jsonl`이 비어 있다(`snapshots: []`). **이 자체가 정상이며
+리팩터 전과 동일한 동작이다.** breadcrumb 정책 검증은 자동 테스트에
+의존한다.
+
+### 원본 보관
+
+CSV와 진단 번들은 저장소에 커밋하지 않았다. 동작 무변경 확인이 목적이고
+`docs/evidence/` 규약은 제품 계약의 회귀 근거를 보관하는 용도이기 때문이다.
+필요해지면 `docs/evidence/live-runs/2026-08-07/`에 규약대로 넣는다.
 
 ## 남긴 것
 
