@@ -25,6 +25,7 @@ export interface StageSnapshot {
 const MAX_ITEMS = 8;
 const SNIPPET_LEN = 160;
 const CATCHPAY_PIN_HEADING = "캐치페이 비밀번호 입력";
+const SUCCESS_PATH = "/ct/mydining/my/planned";
 
 function urlKind(document: Document): StageSnapshot["urlKind"] {
   if (document.location.pathname === "/ct/reservation/form") return "reservation_form";
@@ -82,10 +83,11 @@ export function captureStageSnapshot(document: Document): StageSnapshot {
     };
   }
   const dialogEl = findActiveDialog(document) ?? findVisiblePresentationSheet(document);
-  // 예약 폼의 매장명 h1과 최종 CTA는 top-bar/fixed bar에 있어 main 밖이다. main으로 범위를
-  // 좁히면 실패 스냅샷이 "제목 없음"으로 남는다(20-design.md §4.5).
+  // 예약 폼과 성공 화면의 제목 h1·최종 CTA는 top-bar/fixed bar에 있어 main 밖이다. main으로
+  // 범위를 좁히면 실패 스냅샷이 "제목 없음"으로 남는다(20-design.md §4.5).
+  const wholeDocument = kind === "reservation_form" || document.location.pathname === SUCCESS_PATH;
   const container: ParentNode = dialogEl
-    ?? (kind === "reservation_form" ? document : document.querySelector("main") ?? document.body);
+    ?? (wholeDocument ? document : document.querySelector("main") ?? document.body);
   const headings = visibleAll<HTMLElement>(container, 'h1, h2, [role="heading"]')
     .map((el) => safeText(el.textContent)).filter(Boolean).slice(0, MAX_ITEMS);
   const buttonEls = visibleAll<HTMLButtonElement>(container, "button").slice(0, MAX_ITEMS);

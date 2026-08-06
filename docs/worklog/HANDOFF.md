@@ -7,12 +7,16 @@
 
 `codex/fix-form-intent-and-final-button` — 예약 폼 변형 복원력
 ([SP-022/01](../specs/catchpay-reservation-completion/01-form-variant-resilience/00-index.md)).
-`intent_mismatch` 원인(시각 표기 불일치)과 `예약하기` CTA 변형을
-수정하고 실패 근거 관측을 추가했다. `npm run check` 534/534 통과.
+`intent_mismatch` 원인(시각 표기 불일치), `예약하기` CTA 변형,
+`예약을 완료했습니다` 완료 문구 변형을 수정하고 실패 근거 관측을
+추가했다. `npm run check` 538/538 통과.
 
-**병합 전 조건:** 실사이트 E2E는 사용자가 진행하기로 했고 아직
-완료되지 않았다. `40-verification.md`의 확인 항목을 채우기 전에는
-병합하지 않는다.
+1차 사용자 E2E(`run-fd532ce8`)에서 폼 판정과 최종 제출은 통과해 실제
+예약이 생성됐으나 완료 문구 불일치로 `COMPLETED`에 도달하지 못했다.
+그 실측(site-behavior §12.22)으로 완료 문구 판정을 수정했다.
+
+**병합 전 조건:** 수정 dist로 2차 실사이트 E2E가 필요하다.
+`40-verification.md`의 2차 항목을 채우기 전에는 병합하지 않는다.
 
 ## 현재 제품 상태
 

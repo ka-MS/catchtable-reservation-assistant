@@ -41,6 +41,7 @@ export type CompletionTelemetryPhase =
   | "pin_dispatch"
   | "success_observed";
 
+const SUCCESS_PATH = "/ct/mydining/my/planned";
 const RESULT_TIMEOUT_MS = 15_000;
 const PIN_APPEARANCE_TIMEOUT_MS = 15_000;
 const PIN_POLL_MS = 100;
@@ -85,7 +86,7 @@ function successful(
   inspection: ReservationFormInspection,
 ): inspection is Extract<ReservationFormInspection, { kind: "success" }> {
   return inspection.kind === "success"
-    && inspection.facts.path === "/ct/mydining/my/planned"
+    && inspection.facts.path === SUCCESS_PATH
     && inspection.facts.matchedMessage
     && inspection.facts.listingMatch;
 }
@@ -323,21 +324,39 @@ export class CompletionCoordinator {
     signal: AbortSignal,
   ): Promise<CompletionResult> {
     const deadline = this.deps.now() + RESULT_TIMEOUT_MS;
+    let last: ReservationFormInspection | null = null;
     while (!signal.aborted && this.deps.now() < deadline) {
       const inspection = this.deps.adapter.inspect(inspectOptions);
+      last = inspection;
       if (successful(inspection)) {
         return this.completed(inspection);
       }
       if (!(await this.deps.sleep(50, signal))) break;
     }
+    // 성공 세 조건 중 무엇이 어긋났는지 남긴다. 이게 없으면 실예약이 생성된 뒤의 인계에서
+    // 원인을 특정할 수 없다.
+    const evidence: TraceAttributes = last?.kind === "success"
+      ? {
+        successInspectionKind: "success",
+        successPathMatched: last.facts.path === SUCCESS_PATH,
+        successPath: last.facts.path,
+        successMessageMatched: last.facts.matchedMessage,
+        successListingMatched: last.facts.listingMatch,
+      }
+      : { successInspectionKind: last?.kind ?? "none" };
     return signal.aborted
-      ? { kind: "handed_off", message: "최종 제출 뒤 중지 요청을 받아 결과를 확정할 수 없습니다.", claimed: true }
-      : { kind: "handed_off", message: "최종 제출 뒤 성공 결과를 확인하지 못했습니다. 자동 재제출하지 않습니다.", claimed: true };
+      ? { kind: "handed_off", message: "최종 제출 뒤 중지 요청을 받아 결과를 확정할 수 없습니다.", claimed: true, evidence }
+      : {
+        kind: "handed_off",
+        message: "최종 제출 뒤 성공 결과를 확인하지 못했습니다. 자동 재제출하지 않습니다.",
+        claimed: true,
+        evidence,
+      };
   }
 
   private completed(inspection: Extract<ReservationFormInspection, { kind: "success" }>): CompletionResult {
     this.telemetry("success_observed", {
-      successPathMatched: inspection.facts.path === "/ct/mydining/my/planned",
+      successPathMatched: inspection.facts.path === SUCCESS_PATH,
       successMessageMatched: inspection.facts.matchedMessage,
       successListingMatched: inspection.facts.listingMatch,
     });

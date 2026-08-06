@@ -107,7 +107,10 @@ const SUCCESS_PATH = "/ct/mydining/my/planned";
  * 덮는다. suffix 앵커라 `예약하기 전에…` 류 안내 버튼은 걸리지 않고, 느슨해진 매칭의 대가는
  * 호출부의 "정확히 1개" 조건이 받는다. */
 const FINAL_BUTTON_PATTERN = /예약하기$/;
-const COMPLETION_MESSAGE = "자동결제로 예약을 완료했습니다";
+/** 실측된 두 완료 문구를 한 규칙으로 덮는다: `자동결제로 예약을 완료했습니다`(§12.5/§12.16)와
+ * `예약을 완료했습니다`(§12.22). 최종 버튼과 같은 suffix 앵커이며, 부모의 후속 안내까지 포함한
+ * 텍스트는 suffix가 달라 걸리지 않는다. */
+const COMPLETION_MESSAGE_PATTERN = /예약을 완료했습니다$/;
 const PIN_HEADING = "캐치페이 비밀번호 입력";
 const REQUIRED_MARK = "[필수]";
 const OPTIONAL_MARK = "[선택]";
@@ -485,11 +488,13 @@ function pinKeypadValid(document: Document, dialog: HTMLElement): boolean {
 
 // ---- success ----
 
-function hasExactMessageText(document: Document, expected: string): boolean {
+/** 완료 문구는 가장 작은 visible element 기준으로 판정한다(§12.16) — 부모의 후속 안내까지
+ * 삼키지 않기 위함이다. */
+function hasCompletionMessage(document: Document): boolean {
   const matches = visibleAll<HTMLElement>(
     document,
     "div, p, span, strong, h1, h2, h3, h4, h5, h6, [role=heading]",
-  ).filter((element) => normalizedText(element.textContent) === normalizedText(expected));
+  ).filter((element) => COMPLETION_MESSAGE_PATTERN.test(normalizedText(element.textContent)));
   return matches.some((element) =>
     !matches.some((other) => other !== element && element.contains(other)));
 }
@@ -512,7 +517,7 @@ export class ReservationFormAdapter {
     if (document.location.pathname === SUCCESS_PATH) {
       const facts: CompletionFacts = {
         path: document.location.pathname,
-        matchedMessage: hasExactMessageText(document, COMPLETION_MESSAGE),
+        matchedMessage: hasCompletionMessage(document),
         listingMatch: listingMatches(document, options.successExpectation),
       };
       return { kind: "success", facts, fingerprint: fp("rf-success", facts) };

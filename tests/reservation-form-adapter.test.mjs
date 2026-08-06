@@ -1053,6 +1053,31 @@ test("완료 문구가 일반 div의 strong·text·br·span으로 분할돼도 l
   assert.equal(inspection.facts.listingMatch, true);
 });
 
+// site-behavior.md §12.22: 완료 문구에서 `자동결제`가 사라진 변형.
+test("완료 문구가 `예약을 완료했습니다`인 변형도 세 조건을 모두 만족한다", () => {
+  const document = documentFromFixture("catchpay-success-short-message.html", SUCCESS_URL);
+  const inspection = new ReservationFormAdapter(document)
+    .inspect(options(SUSHI_EXPECTATION, SUSHI_SUCCESS_EXPECTATION));
+  assert.equal(inspection.kind, "success");
+  assert.deepEqual(inspection.facts, {
+    path: "/ct/mydining/my/planned",
+    matchedMessage: true,
+    listingMatch: true,
+  });
+});
+
+test("완료 문구 판정은 후속 안내를 함께 삼킨 부모 텍스트를 받지 않는다", () => {
+  const document = documentFromFixture("catchpay-success-short-message.html", SUCCESS_URL);
+  const span = [...document.querySelectorAll("span")]
+    .find((element) => element.textContent === "예약을 완료했습니다");
+  // 문구를 부모의 후속 안내 뒤로 옮기면 어떤 leaf도 문구로 끝나지 않는다.
+  span.textContent = "예약을 완료했습니다 초대장을 보내 예약 정보를 공유해 주세요.";
+  const inspection = new ReservationFormAdapter(document)
+    .inspect(options(SUSHI_EXPECTATION, SUSHI_SUCCESS_EXPECTATION));
+  assert.equal(inspection.kind, "success");
+  assert.equal(inspection.facts.matchedMessage, false);
+});
+
 test("성공 세 조건 각각 누락은 success·COMPLETED 근거가 아니다", () => {
   const wrongPathDoc = documentFromFixture("catchpay-success.html", "https://app.catchtable.co.kr/ct/mydining/my/history");
   const wrongPath = new ReservationFormAdapter(wrongPathDoc).inspect(options(ZERO_EXPECTATION, ZERO_SUCCESS_EXPECTATION));

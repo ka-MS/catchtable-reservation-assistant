@@ -171,12 +171,55 @@ failureData()                         → terminal 이벤트 attributes + 진단
 | `intent_mismatch` evidence | 불리언 분해 3개가 실제 값으로 실림 |
 | 결제 행 텍스트 비저장 | evidence에 카드 라벨 문자열 부재 |
 
-## 6. 범위 밖 재확인
+## 6. 완료 문구 판정 (1차 E2E 뒤 추가)
 
-`COMPLETION_MESSAGE`는 바꾸지 않는다. 폼에서 `자동결제` 문구가 사라진
-변형이 확인됐으므로 완료 문구도 바뀌었을 개연성이 있으나 성공 화면은
-미실측이다. 실측 없이 성공 판정을 완화하면 **오성공**이 되므로,
-안전한 실패(결과 불명 인계) 쪽에 남겨 둔다.
+착수 시에는 미실측이라 범위 밖이었다. 1차 E2E에서 성공 화면을
+실측(§12.22)해 근거가 생겼으므로 최종 버튼과 같은 규칙을 적용한다.
+
+```
+COMPLETION_MESSAGE = "자동결제로 예약을 완료했습니다"   (정확일치)
+  ↓
+COMPLETION_MESSAGE_PATTERN = /예약을 완료했습니다$/      (정규화 텍스트 suffix)
+```
+
+### 근거
+
+실측된 두 문구 `자동결제로 예약을 완료했습니다`(§12.5/§12.16)와
+`예약을 완료했습니다`(§12.22)를 함께 받는다.
+
+### 유지하는 안전장치
+
+§12.16의 "가장 작은 visible element" 규칙은 그대로다. 부모 element는
+후속 안내(`초대장을 보내 예약 정보를 공유해 주세요.`)까지 포함하므로
+suffix가 달라 걸리지 않는다. 즉 완화는 접두사 방향으로만 열리고 부모
+방향으로는 닫혀 있다.
+
+`자동결제` 변형에서는 부모 div(`자동결제로 예약을 완료했습니다`)와
+자식 span(`예약을 완료했습니다`)이 모두 매칭되지만, "다른 매칭을
+포함하지 않는 매칭이 하나 이상" 조건이 자식 span으로 충족된다.
+
+### 성공 판정 전체는 그대로
+
+`successful()`은 여전히 path·문구·목록 **세 조건 AND**다. 완화한 것은
+문구 하나의 표기 범위이며 조건 수를 줄이지 않았다. 오성공 위험은
+늘지 않는다.
+
+## 7. 성공 판정 실패 근거 (1차 E2E 뒤 추가)
+
+`observeSuccess()`가 결과 불명으로 인계할 때 마지막 inspection의
+`path`/`matchedMessage`/`listingMatch`를 evidence로 남긴다.
+`success_observed` telemetry는 성공 시에만 발생하므로, 이것이 없으면
+**실예약이 생성된 뒤의 인계**에서 원인을 특정할 수 없다.
+
+| 키 | 값 |
+|---|---|
+| `successInspectionKind` | `success` 또는 그 시점 inspection kind |
+| `successPathMatched` / `successPath` | 성공 경로 도달 여부 |
+| `successMessageMatched` | 완료 문구 일치 |
+| `successListingMatched` | 방문예정 목록 일치 |
+
+스냅샷 whole-document 스코핑(§4.5)을 성공 경로에도 적용한다. 성공
+화면의 `h1 마이다이닝`도 `main` 밖 top bar에 있어 같은 이유로 빠진다.
 
 ## 7. 검증 분담
 

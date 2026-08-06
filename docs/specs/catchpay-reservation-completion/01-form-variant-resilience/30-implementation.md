@@ -1,7 +1,7 @@
 # 30 구현
 
 **브랜치:** `codex/fix-form-intent-and-final-button`
-**기준:** `npm run check` 534/534 통과, `git diff --check` 통과
+**기준:** `npm run check` 538/538 통과, `git diff --check` 통과
 
 ## 변경 파일
 
@@ -95,6 +95,33 @@ baseline 실패와 루프 중 폼 변경 인계 두 곳에서 채운다.
 `tests/fixtures/catchpay-zero-form-24h-cta.html` — §12.21 실측 재현.
 카드 식별 문자열은 넣지 않았다.
 
-## 6. 남은 작업
+## 6. 1차 E2E 뒤 추가 구현
 
-실사이트 E2E는 사용자가 진행한다. `40-verification.md` 참조.
+사용자 E2E(`run-fd532ce8`)에서 1~5가 동작해 실제 예약이 생성됐으나
+완료 문구 불일치로 `COMPLETED`에 도달하지 못했다(10-analysis §7).
+그 자리에서 성공 화면을 실측(§12.22)해 다음을 추가했다.
+
+| 파일 | 변경 |
+|---|---|
+| `src/content/adapter/reservation-form.ts` | `COMPLETION_MESSAGE` 정확일치 → `/예약을 완료했습니다$/` suffix, `hasExactMessageText` → `hasCompletionMessage` |
+| `src/content/completion-coordinator.ts` | `observeSuccess` 인계에 path·문구·목록 evidence, `SUCCESS_PATH` 상수화 |
+| `src/content/adapter/snapshot.ts` | whole-document 스코핑을 성공 경로에도 적용 |
+
+`successful()`의 세 조건 AND는 그대로다. 완화는 문구 표기 범위에만
+적용했고 조건 수는 줄이지 않았다.
+
+### 추가 테스트 (534 → 538)
+
+| 테스트 | 고정 대상 |
+|---|---|
+| `예약을 완료했습니다` 변형의 세 조건 모두 만족 | §12.22 회귀 |
+| 후속 안내를 삼킨 부모 텍스트는 문구로 받지 않음 | suffix 완화의 경계 |
+| `예약하기` CTA + 짧은 완료 문구로 `COMPLETED` 종료 | 완주 경로 통합 |
+| 결과 불명 인계의 세 조건 분해 evidence | 진단 가능성 |
+
+새 fixture `tests/fixtures/catchpay-success-short-message.html` — §12.22 재현.
+
+## 7. 남은 작업
+
+수정 dist로 재실행하는 실사이트 E2E는 사용자가 진행한다.
+`40-verification.md` 참조.

@@ -100,6 +100,64 @@ test("0원 폼은 필수 입력·약관 뒤 outer claim 1회와 성공 근거로
     .some((input) => input.checked), false);
 });
 
+// site-behavior.md §12.22: `자동결제`가 빠진 완료 문구 변형도 COMPLETED로 끝나야 한다.
+test("완료 문구가 `예약을 완료했습니다`인 성공 화면도 COMPLETED로 끝난다", async () => {
+  const document = new JSDOM(fixture("catchpay-zero-form-24h-cta.html"), { url: FORM_URL }).window.document;
+  [...document.querySelectorAll("button")]
+    .find((button) => button.textContent?.trim() === "예약하기")
+    .addEventListener("click", () => showSuccess(document, "catchpay-success-short-message.html"));
+  const { coordinator, telemetry } = harness(document);
+
+  const result = await coordinator.run(config({
+    reservationDate: "2026-09-08",
+  }), {
+    shopSlug: "hoshikai",
+    shopDisplayName: "스시 호시카이",
+    reservationDate: "2026-09-08",
+    selectedMinutes: 1110,
+    personCount: 2,
+  }, new AbortController().signal, () => undefined);
+
+  assert.equal(result.kind, "completed", JSON.stringify(result));
+  const success = telemetry.find((event) => event.phase === "success_observed");
+  assert.deepEqual(success.attributes, {
+    successPathMatched: true,
+    successMessageMatched: true,
+    successListingMatched: true,
+  });
+});
+
+test("성공 결과 미확인 인계는 세 조건 중 무엇이 어긋났는지 근거로 남긴다", async () => {
+  const document = new JSDOM(fixture("catchpay-zero-form-24h-cta.html"), { url: FORM_URL }).window.document;
+  [...document.querySelectorAll("button")]
+    .find((button) => button.textContent?.trim() === "예약하기")
+    .addEventListener("click", () => {
+      showSuccess(document, "catchpay-success-short-message.html");
+      // 문구만 어긋난 상태를 만든다. path와 방문예정 목록은 그대로 일치한다.
+      [...document.querySelectorAll("span")]
+        .find((element) => element.textContent === "예약을 완료했습니다")
+        .textContent = "예약이 접수되었습니다";
+    });
+  const { coordinator } = harness(document);
+
+  const result = await coordinator.run(config({
+    reservationDate: "2026-09-08",
+  }), {
+    shopSlug: "hoshikai",
+    shopDisplayName: "스시 호시카이",
+    reservationDate: "2026-09-08",
+    selectedMinutes: 1110,
+    personCount: 2,
+  }, new AbortController().signal, () => undefined);
+
+  assert.equal(result.kind, "handed_off");
+  assert.equal(result.claimed, true);
+  assert.equal(result.evidence.successInspectionKind, "success");
+  assert.equal(result.evidence.successPathMatched, true);
+  assert.equal(result.evidence.successListingMatched, true);
+  assert.equal(result.evidence.successMessageMatched, false);
+});
+
 test("required-only group의 지연 반영을 bounded 확인하고 재클릭 없이 완료한다", async () => {
   const document = new JSDOM(fixture("catchpay-paid-form.html"), { url: FORM_URL }).window.document;
   const requiredLabels = [...document.querySelectorAll("label")]
