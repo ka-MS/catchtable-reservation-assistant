@@ -106,3 +106,22 @@ test("renders a stage snapshot line", () => {
   assert.match(line, /확인 \| 취소/);
   assert.match(line, /추가 확인이 필요합니다/);
 });
+
+test("dialog가 없는 예약 폼 스냅샷은 heading을 제목으로 쓰고 폼 판정을 분해해 보여준다", () => {
+  const line = formatEventDetail({
+    at: 0, serverAt: null, runId: "r", kind: "state", message: "인계",
+    data: {
+      state: "HANDED_OFF", snapshotFingerprint: "ss-1", snapshotDialogTitle: "", snapshotDialogLabel: "",
+      snapshotHeadings: "스시 호시카이", snapshotButtons: "닫기 | 예약하기",
+      snapshotTextSnippet: "09월 08일(화) · 오후 18:30 · 2명",
+      formUnknownCode: "intent_mismatch",
+      formShopNameMatch: true, formDateMatch: false, formPersonMatch: true,
+      formFinalButtonCount: 1, formAmounts: "0",
+    },
+  });
+  assert.doesNotMatch(line, /제목 없음/);
+  assert.match(line, /스냅샷: 스시 호시카이/);
+  assert.match(line, /폼 판정\(intent_mismatch\)/);
+  assert.match(line, /매장 일치 · 날짜 불일치 · 인원 일치/);
+  assert.match(line, /최종버튼 1개/);
+});

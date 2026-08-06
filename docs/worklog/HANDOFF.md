@@ -1,7 +1,34 @@
 # HANDOFF
 
-**갱신:** 2026-07-28
-**Blocking backlog:** 없음
+**갱신:** 2026-08-06
+**Blocking backlog:** 없음 (`main` 기준)
+
+## 진행 중 브랜치
+
+`codex/fix-form-intent-and-final-button` — 예약 폼 변형 복원력
+([SP-022/01](../specs/catchpay-reservation-completion/01-form-variant-resilience/00-index.md)).
+`intent_mismatch` 원인(시각 표기 불일치), `예약하기` CTA 변형,
+`예약을 완료했습니다` 완료 문구 변형을 수정하고 실패 근거 관측을
+추가했다. `npm run check` 538/538 통과.
+
+1차 사용자 E2E(`run-fd532ce8`)에서 폼 판정과 최종 제출은 통과해 실제
+예약이 생성됐으나 완료 문구 불일치로 `COMPLETED`에 도달하지 못했다.
+그 실측(site-behavior §12.22)으로 완료 문구 판정을 수정했다.
+
+2차 E2E에서 다른 매장 3곳이 모두 `COMPLETED`로 완주했다고 사용자가
+확인했다(§12.23). 서로 다른 4개 매장에서 suffix 판정이 성립한다.
+**병합 전 조건은 해제됐다.**
+
+성공 실행 번들(`run-c6782244`, mangam)로 `success_observed` 세 boolean,
+제출 1회, 비저장 경계를 대조 확인했다. 성공 화면 스냅샷 제목과 실패
+경로 evidence는 성공 실행이 실패 스냅샷을 남기지 않아 미기록으로
+남는다. 병합을 막는 항목은 아니다.
+
+**별도 확인 대상:** 같은 번들에서 `form_ready`가
+`emptyRequiredMultilineCount=1`을 기록했는데
+`requiredFormDefaultAnswer`가 빈 문자열인데도 완주했다. 코드 경로상
+인계돼야 하는 조합이라 `[필수]` textarea 판정의 결정성을 확인해야
+한다. 이번 패키지 범위 밖이고 완주를 막지 않았다.
 
 ## 현재 제품 상태
 

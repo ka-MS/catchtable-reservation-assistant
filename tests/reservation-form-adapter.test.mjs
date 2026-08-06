@@ -21,16 +21,16 @@ const PAID_FORM_URL = "https://app.catchtable.co.kr/ct/reservation/form?openRegi
 const SUCCESS_URL = "https://app.catchtable.co.kr/ct/mydining/my/planned";
 
 // 우블랑(A/C) 기대값 — site-behavior.md §12.3/§12.4, header > h1 텍스트는 §12.8.
-const ZERO_EXPECTATION = { shopDisplayName: "우블랑", dateText: "08월 10일", timeText: "오후 12:00", personText: "2명" };
+const ZERO_EXPECTATION = { shopDisplayName: "우블랑", dateText: "08월 10일", personText: "2명" };
 const ZERO_SUCCESS_EXPECTATION = {
-  shopDisplayName: "우블랑", listingDateText: "2026.08.10 (월)", timeText: "오후 12:00", personText: "2명",
+  shopDisplayName: "우블랑", listingDateText: "2026.08.10 (월)", personText: "2명",
 };
 // 더피제리아마켓(B) 기대값 — site-behavior.md §12.6, header > h1/방문예정 표기는 §12.7-§12.8.
 const PAID_EXPECTATION = {
-  shopDisplayName: "더피제리아마켓 하남미사", dateText: "08월 11일", timeText: "오전 11:00", personText: "2명",
+  shopDisplayName: "더피제리아마켓 하남미사", dateText: "08월 11일", personText: "2명",
 };
 const PAID_SUCCESS_EXPECTATION = {
-  shopDisplayName: "더피제리아마켓 하남미사", listingDateText: "2026.08.11 (화)", timeText: "오전 11:00", personText: "2명",
+  shopDisplayName: "더피제리아마켓 하남미사", listingDateText: "2026.08.11 (화)", personText: "2명",
 };
 const MAX_AMOUNT = 500_000;
 
@@ -169,18 +169,156 @@ test("본문·고정 하단 금액 요약이 함께 있으면 anchor별 단일 �
 
 // ---- 예약 intent 불일치 ----
 
-test("날짜·시간·인원 불일치는 ready가 아니다", () => {
+test("날짜·인원 불일치는 ready가 아니다", () => {
   const document = documentFromFixture("catchpay-zero-form.html", FORM_URL);
   const adapter = new ReservationFormAdapter(document);
   const wrongDate = adapter.inspect(options({ ...ZERO_EXPECTATION, dateText: "09월 01일" }, ZERO_SUCCESS_EXPECTATION));
   assert.equal(wrongDate.kind, "unknown");
   assert.equal(wrongDate.code, "intent_mismatch");
-  const wrongTime = adapter.inspect(options({ ...ZERO_EXPECTATION, timeText: "오후 6:00" }, ZERO_SUCCESS_EXPECTATION));
-  assert.equal(wrongTime.kind, "unknown");
-  assert.equal(wrongTime.code, "intent_mismatch");
   const wrongPerson = adapter.inspect(options({ ...ZERO_EXPECTATION, personText: "4명" }, ZERO_SUCCESS_EXPECTATION));
   assert.equal(wrongPerson.kind, "unknown");
   assert.equal(wrongPerson.code, "intent_mismatch");
+  const wrongShop = adapter.inspect(options({ ...ZERO_EXPECTATION, shopDisplayName: "다른 매장" }, ZERO_SUCCESS_EXPECTATION));
+  assert.equal(wrongShop.kind, "unknown");
+  assert.equal(wrongShop.code, "intent_mismatch");
+});
+
+// site-behavior.md §12.21: 같은 1110분을 상단 "오후 6시 30분", 하단 "오후 18:30"으로 렌더한다.
+// 시각 표기는 판정에 쓰지 않으므로 두 표기 모두 ready에 도달해야 한다.
+const SUSHI_EXPECTATION = { shopDisplayName: "스시 호시카이", dateText: "09월 08일", personText: "2명" };
+const SUSHI_SUCCESS_EXPECTATION = {
+  shopDisplayName: "스시 호시카이", listingDateText: "2026.09.08 (화)", personText: "2명",
+};
+
+test("12시간제·24시간제 시각 표기가 섞인 요약도 ready로 판정한다", () => {
+  const document = documentFromFixture("catchpay-zero-form-24h-cta.html", FORM_URL);
+  const inspection = new ReservationFormAdapter(document)
+    .inspect(options(SUSHI_EXPECTATION, SUSHI_SUCCESS_EXPECTATION));
+  assert.equal(inspection.kind, "ready");
+  assert.equal(inspection.facts.currentAmountKrw, 0);
+  assert.equal(inspection.facts.catchPayChecked, true);
+  assert.equal(inspection.facts.generalPaymentSelected, false);
+});
+
+test("요약이 24시간제 한 벌뿐이어도, 12시간제 한 벌뿐이어도 날짜·인원으로 판정한다", () => {
+  // 남기는 표기만 다르게 하려고 다른 한 벌을 제거한다. 하단 금액 블록과 CTA는 그대로 둔다.
+  const summaryElement = (document, needle) => [...document.querySelectorAll("p, div")]
+    .filter((element) => element.textContent?.includes(needle))
+    .at(-1);
+  for (const [keep, drop] of [["오후 18:30", "오후 6시 30분"], ["오후 6시 30분", "오후 18:30"]]) {
+    const document = documentFromFixture("catchpay-zero-form-24h-cta.html", FORM_URL);
+    summaryElement(document, drop).remove();
+    const inspection = new ReservationFormAdapter(document)
+      .inspect(options(SUSHI_EXPECTATION, SUSHI_SUCCESS_EXPECTATION));
+    assert.equal(inspection.kind, "ready", keep);
+  }
+});
+
+// ---- 최종 버튼 판정 — site-behavior.md §12.3/§12.4/§12.21, 20-design.md §3 ----
+
+test("최종 버튼은 `예약하기`로 끝나는 유일한 버튼이며 두 실측 라벨을 모두 받는다", () => {
+  for (const [fixture, expectation, successExpectation, label] of [
+    ["catchpay-zero-form-24h-cta.html", SUSHI_EXPECTATION, SUSHI_SUCCESS_EXPECTATION, "예약하기"],
+    ["catchpay-zero-form.html", ZERO_EXPECTATION, ZERO_SUCCESS_EXPECTATION, "자동결제로 예약하기"],
+  ]) {
+    const document = documentFromFixture(fixture, FORM_URL);
+    let clicks = 0;
+    const target = [...document.querySelectorAll("button")]
+      .find((button) => button.textContent?.trim() === label);
+    target.addEventListener("click", () => { clicks += 1; });
+    const adapter = new ReservationFormAdapter(document);
+    const inspection = adapter.inspect(options(expectation, successExpectation));
+    assert.equal(inspection.kind, "ready", label);
+    assert.equal(adapter.submitOuter(inspection.fingerprint), true, label);
+    assert.equal(clicks, 1, label);
+  }
+});
+
+test("`예약하기`로 끝나는 버튼이 둘이면 제출하지 않고 ambiguous_final_button으로 인계한다", () => {
+  const document = documentFromFixture("catchpay-zero-form-24h-cta.html", FORM_URL);
+  const extra = document.createElement("button");
+  extra.type = "button";
+  extra.textContent = "자동결제로 예약하기";
+  document.body.append(extra);
+  let clicks = 0;
+  for (const button of document.querySelectorAll("button")) {
+    button.addEventListener("click", () => { clicks += 1; });
+  }
+  const adapter = new ReservationFormAdapter(document);
+  const inspection = adapter.inspect(options(SUSHI_EXPECTATION, SUSHI_SUCCESS_EXPECTATION));
+  assert.equal(inspection.kind, "unknown");
+  assert.equal(inspection.code, "ambiguous_final_button");
+  assert.equal(adapter.submitOuter(inspection.fingerprint), false);
+  assert.equal(clicks, 0);
+});
+
+test("`예약하기`를 포함해도 suffix가 아닌 안내 문구 버튼은 최종 버튼이 아니다", () => {
+  const document = documentFromFixture("catchpay-zero-form-24h-cta.html", FORM_URL);
+  const notice = document.createElement("button");
+  notice.type = "button";
+  notice.textContent = "예약하기 전에 확인하세요";
+  document.body.append(notice);
+  assert.equal(
+    new ReservationFormAdapter(document).inspect(options(SUSHI_EXPECTATION, SUSHI_SUCCESS_EXPECTATION)).kind,
+    "ready",
+  );
+});
+
+// ---- 실패 근거 관측 — 20-design.md §4 ----
+
+test("intent_mismatch는 어느 비교가 깨졌는지 불리언으로 분해해 남긴다", () => {
+  const document = documentFromFixture("catchpay-zero-form-24h-cta.html", FORM_URL);
+  const inspection = new ReservationFormAdapter(document)
+    .inspect(options({ ...SUSHI_EXPECTATION, dateText: "09월 09일" }, SUSHI_SUCCESS_EXPECTATION));
+  assert.equal(inspection.code, "intent_mismatch");
+  assert.equal(inspection.evidence.formUnknownCode, "intent_mismatch");
+  assert.equal(inspection.evidence.formShopNameMatch, true);
+  assert.equal(inspection.evidence.formPersonMatch, true);
+  assert.equal(inspection.evidence.formDateMatch, false);
+  assert.equal(inspection.evidence.formShopDisplayName, "스시 호시카이");
+  assert.equal(inspection.evidence.formExpectedDateText, "09월 09일");
+  assert.match(inspection.evidence.formSummaryTexts, /오후 18:30/);
+  assert.match(inspection.evidence.formButtonTexts, /예약하기/);
+  assert.equal(inspection.evidence.formFinalButtonCount, 1);
+  assert.equal(inspection.evidence.formAmounts, "0");
+  assert.equal(inspection.evidence.formHoldState, "active");
+});
+
+test("날짜·인원이 서로 다른 요약에 흩어져 있으면 결합 판정만 false로 남는다", () => {
+  const document = documentFromFixture("catchpay-zero-form-24h-cta.html", FORM_URL);
+  // 날짜만 있는 요약과 인원만 있는 요약으로 쪼갠다. 항목별 boolean은 둘 다 true지만
+  // 같은 element 안에서 함께 맞은 후보가 없으므로 intent는 불일치다.
+  const summaries = [...document.querySelectorAll("p, div")]
+    .filter((element) => /\d{1,2}월\s*\d{1,2}일/.test(element.textContent ?? ""));
+  summaries.at(-1).textContent = "09월 08일(화) · 오후 18:30 · 4명";
+  const top = [...document.querySelectorAll("p")]
+    .find((element) => element.textContent?.includes("오후 6시 30분"));
+  top.textContent = "09월 09일 (수) · 오후 6시 30분 · 2명";
+
+  const inspection = new ReservationFormAdapter(document)
+    .inspect(options(SUSHI_EXPECTATION, SUSHI_SUCCESS_EXPECTATION));
+  assert.equal(inspection.code, "intent_mismatch");
+  assert.equal(inspection.evidence.formDateMatch, true);
+  assert.equal(inspection.evidence.formPersonMatch, true);
+  assert.equal(inspection.evidence.formDatePersonMatch, false);
+});
+
+test("실패 근거는 결제 수단 행 텍스트를 담지 않고 개인정보를 마스킹한다", () => {
+  const document = documentFromFixture("catchpay-zero-form-24h-cta.html", FORM_URL);
+  const cardRow = document.querySelector('input[type="radio"][name="payment-type"]').closest("label");
+  cardRow.append(document.createTextNode("체크하나(외환)(151*)"));
+  const summary = [...document.querySelectorAll("div")]
+    .find((element) => element.textContent?.trim() === "2명");
+  summary.textContent = "2명 010-1234-5678 guest@example.com";
+  const inspection = new ReservationFormAdapter(document)
+    .inspect(options({ ...SUSHI_EXPECTATION, dateText: "09월 09일" }, SUSHI_SUCCESS_EXPECTATION));
+  const serialized = JSON.stringify(inspection.evidence);
+  assert.doesNotMatch(serialized, /체크하나/);
+  assert.doesNotMatch(serialized, /010-1234-5678/);
+  assert.doesNotMatch(serialized, /guest@example\.com/);
+  assert.match(serialized, /###/);
+  assert.equal(inspection.evidence.formPaymentRadioCount, 2);
+  assert.equal(inspection.evidence.formCatchPayChecked, true);
 });
 
 // ---- 매장명(header h1) 판정 — site-behavior.md §12.8/§12.12, 20-design.md §4.3 ----
@@ -729,10 +867,12 @@ test("PIN modal 아래 stable context는 접근성 은닉만 허용하고 값 �
   };
 
   assert.equal(matchesAfter(), true);
+  // 요약은 두 벌이고 판정은 그중 하나만 맞아도 통과하므로 두 벌 모두 바꿔야 stale intent다.
   assert.equal(matchesAfter((document) => {
-    const summary = [...document.querySelectorAll("p")]
-      .find((element) => element.textContent?.includes("오전 11:00"));
-    summary.textContent = summary.textContent.replace("08월 11일", "08월 12일");
+    for (const summary of document.querySelectorAll("p")) {
+      if (!summary.textContent?.includes("08월 11일")) continue;
+      summary.textContent = summary.textContent.replace("08월 11일", "08월 12일");
+    }
   }), false);
   assert.equal(matchesAfter((document) => {
     const radios = document.querySelectorAll('input[type="radio"][name="payment-type"]');
@@ -930,6 +1070,31 @@ test("완료 문구가 일반 div의 strong·text·br·span으로 분할돼도 l
   assert.equal(inspection.kind, "success");
   assert.equal(inspection.facts.matchedMessage, true);
   assert.equal(inspection.facts.listingMatch, true);
+});
+
+// site-behavior.md §12.22: 완료 문구에서 `자동결제`가 사라진 변형.
+test("완료 문구가 `예약을 완료했습니다`인 변형도 세 조건을 모두 만족한다", () => {
+  const document = documentFromFixture("catchpay-success-short-message.html", SUCCESS_URL);
+  const inspection = new ReservationFormAdapter(document)
+    .inspect(options(SUSHI_EXPECTATION, SUSHI_SUCCESS_EXPECTATION));
+  assert.equal(inspection.kind, "success");
+  assert.deepEqual(inspection.facts, {
+    path: "/ct/mydining/my/planned",
+    matchedMessage: true,
+    listingMatch: true,
+  });
+});
+
+test("완료 문구 판정은 후속 안내를 함께 삼킨 부모 텍스트를 받지 않는다", () => {
+  const document = documentFromFixture("catchpay-success-short-message.html", SUCCESS_URL);
+  const span = [...document.querySelectorAll("span")]
+    .find((element) => element.textContent === "예약을 완료했습니다");
+  // 문구를 부모의 후속 안내 뒤로 옮기면 어떤 leaf도 문구로 끝나지 않는다.
+  span.textContent = "예약을 완료했습니다 초대장을 보내 예약 정보를 공유해 주세요.";
+  const inspection = new ReservationFormAdapter(document)
+    .inspect(options(SUSHI_EXPECTATION, SUSHI_SUCCESS_EXPECTATION));
+  assert.equal(inspection.kind, "success");
+  assert.equal(inspection.facts.matchedMessage, false);
 });
 
 test("성공 세 조건 각각 누락은 success·COMPLETED 근거가 아니다", () => {

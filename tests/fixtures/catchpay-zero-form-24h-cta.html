@@ -1,0 +1,63 @@
+<!-- 실측 출처: docs/analysis/site-behavior.md §12.21 (스시 호시카이, 2026-08-06, 로그인, read-only).
+     /ct/reservation/form?isDepositFree=1&openRegisterCard=0 — 0원 CatchPay 변형이지만
+     §12.4와 두 가지가 다르다.
+     1) 요약 시각 표기가 두 벌이고 서로 다른 규칙이다.
+        상단 12시간제 "오후 6시 30분", 하단 24시간제 "오후 18:30" (같은 1110분).
+     2) 최종 CTA가 "자동결제로 예약하기"가 아니라 "예약하기"이고,
+        폼 문서 전체에 "자동결제" 문자열이 없다.
+     결제 수단 앵커는 §12.13과 같다: 첫 radio는 label text 없이 checked,
+     둘째 radio는 바깥 label "일반결제"에 disabled. 같은 행의 등록 카드 라벨은
+     기록 대상이 아니므로 fixture에도 카드 식별 문자열을 넣지 않는다. -->
+<header>
+  <div><div>
+    <button type="button" aria-label="닫기"></button>
+    <h1>스시 호시카이</h1>
+  </div></div>
+</header>
+<main>
+  <section>
+    <p>예약 정보</p>
+    <p>09월 08일 (화) · 오후 6시 30분 · 2명</p>
+  </section>
+
+  <section>
+    <p>결제 수단</p>
+    <label><label><input type="radio" name="payment-type" checked /></label></label>
+    <p>부담 없이 예약금 0원 결제</p>
+    <p>예약 찜 시간 자동 연장</p>
+    <label><input type="radio" name="payment-type" disabled />일반결제</label>
+  </section>
+
+  <section>
+    <p>총 결제 금액</p>
+    <p><s>230,000원</s> 0원</p>
+  </section>
+
+  <fieldset>
+    <p>[필수] 확인해주세요.</p>
+    <label><input type="checkbox" />10분 지연 시 예약이 취소될 수 있습니다.</label>
+    <label><input type="checkbox" />당일 인원·코스 변경이 불가합니다.</label>
+  </fieldset>
+
+  <fieldset>
+    <label><input type="checkbox" />모두 동의합니다.</label>
+    <label><input type="checkbox" />[필수] 예약 취소/변경에 대한 취소 수수료 정책 동의</label>
+    <label><input type="checkbox" />[필수] 개인정보 제3자 제공 동의 (캐치테이블페이)</label>
+  </fieldset>
+
+  <button type="button" role="alert">취소 · 노쇼 시 취소 수수료가 결제됩니다</button>
+
+  <p>7분간 예약 찜! 시간 내 예약을 완료해주세요.</p>
+</main>
+
+<div>
+  <p>예약금 0원</p>
+  <p>혜택 적용 중</p>
+  <div>
+    <div>09월 08일(화) · 오후 18:30 · </div>
+    <div>2명</div>
+  </div>
+  <p>결제금액</p>
+  <p><s>230,000원</s> 0원</p>
+  <button type="button"><span>예약하기</span></button>
+</div>

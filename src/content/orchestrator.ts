@@ -1399,6 +1399,7 @@ class RunSession {
         } else {
           return this.diagnosticHandOff(completion.message, {
             completionClaimed: completion.claimed,
+            ...completion.evidence,
           });
         }
       }

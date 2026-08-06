@@ -70,7 +70,12 @@ function eventDetail(event: TraceEvent): string {
   }
   if (typeof event.attributes.snapshotFingerprint === "string") {
     const stage = event.attributes.snapshotRunState ?? "-";
-    const title = event.attributes.snapshotDialogTitle || event.attributes.snapshotDialogLabel || "제목 없음";
+    // 예약 폼처럼 dialog가 없는 화면은 heading이 유일한 제목 단서다(event-format.ts와 동일).
+    const firstHeading = String(event.attributes.snapshotHeadings ?? "").split(" | ")[0];
+    const title = event.attributes.snapshotDialogTitle
+      || event.attributes.snapshotDialogLabel
+      || firstHeading
+      || "제목 없음";
     const buttons = event.attributes.snapshotButtons || "없음";
     const snippet = typeof event.attributes.snapshotTextSnippet === "string" && event.attributes.snapshotTextSnippet
       ? ` · "${String(event.attributes.snapshotTextSnippet).slice(0, 60)}"`

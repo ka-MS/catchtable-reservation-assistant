@@ -6,11 +6,13 @@
 // 네이티브 header 안 단일 h1에만 있다(0원·유료 폼 교차 실측). header 내부에는 이 h1과
 // 닫기 버튼만 있다. document.title, 본문의 다른 heading, generated class/id/aria-label/
 // aria-labelledby는 anchor로 쓰지 않는다 — 두 표본 모두 이런 속성이 없었다.
+import type { TraceAttributes } from "../../shared/telemetry/types.js";
 import {
   fnvHash,
   isDisabled,
   isElementHidden,
   isElementVisuallyHidden,
+  maskPii,
   normalizedText,
   safeText,
   visibleAll,
@@ -26,21 +28,24 @@ export type ReservationFormUnknownCode =
   | "ambiguous_final_button"
   | "pin_keypad_unsupported";
 
-/** ready 판정의 매장명·날짜·시간·인원 비교값 — 폼 요약 텍스트 형식과 동일해야 한다
+/** ready 판정의 매장명·날짜·인원 비교값 — 폼 요약 텍스트 형식과 동일해야 한다
  * (예: dateText "08월 10일"). shopDisplayName은 top-bar header > h1 textContent와
- * 정규화 정확 일치해야 한다. */
+ * 정규화 정확 일치해야 한다.
+ *
+ * 시각은 비교하지 않는다(01-form-variant-resilience/20-design.md §2): 슬롯은 사용자가
+ * 지정한 시각이 아니라 설정 구간 안에서 실행 중 잡힌 결과이고, 사이트가 같은 시각을
+ * 12시간제 "오후 6시 30분"과 24시간제 "오후 18:30"로 동시에 렌더한다(site-behavior.md §12.21). */
 export interface ReservationFormExpectation {
   shopDisplayName: string;
   dateText: string;
-  timeText: string;
   personText: string;
 }
 
-/** success 판정의 방문예정 목록 비교값 — 목록 표기 형식과 동일해야 한다(예: "2026.08.10 (월)"). */
+/** success 판정의 방문예정 목록 비교값 — 목록 표기 형식과 동일해야 한다(예: "2026.08.10 (월)").
+ * 폼 intent와 같은 이유로 시각은 비교하지 않는다. */
 export interface ReservationSuccessExpectation {
   shopDisplayName: string;
   listingDateText: string;
-  timeText: string;
   personText: string;
 }
 
@@ -83,7 +88,13 @@ export type ReservationFormInspection =
   | { kind: "pin"; facts: CatchPayPinFacts; fingerprint: string }
   | { kind: "success"; facts: CompletionFacts; fingerprint: string }
   | { kind: "hold_expired"; fingerprint: string }
-  | { kind: "unknown"; code: ReservationFormUnknownCode; fingerprint: string };
+  | {
+    kind: "unknown";
+    code: ReservationFormUnknownCode;
+    /** 인계 사유를 진단 번들만으로 특정하기 위한 판정 근거(20-design.md §4). */
+    evidence: TraceAttributes;
+    fingerprint: string;
+  };
 
 type ReservationFormPageInspection = Exclude<
   ReservationFormInspection,
@@ -92,8 +103,16 @@ type ReservationFormPageInspection = Exclude<
 
 const CATCHPAY_ORIGIN = "https://app.catchtable.co.kr";
 const SUCCESS_PATH = "/ct/mydining/my/planned";
-const FINAL_BUTTON_LABEL = "자동결제로 예약하기";
-const COMPLETION_MESSAGE = "자동결제로 예약을 완료했습니다";
+/** 실측된 두 라벨 `자동결제로 예약하기`(§12.3/12.4/12.6)와 `예약하기`(§12.21)를 한 규칙으로
+ * 덮는다. suffix 앵커라 `예약하기 전에…` 류 안내 버튼은 걸리지 않고, 느슨해진 매칭의 대가는
+ * 호출부의 "정확히 1개" 조건이 받는다. */
+const FINAL_BUTTON_PATTERN = /예약하기$/;
+/** 실측된 두 완료 문구를 한 규칙으로 덮는다: `자동결제로 예약을 완료했습니다`(§12.5/§12.16)와
+ * `예약을 완료했습니다`(§12.22). 최종 버튼과 같은 suffix 앵커이며, 부모의 후속 안내까지 포함한
+ * 텍스트는 suffix가 달라 걸리지 않는다. */
+const COMPLETION_MESSAGE_PATTERN = /예약을 완료했습니다$/;
+/** 진단 근거로 남기는 화면 텍스트의 상한 — telemetry attribute가 무한정 커지지 않게 한다. */
+const EVIDENCE_TEXT_LEN = 240;
 const PIN_HEADING = "캐치페이 비밀번호 입력";
 const REQUIRED_MARK = "[필수]";
 const OPTIONAL_MARK = "[선택]";
@@ -214,7 +233,7 @@ function collectCurrentAmounts(
 
 function findFinalButtons(document: Document): HTMLButtonElement[] {
   return visibleAll<HTMLButtonElement>(document, "button")
-    .filter((button) => normalizedText(button.textContent) === normalizedText(FINAL_BUTTON_LABEL));
+    .filter((button) => FINAL_BUTTON_PATTERN.test(normalizedText(button.textContent)));
 }
 
 function hasLoginGate(document: Document): boolean {
@@ -364,7 +383,8 @@ function reservationSummaryElements(
     !candidates.some((other) => other !== element && element.contains(other)));
 }
 
-function dateTimePersonMatches(
+/** 요약 후보 중 날짜와 인원이 모두 일치하는 것이 하나라도 있는지. 시각은 비교하지 않는다. */
+function datePersonMatches(
   document: Document,
   expectation: ReservationFormExpectation,
   isHidden: HiddenPredicate = isElementHidden,
@@ -372,7 +392,6 @@ function dateTimePersonMatches(
   return reservationSummaryElements(document, isHidden).some((el) => {
     const text = normalizedText(el.textContent);
     return text.includes(normalizedText(expectation.dateText))
-      && text.includes(normalizedText(expectation.timeText))
       && text.includes(normalizedText(expectation.personText));
   });
 }
@@ -383,7 +402,32 @@ function intentMatches(
   isHidden: HiddenPredicate = isElementHidden,
 ): boolean {
   return shopNameMatches(document, expectation, isHidden)
-    && dateTimePersonMatches(document, expectation, isHidden);
+    && datePersonMatches(document, expectation, isHidden);
+}
+
+/** intent 판정을 항목별로 분해한 근거. 어느 비교가 깨졌는지 진단 번들에서 바로 읽기 위한 것이다. */
+function intentEvidence(
+  document: Document,
+  expectation: ReservationFormExpectation,
+): TraceAttributes {
+  const summaries = reservationSummaryElements(document)
+    .map((el) => normalizedText(el.textContent));
+  const dateMatch = summaries.some((text) => text.includes(normalizedText(expectation.dateText)));
+  const personMatch = summaries.some((text) => text.includes(normalizedText(expectation.personText)));
+  return {
+    formShopDisplayName: readShopDisplayNameFromHeader(document) ?? "",
+    formExpectedShopDisplayName: expectation.shopDisplayName,
+    formShopNameMatch: shopNameMatches(document, expectation),
+    formDateMatch: dateMatch,
+    formPersonMatch: personMatch,
+    // 날짜·인원은 같은 요약 element 안에서 함께 맞아야 판정이 통과한다. 항목별 boolean만
+    // 남기면 둘 다 true인데 intent_mismatch인 로그가 나올 수 있어 결합 결과도 함께 남긴다.
+    formDatePersonMatch: datePersonMatches(document, expectation),
+    formExpectedDateText: expectation.dateText,
+    formExpectedPersonText: expectation.personText,
+    // 요약 블록에는 방문자 관련 문구가 붙을 수 있어 마스킹 후 기록한다(20-design.md §4.3).
+    formSummaryTexts: maskPii(summaries.join(" | ")).slice(0, EVIDENCE_TEXT_LEN),
+  };
 }
 
 /** action 직전 stale intent를 검출하기 위한 실제 DOM 값. expectation 일치 boolean만
@@ -449,13 +493,13 @@ function pinKeypadValid(document: Document, dialog: HTMLElement): boolean {
 
 // ---- success ----
 
-function hasExactMessageText(document: Document, expected: string): boolean {
-  const matches = visibleAll<HTMLElement>(
+/** 부모의 후속 안내까지 삼키지 않는 것은 suffix 앵커가 담당한다(§12.16): 완료 문구 뒤에
+ * 안내가 붙은 조상 element는 suffix가 달라 매칭되지 않는다. */
+function hasCompletionMessage(document: Document): boolean {
+  return visibleAll<HTMLElement>(
     document,
     "div, p, span, strong, h1, h2, h3, h4, h5, h6, [role=heading]",
-  ).filter((element) => normalizedText(element.textContent) === normalizedText(expected));
-  return matches.some((element) =>
-    !matches.some((other) => other !== element && element.contains(other)));
+  ).some((element) => COMPLETION_MESSAGE_PATTERN.test(normalizedText(element.textContent)));
 }
 
 function listingMatches(document: Document, expectation: ReservationSuccessExpectation): boolean {
@@ -464,7 +508,6 @@ function listingMatches(document: Document, expectation: ReservationSuccessExpec
     const text = normalizedText(item.textContent);
     return text.includes(normalizedText(expectation.shopDisplayName))
       && text.includes(normalizedText(expectation.listingDateText))
-      && text.includes(normalizedText(expectation.timeText))
       && text.includes(normalizedText(expectation.personText));
   });
 }
@@ -477,7 +520,7 @@ export class ReservationFormAdapter {
     if (document.location.pathname === SUCCESS_PATH) {
       const facts: CompletionFacts = {
         path: document.location.pathname,
-        matchedMessage: hasExactMessageText(document, COMPLETION_MESSAGE),
+        matchedMessage: hasCompletionMessage(document),
         listingMatch: listingMatches(document, options.successExpectation),
       };
       return { kind: "success", facts, fingerprint: fp("rf-success", facts) };
@@ -491,7 +534,19 @@ export class ReservationFormAdapter {
           passwordInputCount: document.querySelectorAll('input[type="password"]').length,
           digits: pinDigitButtons(pinDialog).map((button) => normalizedText(button.textContent)).sort(),
         };
-        return { kind: "unknown", code: "pin_keypad_unsupported", fingerprint: fp("rf-pin-invalid", shape) };
+        return {
+          kind: "unknown",
+          code: "pin_keypad_unsupported",
+          // PIN 화면의 텍스트·입력값은 담지 않는다 — 구조 카운트만 기록한다.
+          evidence: {
+            formInspectionKind: "unknown",
+            formUnknownCode: "pin_keypad_unsupported",
+            pinIframeCount: shape.iframeCount,
+            pinPasswordInputCount: shape.passwordInputCount,
+            pinDigitButtonCount: shape.digits.length,
+          },
+          fingerprint: fp("rf-pin-invalid", shape),
+        };
       }
       const innerButton = pinInnerSubmitButton(pinDialog);
       const facts: CatchPayPinFacts = {
@@ -534,7 +589,17 @@ export class ReservationFormAdapter {
       return { kind: "hold_expired", fingerprint: fp("rf-hold-expired", { url: document.location.pathname }) };
     }
     if (hold === "unknown") {
-      return { kind: "unknown", code: "hold_countdown_unknown", fingerprint: fp("rf-hold-unknown", { url: document.location.pathname }) };
+      // 금액·약관·결제수단은 아직 읽지 않았다. 이 시점에 실제로 아는 값만 담는다.
+      return {
+        kind: "unknown",
+        code: "hold_countdown_unknown",
+        evidence: {
+          formInspectionKind: "unknown",
+          formUnknownCode: "hold_countdown_unknown",
+          formHoldState: hold,
+        },
+        fingerprint: fp("rf-hold-unknown", { url: document.location.pathname }),
+      };
     }
 
     const amounts = collectCurrentAmounts(document);
@@ -550,23 +615,50 @@ export class ReservationFormAdapter {
       intentMatch: intentMatches(document, options.expectation),
     };
     const fingerprint = fp("rf-ready", shape);
+    const unknown = (code: ReservationFormUnknownCode): ReservationFormPageInspection => ({
+      kind: "unknown",
+      code,
+      evidence: {
+        formInspectionKind: "unknown",
+        formUnknownCode: code,
+        formHoldState: hold,
+        ...intentEvidence(document, options.expectation),
+        // 결제 수단 행에는 등록 카드 라벨이 렌더되므로 텍스트는 담지 않는다(20-design.md §4.3).
+        formCatchPayChecked: catchPay.checked,
+        formGeneralPaymentSelected: catchPay.generalSelected,
+        formPaymentRadioCount: paymentTypeRadios(document).length,
+        formAmounts: amounts.join(","),
+        formAmountLimit: options.maxPaymentAmountKrw,
+        formButtonTexts: maskPii(visibleAll<HTMLButtonElement>(document, "button")
+          .map((button) => safeText(button.textContent))
+          .filter(Boolean)
+          .join(" | ")).slice(0, EVIDENCE_TEXT_LEN),
+        formFinalButtonCount: finalButtons.length,
+        formRequiredAgreementCount: scan.requiredAgreementCount,
+        formUncheckedRequiredAgreementCount: scan.uncheckedRequiredCount,
+        formEmptyRequiredMultilineCount: scan.emptyRequiredMultilineCount,
+        formOptionalAgreementCount: scan.optionalAgreementCount,
+        formUnsupportedRequiredInput: scan.unsupportedRequiredInput,
+      },
+      fingerprint,
+    });
 
-    if (amounts.length !== 1) return { kind: "unknown", code: "amount_ambiguous", fingerprint };
+    if (amounts.length !== 1) return unknown("amount_ambiguous");
     const currentAmountKrw = amounts[0];
     if (currentAmountKrw < 0 || currentAmountKrw > options.maxPaymentAmountKrw) {
-      return { kind: "unknown", code: "amount_over_limit", fingerprint };
+      return unknown("amount_over_limit");
     }
     if (!intentMatches(document, options.expectation)) {
-      return { kind: "unknown", code: "intent_mismatch", fingerprint };
+      return unknown("intent_mismatch");
     }
     if (!catchPay.checked || catchPay.generalSelected) {
-      return { kind: "unknown", code: "catchpay_not_ready", fingerprint };
+      return unknown("catchpay_not_ready");
     }
     if (scan.unsupportedRequiredInput) {
-      return { kind: "unknown", code: "unsupported_required_input", fingerprint };
+      return unknown("unsupported_required_input");
     }
     if (finalButtons.length !== 1) {
-      return { kind: "unknown", code: "ambiguous_final_button", fingerprint };
+      return unknown("ambiguous_final_button");
     }
     return { kind: "ready", facts: readyFacts(document, currentAmountKrw), fingerprint };
   }
