@@ -184,3 +184,25 @@ test("persisted trace detail surfaces snapshot identity fields (snippet, fingerp
   assert.match(detail, /ss-abc123/);
   assert.match(detail, /ADVANCING_RESERVATION/);
 });
+
+// 예약 폼·성공 화면은 dialog가 없어 heading이 유일한 제목 단서다. event-format.ts와 같은 규칙.
+test("dialog 제목이 없는 스냅샷은 heading을 제목으로 쓴다", () => {
+  const document = documentFixture();
+  const view = new TraceHistoryView(document, { select: () => undefined, download: () => undefined, remove: () => undefined });
+  view.renderRuns([run("run-x", 1)]);
+  view.renderEvents([{
+    schemaVersion: 1, runId: "run-x", seq: 1, code: "RUN_TERMINATED", severity: "warn",
+    component: "content", localAt: 1, serverAt: 1, state: "HANDED_OFF", message: "인계",
+    attributes: {
+      eventKind: "state", state: "HANDED_OFF",
+      snapshotUrlKind: "reservation_form", snapshotHeadings: "스시 호시카이",
+      snapshotButtons: "닫기 | 예약하기", snapshotDisabledButtonCount: 0,
+      snapshotDialogLabel: "", snapshotDialogTitle: "",
+      snapshotTextSnippet: "09월 08일(화) · 오후 18:30 · 2명", snapshotFingerprint: "ss-abc123",
+      snapshotRunState: "COMPLETING_RESERVATION",
+    },
+  }]);
+  const detail = document.querySelector("#trace-event-list .event-detail")?.textContent ?? "";
+  assert.doesNotMatch(detail, /제목 없음/);
+  assert.match(detail, /스시 호시카이/);
+});

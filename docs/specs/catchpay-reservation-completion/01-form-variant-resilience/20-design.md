@@ -46,7 +46,7 @@ ReservationSuccessExpectation { shopDisplayName, listingDateText, personText }
 | 대상 | 남는 검증 |
 |---|---|
 | 폼 intent | 매장 표시명(header 단일 h1 정확일치) · 날짜 · 인원 · 금액 상한 · fresh fingerprint |
-| 성공 목록 | 매장 표시명 · `YYYY.MM.DD (요일)` · 인원 · 성공 path · 완료 문구 정확일치 |
+| 성공 목록 | 매장 표시명 · `YYYY.MM.DD (요일)` · 인원 · 성공 path · 완료 문구(§6) |
 
 ### 받아들이는 위험
 
@@ -109,14 +109,24 @@ FINAL_BUTTON_PATTERN = /예약하기$/            (정규화 텍스트 suffix)
 |---|---|
 | `formInspectionKind` / `formUnknownCode` | 판정 결과 |
 | `formShopNameMatch` / `formDateMatch` / `formPersonMatch` | **불리언 분해** — 어느 비교가 깨졌는지 |
+| `formDatePersonMatch` | 날짜·인원이 **같은 요약 element 안에서** 함께 맞았는지 |
 | `formShopDisplayName` / `formExpectedShopDisplayName` | 읽은 값과 기대값 |
-| `formSummaryTexts` | 요약 후보 정규화 텍스트, `" | "` 조인 |
+| `formSummaryTexts` | 요약 후보 정규화 텍스트, `" | "` 조인 (240자 상한) |
 | `formExpectedDateText` / `formExpectedPersonText` | 기대값 |
-| `formButtonTexts` / `formFinalButtonCount` | 문서 전체 button 텍스트와 매칭 수 |
+| `formButtonTexts` / `formFinalButtonCount` | 문서 전체 button 텍스트(240자 상한)와 매칭 수 |
 | `formAmounts` / `formAmountLimit` | 수집된 금액과 상한 |
 | `formCatchPayChecked` / `formGeneralPaymentSelected` / `formPaymentRadioCount` | 결제 수단 판정 결과 |
 | `formRequiredAgreementCount` / `formUncheckedRequiredAgreementCount` / `formEmptyRequiredMultilineCount` / `formOptionalAgreementCount` | 입력 스캔 |
 | `formHoldState` | `active` / `expired` / `unknown` |
+
+항목별 boolean만으로는 부족하다. 판정 게이트 `datePersonMatches()`는
+날짜와 인원이 **같은 element 안에** 있어야 통과하므로, 두 값이 서로 다른
+요약에 흩어져 있으면 `formDateMatch`·`formPersonMatch`가 모두 true인데
+`intent_mismatch`인 로그가 나온다. 결합 결과 `formDatePersonMatch`를
+함께 남겨 이 혼동을 없앤다.
+
+텍스트 근거는 240자로 자른다. telemetry attribute는 IndexedDB와 진단
+번들에 그대로 들어가므로 화면 텍스트 길이에 비례해 무한정 커지면 안 된다.
 
 ### 4.3 비저장 경계
 
@@ -170,6 +180,10 @@ failureData()                         → terminal 이벤트 attributes + 진단
 | `예약하기` 2개 fixture | `ambiguous_final_button` |
 | `intent_mismatch` evidence | 불리언 분해 3개가 실제 값으로 실림 |
 | 결제 행 텍스트 비저장 | evidence에 카드 라벨 문자열 부재 |
+| 날짜·인원이 서로 다른 요약에 흩어진 fixture | `formDatePersonMatch=false`로만 구분됨 |
+| 완료 문구 변형 fixture | `예약을 완료했습니다`도 세 조건 만족 |
+| 후속 안내를 삼킨 부모 텍스트 | 완료 문구로 받지 않음 |
+| dialog 없는 스냅샷 | Side Panel·상세 추적 두 화면 모두 heading을 제목으로 사용 |
 
 ## 6. 완료 문구 판정 (1차 E2E 뒤 추가)
 
@@ -189,14 +203,20 @@ COMPLETION_MESSAGE_PATTERN = /예약을 완료했습니다$/      (정규화 텍
 
 ### 유지하는 안전장치
 
-§12.16의 "가장 작은 visible element" 규칙은 그대로다. 부모 element는
-후속 안내(`초대장을 보내 예약 정보를 공유해 주세요.`)까지 포함하므로
-suffix가 달라 걸리지 않는다. 즉 완화는 접두사 방향으로만 열리고 부모
-방향으로는 닫혀 있다.
+부모 element는 후속 안내(`초대장을 보내 예약 정보를 공유해 주세요.`)까지
+포함하므로 suffix가 달라 걸리지 않는다. 즉 완화는 접두사 방향으로만
+열리고 **부모 방향으로는 suffix 앵커가 닫는다.**
+
+§12.16의 "가장 작은 visible element" 규칙을 코드로 옮긴
+"다른 매칭을 포함하지 않는 매칭이 하나 이상" 조건은 **제거했다.**
+boolean 결과에 대해 항상 no-op이기 때문이다 — 매칭 집합이 비어 있지
+않으면 트리에서 가장 깊은 매칭은 정의상 다른 매칭을 포함하지 않으므로
+조건이 언제나 참이 된다. 정확일치였던 기존 코드에서도 마찬가지였다.
+부모 방향 보호는 그 조건이 아니라 텍스트 비교 자체가 하고 있었다.
 
 `자동결제` 변형에서는 부모 div(`자동결제로 예약을 완료했습니다`)와
-자식 span(`예약을 완료했습니다`)이 모두 매칭되지만, "다른 매칭을
-포함하지 않는 매칭이 하나 이상" 조건이 자식 span으로 충족된다.
+자식 span(`예약을 완료했습니다`)이 모두 매칭되며, 어느 쪽이 걸려도
+판정 결과는 같다.
 
 ### 성공 판정 전체는 그대로
 
@@ -221,7 +241,7 @@ suffix가 달라 걸리지 않는다. 즉 완화는 접두사 방향으로만 �
 스냅샷 whole-document 스코핑(§4.5)을 성공 경로에도 적용한다. 성공
 화면의 `h1 마이다이닝`도 `main` 밖 top bar에 있어 같은 이유로 빠진다.
 
-## 7. 검증 분담
+## 8. 검증 분담
 
 자동 검증은 이 패키지가, **실사이트 E2E는 사용자가** 수행한다
 (2026-08-06 합의). `40-verification.md`는 사용자 실행 결과로 채운다.

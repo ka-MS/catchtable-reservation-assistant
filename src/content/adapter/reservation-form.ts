@@ -111,6 +111,8 @@ const FINAL_BUTTON_PATTERN = /예약하기$/;
  * `예약을 완료했습니다`(§12.22). 최종 버튼과 같은 suffix 앵커이며, 부모의 후속 안내까지 포함한
  * 텍스트는 suffix가 달라 걸리지 않는다. */
 const COMPLETION_MESSAGE_PATTERN = /예약을 완료했습니다$/;
+/** 진단 근거로 남기는 화면 텍스트의 상한 — telemetry attribute가 무한정 커지지 않게 한다. */
+const EVIDENCE_TEXT_LEN = 240;
 const PIN_HEADING = "캐치페이 비밀번호 입력";
 const REQUIRED_MARK = "[필수]";
 const OPTIONAL_MARK = "[선택]";
@@ -418,10 +420,13 @@ function intentEvidence(
     formShopNameMatch: shopNameMatches(document, expectation),
     formDateMatch: dateMatch,
     formPersonMatch: personMatch,
+    // 날짜·인원은 같은 요약 element 안에서 함께 맞아야 판정이 통과한다. 항목별 boolean만
+    // 남기면 둘 다 true인데 intent_mismatch인 로그가 나올 수 있어 결합 결과도 함께 남긴다.
+    formDatePersonMatch: datePersonMatches(document, expectation),
     formExpectedDateText: expectation.dateText,
     formExpectedPersonText: expectation.personText,
     // 요약 블록에는 방문자 관련 문구가 붙을 수 있어 마스킹 후 기록한다(20-design.md §4.3).
-    formSummaryTexts: maskPii(summaries.join(" | ")),
+    formSummaryTexts: maskPii(summaries.join(" | ")).slice(0, EVIDENCE_TEXT_LEN),
   };
 }
 
@@ -488,15 +493,13 @@ function pinKeypadValid(document: Document, dialog: HTMLElement): boolean {
 
 // ---- success ----
 
-/** 완료 문구는 가장 작은 visible element 기준으로 판정한다(§12.16) — 부모의 후속 안내까지
- * 삼키지 않기 위함이다. */
+/** 부모의 후속 안내까지 삼키지 않는 것은 suffix 앵커가 담당한다(§12.16): 완료 문구 뒤에
+ * 안내가 붙은 조상 element는 suffix가 달라 매칭되지 않는다. */
 function hasCompletionMessage(document: Document): boolean {
-  const matches = visibleAll<HTMLElement>(
+  return visibleAll<HTMLElement>(
     document,
     "div, p, span, strong, h1, h2, h3, h4, h5, h6, [role=heading]",
-  ).filter((element) => COMPLETION_MESSAGE_PATTERN.test(normalizedText(element.textContent)));
-  return matches.some((element) =>
-    !matches.some((other) => other !== element && element.contains(other)));
+  ).some((element) => COMPLETION_MESSAGE_PATTERN.test(normalizedText(element.textContent)));
 }
 
 function listingMatches(document: Document, expectation: ReservationSuccessExpectation): boolean {
@@ -629,7 +632,7 @@ export class ReservationFormAdapter {
         formButtonTexts: maskPii(visibleAll<HTMLButtonElement>(document, "button")
           .map((button) => safeText(button.textContent))
           .filter(Boolean)
-          .join(" | ")),
+          .join(" | ")).slice(0, EVIDENCE_TEXT_LEN),
         formFinalButtonCount: finalButtons.length,
         formRequiredAgreementCount: scan.requiredAgreementCount,
         formUncheckedRequiredAgreementCount: scan.uncheckedRequiredCount,

@@ -1,7 +1,7 @@
 # 30 구현
 
 **브랜치:** `codex/fix-form-intent-and-final-button`
-**기준:** `npm run check` 538/538 통과, `git diff --check` 통과
+**기준:** `npm run check` 540/540 통과, `git diff --check` 통과
 
 ## 변경 파일
 
@@ -121,7 +121,21 @@ baseline 실패와 루프 중 폼 변경 인계 두 곳에서 채운다.
 
 새 fixture `tests/fixtures/catchpay-success-short-message.html` — §12.22 재현.
 
-## 7. 남은 작업
+## 7. 코드 리뷰 반영
+
+`/code-review`가 지적한 네 가지를 검토해 모두 반영했다. 둘은 실제 결함,
+하나는 상한 누락, 하나는 no-op 제거였다.
+
+| 지적 | 판단 |
+|---|---|
+| `formDateMatch`·`formPersonMatch`가 모두 true인데 `intent_mismatch`인 로그가 가능 | **결함.** 판정 게이트는 두 값이 같은 element 안에 있어야 통과한다. 결합 결과 `formDatePersonMatch`를 추가했다 |
+| `trace-view.ts`의 스냅샷 제목에 heading fallback 누락 | **결함.** `event-format.ts`만 고쳐 상세 추적 화면은 여전히 `제목 없음`이었다. 같은 규칙을 적용했다 |
+| evidence 텍스트 길이 무제한 | **타당.** telemetry attribute가 IndexedDB·진단 번들에 그대로 들어간다. 240자 상한(`EVIDENCE_TEXT_LEN`)을 뒀다 |
+| `hasCompletionMessage`의 "다른 매칭을 포함하지 않는 매칭" 조건이 no-op | **타당.** 가장 깊은 매칭은 정의상 다른 매칭을 포함하지 않으므로 boolean 결과에 항상 참이다. 제거하고 20-design §6의 서술을 바로잡았다 |
+
+앞의 둘은 회귀 테스트가 없어 함께 추가했다(538 → 540).
+
+## 8. 남은 작업
 
 수정 dist로 재실행하는 실사이트 E2E는 사용자가 진행한다.
 `40-verification.md` 참조.

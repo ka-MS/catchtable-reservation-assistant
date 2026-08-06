@@ -284,6 +284,25 @@ test("intent_mismatch는 어느 비교가 깨졌는지 불리언으로 분해해
   assert.equal(inspection.evidence.formHoldState, "active");
 });
 
+test("날짜·인원이 서로 다른 요약에 흩어져 있으면 결합 판정만 false로 남는다", () => {
+  const document = documentFromFixture("catchpay-zero-form-24h-cta.html", FORM_URL);
+  // 날짜만 있는 요약과 인원만 있는 요약으로 쪼갠다. 항목별 boolean은 둘 다 true지만
+  // 같은 element 안에서 함께 맞은 후보가 없으므로 intent는 불일치다.
+  const summaries = [...document.querySelectorAll("p, div")]
+    .filter((element) => /\d{1,2}월\s*\d{1,2}일/.test(element.textContent ?? ""));
+  summaries.at(-1).textContent = "09월 08일(화) · 오후 18:30 · 4명";
+  const top = [...document.querySelectorAll("p")]
+    .find((element) => element.textContent?.includes("오후 6시 30분"));
+  top.textContent = "09월 09일 (수) · 오후 6시 30분 · 2명";
+
+  const inspection = new ReservationFormAdapter(document)
+    .inspect(options(SUSHI_EXPECTATION, SUSHI_SUCCESS_EXPECTATION));
+  assert.equal(inspection.code, "intent_mismatch");
+  assert.equal(inspection.evidence.formDateMatch, true);
+  assert.equal(inspection.evidence.formPersonMatch, true);
+  assert.equal(inspection.evidence.formDatePersonMatch, false);
+});
+
 test("실패 근거는 결제 수단 행 텍스트를 담지 않고 개인정보를 마스킹한다", () => {
   const document = documentFromFixture("catchpay-zero-form-24h-cta.html", FORM_URL);
   const cardRow = document.querySelector('input[type="radio"][name="payment-type"]').closest("label");
