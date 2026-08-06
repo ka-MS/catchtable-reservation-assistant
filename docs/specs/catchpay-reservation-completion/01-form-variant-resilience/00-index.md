@@ -1,6 +1,6 @@
 # 예약 폼 변형 복원력과 실패 근거 관측
 
-**상태:** 진행
+**상태:** 완료
 **착수일:** 2026-08-06
 **부모 패키지:** [CatchPay 예약 완주](../00-index.md) (SP-022)
 **구현 승인:** 2026-08-06 사용자 명시 승인 (범위 1~5 그대로 진행)
@@ -47,14 +47,15 @@
 |---|---|---|
 | [10-analysis.md](10-analysis.md) | 확정 | 실패 경로 추적, 실측 근거, 원인 판정 |
 | [20-design.md](20-design.md) | 승인됨 | 판정 계약, 관측 계약, 안전 영향 |
-| [30-implementation.md](30-implementation.md) | 진행 | 실패 테스트 우선 구현 순서와 결과 |
-| [40-verification.md](40-verification.md) | 대기 | 자동 검증과 통제된 Chrome E2E |
+| [30-implementation.md](30-implementation.md) | 완료 | 실패 테스트 우선 구현 순서와 결과 |
+| [40-verification.md](40-verification.md) | 완료 | 자동 검증과 사용자 E2E 결과 |
 
 ## 검증 분담
 
 - 자동 검증(`npm run check`)과 fixture 회귀는 이 패키지에서 수행한다.
 - **실사이트 E2E는 사용자가 직접 진행한다**(2026-08-06 합의).
-  `40-verification.md`는 사용자 실행 결과를 받아 채운다.
+- 결과: 1차에서 완료 문구 원인이 드러나 수정했고, 2차에서 다른 매장
+  3곳이 모두 `COMPLETED`로 완주했다. `40-verification.md` 참조.
 
 ## 기준 문서
 
