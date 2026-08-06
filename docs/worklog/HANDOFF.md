@@ -1,11 +1,33 @@
 # HANDOFF
 
-**갱신:** 2026-08-06
+**갱신:** 2026-08-07
 **Blocking backlog:** 없음 (`main` 기준)
 
 ## 진행 중 브랜치
 
-`codex/fix-form-intent-and-final-button` — 예약 폼 변형 복원력
+`codex/docs-orchestrator-extensibility` — 오케스트레이터 확장성 기반
+([SP-025](../specs/orchestrator-extensibility/00-index.md)). 문서만
+추가한다. 코드 변경 없음.
+
+새 예약 흐름(웨이팅·줄서기) 추가 가능성을 검토하면서 `orchestrator.ts`의
+구조를 측정했다. 결과는
+[10-analysis.md](../specs/orchestrator-extensibility/10-analysis.md)에
+있다. 코드베이스는 과설계 상태가 아니며(상속 0건, 파일 중앙값 83줄,
+총량의 64%가 흐름 무관 고정비), 문제는 `orchestrator.ts` 안에서 제어와
+관측이 섞인 과소설계다.
+
+동작 무변경 리팩터 3단계(`01` 관측 분리 → `02` 커널·흐름 경계 →
+`03` 실행 전략 교체)를 순차 브랜치로 진행한다. 각 단계는 독립적으로
+배포 가능하며, 앞 단계 결과에 따라 뒤 단계의 범위를 재평가하거나
+취소한다. 장기 브랜치는 쓰지 않는다.
+
+**새 예약 흐름 자체는 이 패키지 범위 밖이다.** 웨이팅·줄서기의
+실사이트 실측 근거가 아직 없다.
+
+## 직전 완료 작업
+
+`codex/fix-form-intent-and-final-button` (`#16`, `#18`로 병합됨)
+— 예약 폼 변형 복원력
 ([SP-022/01](../specs/catchpay-reservation-completion/01-form-variant-resilience/00-index.md)).
 `intent_mismatch` 원인(시각 표기 불일치), `예약하기` CTA 변형,
 `예약을 완료했습니다` 완료 문구 변형을 수정하고 실패 근거 관측을

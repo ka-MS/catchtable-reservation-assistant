@@ -53,6 +53,8 @@
 | SP-022/01 | — | — | — | 예약 폼 변형 복원력 | [catchpay-reservation-completion/01-form-variant-resilience/00-index.md](catchpay-reservation-completion/01-form-variant-resilience/00-index.md) |
 | SP-023 | 2026-07-30 | 개발·릴리스 | 진행 | 릴리스 버저닝 | [release-versioning/00-index.md](release-versioning/00-index.md) |
 | SP-024 | 2026-08-05 | UI·운영 | 완료 | Side Panel 온보딩 투어 | [onboarding-tour/10-design.md](onboarding-tour/10-design.md) |
+| SP-025 | 2026-08-07 | 실행 구조 | 진행 | 오케스트레이터 확장성 기반 | [orchestrator-extensibility/00-index.md](orchestrator-extensibility/00-index.md) |
+| SP-025/01 | — | — | — | 관측 분리 | [orchestrator-extensibility/01-observation-split/20-design.md](orchestrator-extensibility/01-observation-split/20-design.md) |
 
 ## 새 패키지 등록 규칙
 
