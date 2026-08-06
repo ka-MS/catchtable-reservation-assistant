@@ -54,25 +54,84 @@ git diff --check  통과
 (`/예약하기$/`, `/예약을 완료했습니다$/`)은 구·신 라벨을 모두 받으므로
 개별 매장이 어느 문구를 쓰든 완주한다.
 
-### 이 기록의 한계
+## 성공 실행 진단 번들 대조 — 2026-08-06 `[실측]`
 
-사용자 구두 확인이며 매장명·run id·telemetry 원본은 수집하지 않았다.
-다음 항목은 **관측 근거 없이 통과로 적지 않는다.**
+`run-c6782244-6b2f-4989-af50-a64c4c51d563` (mangam, 2026-09-03, 2명,
+0원, `finalState: COMPLETED`, `eventCount 43`, `droppedCount 0`,
+`seq 1..43` 연속).
 
-- `success_observed`의 세 boolean 개별 값
-- 성공 화면 스냅샷 제목이 `마이다이닝`으로 표시되는지
-- 실패 경로의 `successMessageMatched` 등 evidence 기록
-- evidence·스냅샷의 비저장 경계
+### 완주 telemetry
 
-앞의 셋은 완주 성공에서 논리적으로 따라오지만(세 조건 AND를 통과해야
-`COMPLETED`다) 화면·번들로 확인한 것은 아니다. 비저장 경계는 자동
-테스트로만 고정돼 있다. 다음 진단 번들을 받으면 이 표에 채운다.
+```
+form_ready        currentAmountKrw=0 · catchPaySelected=true
+                  generalPaymentSelected=false
+                  requiredAgreementCount=7 · uncheckedRequiredAgreementCount=7
+                  emptyRequiredMultilineCount=1 · optionalAgreementCount=0
+outer_claim       claimGranted=true
+outer_dispatch    dispatched=true
+success_observed  successPathMatched=true
+                  successMessageMatched=true
+                  successListingMatched=true
+RUN_TERMINATED    COMPLETED
+```
+
+`form_ready` +4.476s → `outer_claim` +6.000s → `outer_dispatch` +6.011s
+→ `success_observed` +6.705s.
+
+| # | 항목 | 결과 |
+|---|---|---|
+| 2 | `success_observed` 세 boolean | **통과** — 셋 모두 true |
+| 3 | 제출 횟수 | **통과** — `outer_claim` 1회, `outer_dispatch` 1회, PIN phase 0회 |
+| 6 | 비저장 경계 | **통과** — 아래 스캔 |
+
+### 비저장 스캔
+
+번들 전체(93,775 bytes, 모든 파일 연결)에 다음 패턴이 없다.
+
+| 패턴 | 결과 |
+|---|---|
+| 카드 브랜드·마스킹 라벨 (`체크하나`/`외환`/`(\d{3}\*)` 등) | 없음 |
+| PIN 관련 키 (`pin`/`rawPin`/`paymentPin`) | 없음 |
+| 이메일 | 없음 |
+| 예약번호 (`예약번호`/`reservationNo`/`bookingNo`) | 없음 |
+| 전화번호 | 없음 — 정규식 hit 6건은 모두 `localAt` epoch-ms 타임스탬프 오탐 |
+
+### 이 번들로 채울 수 없는 항목
+
+| # | 항목 | 사유 |
+|---|---|---|
+| 4 | 성공 화면 스냅샷 제목 | 성공 실행은 실패 스냅샷을 남기지 않는다(`snapshotCount 0`). 인계가 발생한 실행에서만 관측된다 |
+| 5 | 실패 경로 evidence | 같은 이유 |
+
+4·5는 자동 테스트로 고정돼 있으나 실사이트 관측 근거는 아직 없다.
+다음에 인계로 끝난 실행의 번들을 받으면 채운다.
+
+### 미해결 관측 — 필수 multiline 카운트 불일치
+
+`form_ready`가 `emptyRequiredMultilineCount=1`을 기록했는데
+`requiredFormDefaultAnswer`는 빈 문자열이었다
+(`manifest.json`·`run.csv` `configJson` 모두 `""`). 코드 경로상
+`fillRequiredMultiline()`은 빈 답변에서 즉시 `false`를 반환하고
+`필수 입력을 안전하게 채울 수 없어 제출하지 않습니다.`로 인계해야 한다.
+그런데 이 실행은 `COMPLETED`로 끝났다.
+
+baseline과 루프 첫 `inspect()` 사이에는 `await`가 없어 같은 DOM이어야
+하므로, 두 값이 달랐다는 것은 다음 중 하나를 뜻한다.
+
+- `[필수]` textarea 판정이 결정적이지 않다
+- section heading fallback이 필수가 아닌 textarea를 필수로 오판했고
+  그 판정이 두 호출 사이에 바뀌었다
+
+이 경로는 이번 패키지에서 건드리지 않았고 완주를 막지도 않았다.
+원인 미상이므로 **별도 확인 대상**으로 남긴다. 추측으로 판정을 바꾸지
+않는다.
 
 ## 남은 미실측
 
 - 개별 매장이 `예약하기`와 `자동결제로 예약하기` 중 어느 라벨을
   쓰는지의 분포. 완주 성공만으로는 구분되지 않는다. 판정에는 영향이
   없다.
+- 필수 multiline 카운트 불일치의 원인. 위 미해결 관측 참조.
 - 완료 오버레이가 떠 있는 동안 방문예정 `li`가 항상 렌더되는지.
   1차에서 목록 일치가 관측됐으나 오버레이 표시 시점의 타이밍
   의존성은 별도로 계측하지 않았다.

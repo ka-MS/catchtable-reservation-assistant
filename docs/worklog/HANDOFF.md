@@ -19,9 +19,16 @@
 확인했다(§12.23). 서로 다른 4개 매장에서 suffix 판정이 성립한다.
 **병합 전 조건은 해제됐다.**
 
-다음 진단 번들을 받으면 `40-verification.md`의 미기록 항목
-(`success_observed` 세 boolean, 성공 화면 스냅샷 제목, 실패 경로
-evidence)을 채운다. 병합을 막는 항목은 아니다.
+성공 실행 번들(`run-c6782244`, mangam)로 `success_observed` 세 boolean,
+제출 1회, 비저장 경계를 대조 확인했다. 성공 화면 스냅샷 제목과 실패
+경로 evidence는 성공 실행이 실패 스냅샷을 남기지 않아 미기록으로
+남는다. 병합을 막는 항목은 아니다.
+
+**별도 확인 대상:** 같은 번들에서 `form_ready`가
+`emptyRequiredMultilineCount=1`을 기록했는데
+`requiredFormDefaultAnswer`가 빈 문자열인데도 완주했다. 코드 경로상
+인계돼야 하는 조합이라 `[필수]` textarea 판정의 결정성을 확인해야
+한다. 이번 패키지 범위 밖이고 완주를 막지 않았다.
 
 ## 현재 제품 상태
 
