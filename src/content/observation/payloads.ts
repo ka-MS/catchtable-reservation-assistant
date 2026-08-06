@@ -49,6 +49,18 @@ export function stageSnapshotData(s: StageSnapshot | null): NonNullable<RunEvent
   };
 }
 
+/** 감지·클릭 시점에 실제로 활성이던 기준시계 스냅샷. */
+export function detectionClockData(
+  estimate: ReferenceClockEstimate | null,
+  wallOffsetMs: number,
+): NonNullable<RunEvent["data"]> {
+  return {
+    clockConfidence: estimate?.confidence ?? "LOW",
+    clockUncertaintyMs: Math.round(estimate?.uncertaintyMs ?? 0),
+    clockOffsetMs: Math.round(wallOffsetMs),
+  };
+}
+
 export function referenceClockMetricData(
   estimate: ReferenceClockEstimate,
   phase: "bootstrap" | "armed",

@@ -15,17 +15,20 @@
 // 누적된 결과이며, 통일 여부는 issue #20에서 판단한다. 이 계층의 목적 중
 // 하나는 **어느 관측이 실행을 죽일 수 있는지를 호출부에서 보이게** 하는 것이다.
 import type { ReferenceClockSample } from "../../shared/clock.js";
-import type { RunExecutionContext, RunState } from "../../shared/types.js";
+import type { RunEvent, RunExecutionContext, RunState } from "../../shared/types.js";
 import type { TraceCode } from "../../shared/telemetry/codes.js";
 import type { TraceAttributes, TraceSeverity } from "../../shared/telemetry/types.js";
 import type { ReceivedAvailabilityShadowEvent } from "../../shared/availability-shadow.js";
 import type { BodyCorrelation, DomCorrelation } from "../availability-correlation.js";
 import type { AvailabilityWakeDecision, AvailabilityWakeSignal } from "../availability-dom-wake.js";
 import type { PreparationPageContext } from "../preparation-observation.js";
-import { toggleCycleAttributes, type ToggleCycleTrace } from "./payloads.js";
+import type { StageSnapshot } from "../adapter/snapshot.js";
+import { stageSnapshotData, toggleCycleAttributes, type ToggleCycleTrace } from "./payloads.js";
 
 /** 관측이 세션에서 읽는 것 — 이 셋이 전부다. */
 export interface ObservationContext {
+  /** wall clock — `RunEvent.at`. */
+  now(): number;
   /** 기준시계가 준비되기 전에는 `null`. */
   serverAt(): number | null;
   state(): RunState;
@@ -44,10 +47,33 @@ type TraceFn = (
   },
 ) => void;
 
+export interface DiagnosticsPort {
+  breadcrumb(stage: RunState, trigger: "state" | "action", reason: string, data?: RunEvent["data"]): void;
+  failure(stage: RunState, reason: string, data?: RunEvent["data"], error?: unknown): string | null;
+  forceFlush(): Promise<void>;
+}
+
 export interface ObservationDeps {
+  emit(event: RunEvent): void;
   trace?: TraceFn;
+  diagnostics?: DiagnosticsPort;
+  captureSnapshot?(): StageSnapshot | null;
   capturePreparationContext?(): PreparationPageContext;
 }
+
+// REFRESHING_SLOTS와 SLOT_DETECTED는 클릭 직전 핫패스다. 초기 설정 상태도
+// 쓸 만한 DOM 근거를 더하지 않으므로, 저빈도 예약 단계만 breadcrumb을 만든다.
+const DIAGNOSTIC_BREADCRUMB_STATES = new Set<RunState>([
+  "ENTERING_RESERVATION",
+  "SELECTING_DATE",
+  "SELECTING_PERSON",
+  "PREPARING_PAGE",
+  "WAITING_FOR_OPEN",
+  "SLOT_CLICK_DISPATCHED",
+  "SLOT_TRANSITION_CONFIRMED",
+  "ADVANCING_RESERVATION",
+  "COMPLETING_RESERVATION",
+]);
 
 export type PreparationPhase =
   | "stage_start" | "condition_changed" | "dispatch_before" | "dispatch_after" | "decision";
@@ -61,6 +87,7 @@ export class RunObserver {
   constructor(
     private readonly ctx: ObservationContext,
     private readonly deps: ObservationDeps,
+    private readonly runId: string,
     private readonly executionContext?: RunExecutionContext,
   ) {}
 
@@ -91,6 +118,54 @@ export class RunObserver {
     options: { serverAt?: number | null; state?: RunState | null; attributes: TraceAttributes; error?: unknown },
   ): void {
     this.safeCall(() => this.send(code, severity, message, options), undefined);
+  }
+
+  // --- Run event와 breadcrumb ----------------------------------------------
+
+  /**
+   * ⚠️ `deps.emit`은 격리하지 않는다. 이동 전에도 감싸여 있지 않았고,
+   * 던지면 `RunResult` 자체가 반환되지 않는다(issue #20). run event는
+   * Side Panel 표시와 telemetry의 필수 경로다.
+   *
+   * 뒤따르는 breadcrumb만 격리된다 — 이동 전 구조와 같다.
+   */
+  event(kind: RunEvent["kind"], message: string, data?: RunEvent["data"]): void {
+    const at = this.ctx.now();
+    this.deps.emit({ at, serverAt: this.ctx.serverAt(), runId: this.runId, kind, message, data });
+    if (kind === "action") {
+      this.safeCall(
+        () => this.deps.diagnostics?.breadcrumb(this.ctx.state(), "action", message, data),
+        undefined,
+      );
+    }
+  }
+
+  /** 상태 전이 breadcrumb. 어느 상태가 대상인지는 관측 정책이다. */
+  stateChanged(state: RunState, reason: string, data?: RunEvent["data"]): void {
+    if (!DIAGNOSTIC_BREADCRUMB_STATES.has(state)) return;
+    this.safeCall(() => this.deps.diagnostics?.breadcrumb(state, "state", reason, data), undefined);
+  }
+
+  /**
+   * 관측이 제어에 **값을 주는 유일한 지점**이다. 명령이 아니라 질의라
+   * 관측 계층에 둔다. 제어는 이 반환값을 terminal 전이 payload에 싣는다.
+   *
+   * snapshot 캡처와 `diagnostics.failure`는 **서로 독립**이다. 이동 전에도
+   * 별도 try 블록이었고, snapshot이 실패해도 failure는 실행된다.
+   */
+  failureData(reason: string, extra?: RunEvent["data"], error?: unknown): RunEvent["data"] {
+    const snapshot = this.safeCall<StageSnapshot | null>(() => this.deps.captureSnapshot?.() ?? null, null);
+    const state = this.ctx.state();
+    const diagnosticSnapshotId = this.safeCall<string | null>(
+      () => this.deps.diagnostics?.failure(state, reason, extra, error) ?? null,
+      null,
+    );
+    return {
+      ...stageSnapshotData(snapshot),
+      snapshotRunState: state,
+      ...(diagnosticSnapshotId === null ? {} : { diagnosticSnapshotId }),
+      ...extra,
+    };
   }
 
   // --- 준비 단계 -----------------------------------------------------------

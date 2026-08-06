@@ -36,6 +36,7 @@ import type {
   ReservationCompletionIntent,
 } from "./completion-coordinator.js";
 import {
+  detectionClockData,
   postSlotEventData,
   referenceClockMetricData,
   slotClickDispatchedEventData,
@@ -47,7 +48,7 @@ import {
   type ToggleCycleTrace,
   type TogglePlan,
 } from "./observation/payloads.js";
-import { RunObserver } from "./observation/run-observer.js";
+import { RunObserver, type DiagnosticsPort } from "./observation/run-observer.js";
 
 // `stageSnapshotData`는 `tests/snapshot-data.test.mjs`가 이 모듈에서 직접
 // import한다. 테스트 무수정을 유지하기 위해 re-export를 남긴다.
@@ -85,12 +86,6 @@ interface AvailabilityShadowPort {
   start(expiresAtEpochMs: number, listener: (event: ReceivedAvailabilityShadowEvent) => void): void;
   markTargetCycle?(marker: AvailabilityTargetCycleMarker): void;
   stop(): void;
-}
-
-interface DiagnosticsPort {
-  breadcrumb(stage: RunState, trigger: "state" | "action", reason: string, data?: RunEvent["data"]): void;
-  failure(stage: RunState, reason: string, data?: RunEvent["data"], error?: unknown): string | null;
-  forceFlush(): Promise<void>;
 }
 
 interface CompletionPort {
@@ -165,18 +160,6 @@ const TERMINAL = new Set<RunState>([
   "FAILED",
 ]);
 
-const DIAGNOSTIC_BREADCRUMB_STATES = new Set<RunState>([
-  "ENTERING_RESERVATION",
-  "SELECTING_DATE",
-  "SELECTING_PERSON",
-  "PREPARING_PAGE",
-  "WAITING_FOR_OPEN",
-  "SLOT_CLICK_DISPATCHED",
-  "SLOT_TRANSITION_CONFIRMED",
-  "ADVANCING_RESERVATION",
-  "COMPLETING_RESERVATION",
-]);
-
 type ToggleCycleOutcome =
   | { kind: "terminal"; result: RunResult }
   | { kind: "retry" }
@@ -243,11 +226,13 @@ class RunSession {
     this.authorizationHandle = new OneShotAuthorizationHandle(authorization);
     this.observe = new RunObserver(
       {
+        now: () => deps.clock.now(),
         serverAt: () => (this.serverClockReady ? this.serverClock.now() : null),
         state: () => this.machine.state,
         monoNow: () => deps.monotonicClock.now(),
       },
       deps,
+      this.runId,
       executionContext,
     );
   }
@@ -265,30 +250,6 @@ class RunSession {
     }
   }
 
-  /** 감지 시점에 실제로 활성이던 기준시계 스냅샷. armed metric은 진입 시점에
-   * (종종 표본 1개로) 얼어붙지만, rolling 샘플러가 대기 중 개선하므로 감지·선택
-   * 이벤트는 그 순간의 confidence·uncertainty·wall offset을 함께 남긴다. */
-  private detectionClockData(): NonNullable<RunEvent["data"]> {
-    const estimate = this.latestAppliedEstimate;
-    return {
-      clockConfidence: estimate?.confidence ?? "LOW",
-      clockUncertaintyMs: Math.round(estimate?.uncertaintyMs ?? 0),
-      clockOffsetMs: Math.round(this.wallOffsetMs()),
-    };
-  }
-
-  private emit(kind: RunEvent["kind"], message: string, data?: RunEvent["data"]): void {
-    const at = this.deps.clock.now();
-    this.deps.emit({ at, serverAt: this.serverClockReady ? this.serverClock.now() : null, runId: this.runId, kind, message, data });
-    if (kind === "action") {
-      try {
-        this.deps.diagnostics?.breadcrumb(this.machine.state, "action", message, data);
-      } catch {
-        // Diagnostics must not affect reservation control.
-      }
-    }
-  }
-
   private transition(
     state: RunState,
     reason: string,
@@ -296,17 +257,8 @@ class RunSession {
   ): void {
     this.machine.transition(state, reason, { error: extra.error, userStopped: extra.userStopped });
     if (TERMINAL.has(state)) this.terminalReason = reason;
-    this.emit("state", reason, { state, ...extra.data });
-    // REFRESHING_SLOTS and SLOT_DETECTED are the pre-click hot path. Early
-    // configuration states also add no useful DOM evidence, so only selected
-    // low-frequency reservation stages create breadcrumbs.
-    if (DIAGNOSTIC_BREADCRUMB_STATES.has(state)) {
-      try {
-        this.deps.diagnostics?.breadcrumb(state, "state", reason, extra.data);
-      } catch {
-        // Diagnostics must not affect reservation control.
-      }
-    }
+    this.observe.event("state", reason, { state, ...extra.data });
+    this.observe.stateChanged(state, reason, extra.data);
   }
 
   private finish(): RunResult {
@@ -323,29 +275,8 @@ class RunSession {
     return this.finish();
   }
 
-  private failureData(reason: string, extra?: RunEvent["data"], error?: unknown): RunEvent["data"] {
-    let snapshot: StageSnapshot | null = null;
-    let diagnosticSnapshotId: string | null = null;
-    try {
-      snapshot = this.deps.captureSnapshot?.() ?? null;
-    } catch {
-      snapshot = null;
-    }
-    try {
-      diagnosticSnapshotId = this.deps.diagnostics?.failure(this.machine.state, reason, extra, error) ?? null;
-    } catch {
-      diagnosticSnapshotId = null;
-    }
-    return {
-      ...stageSnapshotData(snapshot),
-      snapshotRunState: this.machine.state,
-      ...(diagnosticSnapshotId === null ? {} : { diagnosticSnapshotId }),
-      ...extra,
-    };
-  }
-
   private diagnosticHandOff(reason: string, extra?: RunEvent["data"]): RunResult {
-    const data = this.failureData(reason, extra);
+    const data = this.observe.failureData(reason, extra);
     this.transition("HANDED_OFF", reason, { data });
     return this.finish();
   }
@@ -356,7 +287,7 @@ class RunSession {
   }
 
   private timedOut(reason: string): RunResult {
-    const data = this.failureData(reason);
+    const data = this.observe.failureData(reason);
     this.transition("TIMED_OUT", reason, { data });
     return this.finish();
   }
@@ -398,7 +329,7 @@ class RunSession {
     } catch (error) {
       if (!TERMINAL.has(this.machine.state)) {
         const message = error instanceof Error ? error.message : "알 수 없는 실행 오류";
-        const failure = this.failureData(message, undefined, error);
+        const failure = this.observe.failureData(message, undefined, error);
         this.observe.runFailed(message, failure as TraceAttributes, error);
         this.transition("FAILED", message, { error: message, data: failure });
       }
@@ -496,7 +427,7 @@ class RunSession {
     if (this.controller.signal.aborted) return this.finishStopped();
     const estimate = sample ? port.ingest(sample) : port.latest ?? estimateReferenceClock([]);
     this.applyReferenceClockEstimate(estimate);
-    this.emit("metric",
+    this.observe.event("metric",
       estimate.source === "FALLBACK" ? "서버 시계 측정 실패로 로컬 시계를 사용합니다." : "서버 시계 보정을 완료했습니다.",
       referenceClockMetricData(estimate, "bootstrap", this.wallOffsetMs()));
     // 대기 시간(prepareEntry~waitForOpen)을 관통해 계속 관측한다 — 부트스트랩은
@@ -576,7 +507,7 @@ class RunSession {
         ...(cause === null ? {} : { preparationErrorCode: cause }),
         preparationAttempt: attempts,
       }, decision === "handoff" ? "warn" : "trace"),
-      action: (message) => this.emit("action", message),
+      action: (message) => this.observe.event("action", message),
     };
   }
 
@@ -655,7 +586,7 @@ class RunSession {
     this.transition("WAITING_FOR_OPEN", "예약 오픈 직전까지 대기합니다.");
     const estimate = this.referenceClockPort?.latest ?? this.latestAppliedEstimate ?? estimateReferenceClock([]);
     const armLeadMs = computeArmLeadMs(config.preOpenLeadMs, estimate);
-    this.emit("metric", "예약 오픈 직전 진입 시점을 결정했습니다.",
+    this.observe.event("metric", "예약 오픈 직전 진입 시점을 결정했습니다.",
       referenceClockMetricData(estimate, "armed", this.wallOffsetMs(), armLeadMs));
     const waitResult = await waitUntil(config.openAtMs - armLeadMs, {
       clock: serverClock,
@@ -806,7 +737,7 @@ class RunSession {
       phase: plan.phase,
     };
     if (plan.targetClickAtMs === config.openAtMs) {
-      this.emit("metric", "예약 오픈 정각에 목표 날짜를 클릭했습니다.", targetClickMetricData(targetClickedAt, plan, config.openAtMs));
+      this.observe.event("metric", "예약 오픈 정각에 목표 날짜를 클릭했습니다.", targetClickMetricData(targetClickedAt, plan, config.openAtMs));
     }
 
     if (!(await this.deps.sleep(20, controller.signal))) {
@@ -980,7 +911,7 @@ class RunSession {
     const config = this.config;
     const serverClock = this.serverClock;
     const slotDetectedAt = serverClock.now();
-    const clockData = this.detectionClockData();
+    const clockData = detectionClockData(this.latestAppliedEstimate, this.wallOffsetMs());
     const shopDisplayName = config.reservationCompletionEnabled
       ? this.deps.readShopDisplayName?.() ?? null
       : null;
@@ -990,7 +921,7 @@ class RunSession {
         this.lastArrivalAt, this.monoFromRunStartMs(), clockData,
       ),
     });
-    this.emit("detect", "예약 조건과 일치하는 슬롯을 찾았습니다.", { slotMinutes: candidate.minutes, slotLabel: candidate.label });
+    this.observe.event("detect", "예약 조건과 일치하는 슬롯을 찾았습니다.", { slotMinutes: candidate.minutes, slotLabel: candidate.label });
     if (config.dryRun) {
       this.transition("DRY_RUN_COMPLETED", "dry-run이므로 슬롯을 클릭하지 않았습니다.");
       return this.finish();
@@ -1186,7 +1117,7 @@ class RunSession {
         ...postSlotEventData(inspection),
         postSlotStatus: action.status,
       };
-      this.emit("action", action.message, actionData);
+      this.observe.event("action", action.message, actionData);
       if (action.status === "blocked") {
         return this.diagnosticHandOff(action.message, postSlotEventData(inspection));
       }
