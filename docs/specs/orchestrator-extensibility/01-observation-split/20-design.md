@@ -1,6 +1,6 @@
 # 01. 관측 분리 설계
 
-**상태:** 초안 (구현 승인 전)
+**상태:** 승인됨 (2026-08-07 구현 완료)
 **작성일:** 2026-08-07
 **부모 패키지:** [오케스트레이터 확장성 기반](../00-index.md)
 **범위:** 동작 무변경(behavior-neutral) 순수 구조 리팩터
@@ -23,11 +23,58 @@
 
 ## 설계 원칙
 
-1. **관측은 제어에 영향을 주지 않는다** — **관측 전용** 예외 경계만
-   관측 계층 내부로 모은다. 제어 복원력 경계는 그대로 둔다.
+1. **현재의 예외 격리 동작을 한 곳도 바꾸지 않는다** — 관측 전용 경계는
+   관측 계층 내부로 모으되, **격리 여부 자체는 지금과 동일하게 보존**한다.
+   제어 복원력 경계는 그대로 둔다.
 2. **관측은 세션 상태를 받지 않고 읽는다** — 스탬핑을 관측 계층이
    소유한다 (28곳 소멸).
 3. **payload 조립은 순수 함수** — 세션 없이 단위 테스트 가능하게 한다.
+
+### ⚠️ 원칙 1이 "전부 격리한다"가 아닌 이유
+
+**현재 관측 예외 격리는 비대칭이다.** 설계 초안은 "관측은 제어에 영향을
+주지 않는다"를 현재 불변식처럼 서술했으나, 실측 결과 사실이 아니다.
+
+`main` @ `9bca880`에서 fake dependency가 던지도록 하고 실행한 결과다.
+`tests/orchestrator-observation.test.mjs`가 이 동작을 고정한다.
+
+```
+[DATE_TOGGLE_CYCLE trace가 던짐]  state=FAILED  message="trace boom"  ← 실행이 죽는다
+[SLOT_CLICKED trace가 던짐]       state=FAILED  message="trace boom"  ← 실행이 죽는다
+[AVAILABILITY_SHADOW가 던짐]      state=DRY_RUN_COMPLETED             ← 영향 없음
+[CLOCK_SAMPLE이 던짐]             state=DRY_RUN_COMPLETED             ← 영향 없음
+[breadcrumb·captureSnapshot·
+ diagnostics.failure가 던짐]      영향 없음
+[emit이 던짐]                     start()가 reject — RunResult 없음
+[모든 trace가 던짐]               start()가 reject — RunResult 없음
+```
+
+격리되지 않은 `trace`가 던지면 `start()`가 reject되는 것이 아니라
+`execute()`의 catch가 예외를 받아 **`FAILED`로 종결**한다. reject는
+`emit`이 던지거나(FAILED 전이가 다시 `emit`을 부르므로) `RUN_FAILED`
+trace까지 함께 던질 때만 발생한다. 어느 쪽이든 **관측 실패가 예약 실행을
+끝낸다**는 사실은 같다.
+
+`trace` 호출 10곳 중 **6곳은 격리, 4곳은 전파**한다.
+
+| 행 | 위치 | 격리 |
+|---|---|---|
+| 313 `tracePreparation` / 515 `observeAvailabilityBody` / 578 `traceAvailabilityDomCorrelation` / 618 `wakeResult` / 666 `emptyExit` / 742 `clockSamples` | | 격리됨 |
+| **457** | `execute()` catch의 `RUN_FAILED` | **전파** |
+| **951** | `runToggleCycle`의 `traceCycle` | **전파** |
+| **1237 / 1257** | `advanceFromSlot`의 `SLOT_CLICKED` | **전파** |
+
+`emit`은 전파할 뿐 아니라 `execute()`의 catch가 시도하는 `FAILED` 전이에서
+다시 던져 **`RunResult`가 반환되지 않는다.** `content/index.ts:210`의
+`.then()`이 실행되지 않아 `ATTEMPT_FINISHED`도 전달되지 않는다.
+
+따라서 `safeTrace` 하나를 10곳에 모두 적용하면 **4곳의 동작이 바뀐다.**
+이는 이 단계의 선언된 범위(동작 무변경)를 벗어난다.
+
+**결정:** 01은 비대칭을 그대로 보존한다. 격리 통일 여부는 별도 판단이
+필요한 사안이므로 [#20](https://github.com/ka-MS/catchtable-reservation-assistant/issues/20)에서
+다룬다. 01이 끝나면 지금은 우연인 비대칭이 `RunObserver`의 메서드 구분으로
+**코드에 명시**되므로, 그 판단의 입력이 된다.
 
 ### 원칙 1의 경계 — 무엇을 합치고 무엇을 두는가
 
@@ -52,32 +99,41 @@
 
 각 대상은 **fallback 값이 다르므로 독립 경계**다. 하나로 합칠 수 없다.
 
-| 대상 | 현재 행 | 실패 시 fallback | 근거 |
+| 대상 | 현재 행 | 실패 시 | 이동 후 |
 |---|---|---|---|
-| `trace` 전송 | 342, 648, 686, 760 | `undefined` (무시) | 진단 목적. 예약 결과와 무관 |
-| `diagnostics.breadcrumb` | 294, 361 | `undefined` (무시) | 위와 같음 |
-| `capturePreparationContext` | 309 | `null` → payload에서 생략 | 페이지 컨텍스트 없이도 trace는 나가야 한다 |
-| `captureSnapshot` | 386 | `null` → `{}` 병합 | **`diagnostics.failure`와 독립.** 현재 384·389행이 별도 블록이며, snapshot 실패 후에도 `failure()`가 실행된다 |
-| `diagnostics.failure` | 391 | `null` → `diagnosticSnapshotId` 생략 | 실패해도 전이 payload는 나가야 한다 |
-| **`deps.emit`** | — | **삼키지 않는다** | 현재 동작. `emit()`의 try/catch는 `diagnostics.breadcrumb`만 감싼다(292~297행). run event는 필수 경로다 |
+| `trace` — 격리된 6곳 | 313, 515, 578, 618, 666, 742 | `undefined` (무시) | `safeTrace()` |
+| **`trace` — 전파하는 4곳** | **457, 951, 1237, 1257** | **전파** | **`emitTrace()`** |
+| `diagnostics.breadcrumb` | 294, 361 | `undefined` (무시) | `safeCall` |
+| `capturePreparationContext` | 309 | `null` → payload에서 생략 | `safeCall` |
+| `captureSnapshot` | 386 | `null` → `{}` 병합 | `safeCall`. **`diagnostics.failure`와 독립** — 현재 384·389행이 별도 블록이며 snapshot 실패 후에도 `failure()`가 실행된다 |
+| `diagnostics.failure` | 391 | `null` → `diagnosticSnapshotId` 생략 | `safeCall` |
+| **`deps.emit`** | — | **전파** | 격리하지 않음 |
 
-따라서 관측 계층 안의 **독립 경계는 5개**이며, 범용 헬퍼
+따라서 관측 계층 안의 **격리 경계는 5개**이며, 범용 헬퍼
 `safeCall(fn, fallback)` 하나를 5곳에서 쓰는 형태가 된다. 인라인
 `try/catch`는 호출부에서 0이 되지만 경계 수 자체는 1이 아니다.
 
-`deps.emit`을 관측 계층으로 옮기면서 실수로 감싸면 회귀다. 이동 후에도
-예외가 그대로 전파되어야 한다.
+**격리하지 않는 지점이 5개 더 있다**(`trace` 4곳 + `emit`). 이동 후에도
+예외가 그대로 전파되어야 한다. 실수로 감싸면 회귀다.
+
+이 구분이 01의 부산물 중 가장 값이 크다. 지금은 어느 관측이 실행을 죽일
+수 있는지가 `try/catch` 유무로만 드러나 읽어야 알 수 있지만, 이동 후에는
+`safeTrace` / `emitTrace` 호출 여부로 한눈에 보인다.
 
 ## 구조
 
 ```
 src/content/observation/
-  payloads.ts       순수 함수. 세션 의존 0.        (~330줄)
-  run-observer.ts   스탬핑 + 예외 격리 + 관측 정책 (~220줄)
+  payloads.ts       순수 함수. 세션 의존 0.          401줄
+  run-observer.ts   스탬핑 + 예외 격리 + 관측 정책   332줄
 
 src/content/orchestrator.ts
-  RunSession        제어만                        (~1,050줄)
+  RunSession        제어만                        1,190줄
 ```
+
+초안의 예상치(330 / 220 / 1,050)는 실제와 달랐다. `payloads.ts`는 승격
+대상 빌더 6개를 포함해 더 커졌고, `orchestrator.ts`는 예상보다 덜 줄었다.
+위 값이 구현 결과다.
 
 ### Layer 1 — `payloads.ts`
 
@@ -95,10 +151,12 @@ src/content/orchestrator.ts
 ### Layer 2 — `RunObserver`
 
 ```ts
-/** 관측이 세션에서 읽는 것 — 이 두 개가 전부다. */
+/** 관측이 세션에서 읽는 것 — 넷이다. */
 interface ObservationContext {
+  now(): number;               // wall clock (RunEvent.at)
   serverAt(): number | null;   // serverClockReady ? serverClock.now() : null
   state(): RunState;
+  monoNow(): number;           // emptyExit의 exitAtMonoMs
 }
 
 interface ObservationDeps {
@@ -125,16 +183,18 @@ export class RunObserver {
     }
   }
 
-  /** trace 전송 경계. 호출자는 try/catch를 쓰지 않는다. */
-  private safeTrace(
-    code: TraceCode, severity: TraceSeverity, message: string,
-    attributes: TraceAttributes,
-  ): void {
-    this.safeCall(() => this.deps.trace?.(code, severity, message, {
-      serverAt: this.ctx.serverAt(),
-      state: this.ctx.state(),
-      attributes,
-    }), undefined);
+  /** 예외를 전파한다. 이동 전 감싸여 있지 않던 지점 전용. */
+  private send(code, severity, message, options): void {
+    this.deps.trace?.(code, severity, message, options);
+  }
+
+  /**
+   * 예외를 삼킨다. **thunk를 받는다** — options 객체를 인자로 받으면
+   * `ctx.serverAt()`·`ctx.state()`가 호출 전에 평가돼 경계 밖에서 던진다.
+   * 이동 전에는 스탬핑 계산까지 `try` 안에 있었으므로 그 범위를 보존한다.
+   */
+  private sendSafe(build: () => void): void {
+    this.safeCall(build, undefined);
   }
 
   // 관측 메서드는 '사실'만 받고 payload 조립은 내부에서 한다.
@@ -150,14 +210,16 @@ export class RunObserver {
 }
 ```
 
-세션 쪽 배선은 클로저 두 개로 끝난다. 관측 계층이 `RunSession`을 통째로
+세션 쪽 배선은 클로저 넷으로 끝난다. 관측 계층이 `RunSession`을 통째로
 알 필요가 없고, 순환 의존도 생기지 않는다.
 
 ```ts
 this.observe = new RunObserver(
   {
+    now: () => deps.clock.now(),
     serverAt: () => this.serverClockReady ? this.serverClock.now() : null,
     state: () => this.machine.state,
+    monoNow: () => deps.monotonicClock.now(),
   },
   deps,
   executionContext,
@@ -202,13 +264,20 @@ snapshot 캡처와 `diagnostics.failure()`의 **독립 실행 순서를 보존**
 `observeAvailabilityDom`(569행)도 같은 구조다. `correlateDom` 호출은
 제어, 이후 trace는 관측이다.
 
-### ③ 핫패스 성능은 중립이다
+### ③ 핫패스 성능은 중립이다 — 단 "루프 안에 관측이 없다"는 아니다
 
-25ms·10ms·5ms 루프 **안에서 호출되는 관측은 없다.** `traceCycle`은
-사이클 종료 시 1회다([10-analysis.md](../10-analysis.md) §3).
+지켜야 할 불변식은 **"매 반복 경로에 관측이 없다"** 이다. 루프 안에
+관측 호출 자체는 있다([10-analysis.md](../10-analysis.md) §3).
 
-이 사실을 `runToggleCycle`에 주석으로 못박는다. 이후 누군가 루프 안에
-관측을 추가하는 것을 막는 유일한 수단이다.
+- `applyPendingEmptyExit` → `traceAvailabilityEmptyExit` — `empty_exit`
+  wake 신호가 대기 중일 때만, 사이클당 최대 1회
+- `traceCycle("EMPTY_EARLY_EXIT")` — 조기 종료 확정 시에만, 사이클당 최대 1회
+
+둘 다 실행 직후 `break` 하거나 `return` 하므로 반복 비용에 누적되지 않는다.
+
+이 구분을 `runToggleCycle`에 주석으로 못박는다. "루프 안에 관측 금지"로
+적으면 기존 코드와 모순돼 주석이 무시되므로, **"반복 경로에 관측 금지,
+종료 직전 1회는 허용"** 으로 적는다.
 
 ## 검증
 
@@ -231,18 +300,29 @@ snapshot 캡처와 `diagnostics.failure()`의 **독립 실행 순서를 보존**
 2. **payload golden test 추가** — `payloads.ts`의 각 순수 함수에 대해
    대표 입력의 출력 객체 전체를 고정한다. 추출 전후로 동일해야 한다.
    추출 대상 함수마다 최소 1개.
-3. **관측 실패 격리 테스트 추가** — `trace`, `diagnostics.breadcrumb`,
-   `diagnostics.failure`, `captureSnapshot`이 각각 던져도 실행 결과
-   (terminal state·message)가 바뀌지 않음을 확인한다.
-4. **`deps.emit` 비격리 테스트 추가** — `emit`이 던지면 현재와 동일하게
-   전파됨을 고정한다. 실수로 삼키게 되는 회귀를 막는다.
+3. **관측 실패 격리 테스트 추가** — `diagnostics.breadcrumb`,
+   `diagnostics.failure`, `captureSnapshot`, `capturePreparationContext`가
+   각각 던져도 실행 결과(terminal state·message)가 바뀌지 않음을 확인한다.
+4. **비격리 보존 테스트 추가** — `deps.emit`과 전파하는 `trace` 4곳이
+   던지면 현재와 동일하게 예외가 `start()` 밖으로 전파됨을 고정한다.
+   실수로 삼키게 되는 회귀를 막는다.
 5. **호출 순서 테스트 추가** — `failureData()`에서 `captureSnapshot` →
    `diagnostics.failure` 순서와 상호 독립성을 고정한다.
 6. `git diff --check` 통과.
 7. Chrome 수동 로드 dry-run 1회.
+8. **주장 대조** — 이 문서가 코드에 대해 주장하지만 테스트로 고정되지
+   않는 두 가지를 diff에서 직접 확인한다.
+   - (a) 제어 복원력 `catch` 11개(271·435·472·479·725·730·869·913·
+     1035·1173·1377)가 변경되지 않았을 것
+   - (b) `runToggleCycle` 스캔 루프의 **매 반복 경로**에 observer 호출이
+     추가되지 않았을 것. 기존의 조건부 1회 호출
+     (`traceAvailabilityEmptyExit`, `traceCycle("EMPTY_EARLY_EXIT")`)은
+     그대로 두며, 이들이 실행 직후 루프를 벗어나는 구조도 유지할 것
 
 2~5는 이 단계에서 새로 추가하는 테스트이며, 추출 **이전에** 현재
-동작을 고정하는 용도로 먼저 작성한다(실패 테스트 우선).
+동작을 고정하는 용도로 먼저 작성한다(실패 테스트 우선). 8은 리뷰
+시점의 확인 항목이며, "문서와 코드를 대조하라"는 일반 지침이 아니라
+**대조 대상을 행 번호로 지정**한 것이다.
 
 ### 영향 범위
 
@@ -289,11 +369,18 @@ observation/run-observer.ts           약 220
 관측 전용 인라인 catch          9 → 0   (호출부에서 사라짐)
   └ 관측 계층 독립 경계             5     (safeCall 헬퍼 1개를 5곳에서 사용)
 제어 복원력 catch             11 → 11  (불변)
-혼합 catch                     2 → 분할 후 제어·관측 각각 유지
+혼합 catch                     2 → 2 (불변)  ← 아래 참조
 ```
 
 경계가 1개가 아닌 이유는 `trace`·`breadcrumb`·페이지 컨텍스트 캡처·
 snapshot·`diagnostics.failure`의 fallback 값이 각각 다르기 때문이다
 (위 "실패 의미를 각각 정의한다" 표).
+
+**혼합 `catch` 2개는 쪼개지 못한다.** 코드 자체는 제어(세션)와 관측
+(`RunObserver`)으로 나뉘지만 **예외 경계는 하나로 남는다.**
+`onAvailabilityBody`의 catch는 trace 실패 시 뒤따르는 late DOM 비교까지
+함께 건너뛰는데, 두 개로 쪼개면 그 건너뜀이 사라져 동작이 바뀐다.
+따라서 이 단계에서는 경계를 유지하고, 그 이중 역할을 주석으로 명시하는
+데까지만 한다.
 
 후속 단계(`03` 핫패스 전략 추출)의 대상이 1,630줄에서 약 1,050줄로 줄어든다.

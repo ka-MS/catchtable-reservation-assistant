@@ -93,7 +93,7 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 
 단계는 `01 → 02 → 03 → 04` 순서로 진행한다. 이 순서는 **뒤 단계의
 작업량을 앞 단계가 줄이기 때문에** 정한 것이다. 01을 먼저 하면 03의
-대상이 1,630줄에서 약 1,050줄로 줄어든다.
+대상이 1,630줄에서 1,190줄로 줄어든다.
 
 ### 설계 문서를 미리 쓰지 않는 이유
 
@@ -113,6 +113,7 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 | 다음 단계의 전제가 유지되는가 | 유지되면 진행, 아니면 설계부터 다시 |
 | 앞 단계가 예상보다 많은 것을 해결했는가 | 다음 단계의 범위를 축소하거나 취소 |
 | 04 진입 조건 2번이 확보됐는가 | 미확보면 03에서 완료 처리 |
+| HANDOFF에 blocking backlog가 있는가 | 처리하거나 명시적으로 해제한 뒤 다음 단계로 (`AGENTS.md` §5) |
 
 `02`와 `03`의 경계는 겹칠 수 있다. `confirmPageReady`의 인접 가용 날짜
 확인은 오픈런 전용이지만 현재 공통 준비 단계 자리에 있다. 준비 단계에
@@ -132,7 +133,7 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 각 단계는 뒤 단계의 완료를 전제하지 않는다. 어디서 멈춰도 그때까지의
 결과가 `main`에서 유효하다.
 
-- `01`만: `orchestrator.ts`가 1,630 → 약 1,050줄. 관측 로직이 단위
+- `01`만: `orchestrator.ts`가 1,630 → 1,190줄. 관측 로직이 단위
   테스트 가능해진다. 흐름 추가와 무관하게 이득이다.
 - `+02`: 안전 계약(PIN 폐기 순서, terminal 단정 금지, cleanup 순서)이
   흐름 코드와 분리돼 복제 위험이 사라진다.
@@ -192,10 +193,13 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 | 문서 | 상태 | 역할 |
 |---|---|---|
 | [10-analysis.md](10-analysis.md) | 확정 | 구조 측정, 과설계 여부 판정, 결합 지점 |
-| [01-observation-split/20-design.md](01-observation-split/20-design.md) | 초안 | 관측 분리 계약과 이동 매핑 |
+| [01-observation-split/20-design.md](01-observation-split/20-design.md) | 승인됨 | 관측 분리 계약과 이동 매핑 |
+| [01-observation-split/30-implementation.md](01-observation-split/30-implementation.md) | 완료 | 커밋 순서, 계층, 보존 항목 |
+| [01-observation-split/40-verification.md](01-observation-split/40-verification.md) | 완료 | 성공 기준 대조, 주장 대조, 실사이트 확인 |
 | 02-kernel-flow-boundary/ | 미작성 | 01 완료 후 착수 |
 | 03-hot-path-extraction/ | 미작성 | 02 완료 후 착수 |
 | 04-flow-selection/ | 미작성 | 03 완료 + 진입 조건 충족 후 착수 |
+| [99-agent-process-notes.md](99-agent-process-notes.md) | 기록 | 작업 방식과 트러블슈팅 회고. 제품 기준이 아니며 별도 경로로 이관 예정 |
 
 ## 기준 문서
 
@@ -211,9 +215,13 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 
 ## 단계 상태
 
-- HANDOFF blocking backlog: 없음 (2026-08-07 확인)
-- 01 관측 분리: 설계 초안 작성됨. 구현 미착수.
-- 02 커널·흐름 경계: 미착수. 설계 미작성.
+- HANDOFF blocking backlog: **[#20](https://github.com/ka-MS/catchtable-reservation-assistant/issues/20)
+  관측 예외 격리 비대칭** (2026-08-07 지정). 01 병합 후 02 착수 **전에**
+  처리하거나 명시적으로 해제한다.
+- 01 관측 분리: **완료.** 611/611 통과(기존 테스트 540개 무수정),
+  실사이트 dry-run 2회로 스탬핑·payload 확인. 성공 기준 8개 전부 충족.
+  `orchestrator.ts` 1,630 → 1,190줄.
+- 02 커널·흐름 경계: **미착수.** 설계 미작성. #20 처리 또는 해제가 선행된다.
 - 03 핫패스 전략 추출: 미착수. 설계 미작성.
 - 04 전략 일반화·흐름 선택: **진입 조건 미충족.** 두 번째 흐름의 실측
   근거 없음.
