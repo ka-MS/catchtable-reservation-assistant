@@ -192,7 +192,9 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 | 문서 | 상태 | 역할 |
 |---|---|---|
 | [10-analysis.md](10-analysis.md) | 확정 | 구조 측정, 과설계 여부 판정, 결합 지점 |
-| [01-observation-split/20-design.md](01-observation-split/20-design.md) | 초안 | 관측 분리 계약과 이동 매핑 |
+| [01-observation-split/20-design.md](01-observation-split/20-design.md) | 승인됨 | 관측 분리 계약과 이동 매핑 |
+| [01-observation-split/30-implementation.md](01-observation-split/30-implementation.md) | 완료 | 커밋 순서, 계층, 보존 항목 |
+| [01-observation-split/40-verification.md](01-observation-split/40-verification.md) | 자동 완료 | 성공 기준 대조, 주장 대조 결과 |
 | 02-kernel-flow-boundary/ | 미작성 | 01 완료 후 착수 |
 | 03-hot-path-extraction/ | 미작성 | 02 완료 후 착수 |
 | 04-flow-selection/ | 미작성 | 03 완료 + 진입 조건 충족 후 착수 |
@@ -213,7 +215,8 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 ## 단계 상태
 
 - HANDOFF blocking backlog: 없음 (2026-08-07 확인)
-- 01 관측 분리: 설계 초안 작성됨. 구현 미착수.
+- 01 관측 분리: **구현 완료.** 573/573 통과, 기존 테스트 무수정.
+  Chrome 수동 dry-run 확인만 대기(성공 기준 7).
 - 02 커널·흐름 경계: 미착수. 설계 미작성.
 - 03 핫패스 전략 추출: 미착수. 설계 미작성.
 - 04 전략 일반화·흐름 선택: **진입 조건 미충족.** 두 번째 흐름의 실측

@@ -5,29 +5,27 @@
 
 ## 진행 중 브랜치
 
-`codex/docs-orchestrator-extensibility` — 오케스트레이터 확장성 기반
-([SP-025](../specs/orchestrator-extensibility/00-index.md)). 문서만
-추가한다. 코드 변경 없음.
+`codex/refactor-observation-split` — 관측 분리
+([SP-025/01](../specs/orchestrator-extensibility/01-observation-split/30-implementation.md)).
+`orchestrator.ts`에서 관측(텔레메트리 payload 조립·전송)을 제어와 분리했다.
+동작 무변경 리팩터다.
 
-새 예약 흐름(웨이팅·줄서기) 추가 가능성을 검토하면서 `orchestrator.ts`의
-구조를 측정했다. 결과는
-[10-analysis.md](../specs/orchestrator-extensibility/10-analysis.md)에
-있다. 코드베이스는 과설계 상태가 아니며(클래스 상속 0건, 파일 중앙값
-82줄, 흐름 종속 코드 35.6%), 문제는 `orchestrator.ts` 안에서 제어와
-관측이 섞인 과소설계다.
+`orchestrator.ts` 1,630 → 1,194줄. `observation/payloads.ts`(순수 함수)와
+`observation/run-observer.ts`(스탬핑·예외 경계·관측 정책)가 신설됐다.
+`npm run check` 573/573 통과하며 **기존 테스트 540개는 무수정**이다.
+특성화 21개와 payload golden 12개를 추가했다.
 
-동작 무변경 리팩터 4단계(`01` 관측 분리 → `02` 커널·흐름 경계 →
-`03` 핫패스 전략 추출 → `04` 전략 일반화·흐름 선택)를 순차 브랜치로
-진행한다. 각 단계는 독립적으로 배포 가능하며, 앞 단계 결과에 따라
-뒤 단계의 범위를 재평가하거나 취소한다. 장기 브랜치는 쓰지 않는다.
+병합 전 남은 것은 Chrome 수동 로드 dry-run 확인 하나다(성공 기준 7).
+`RunObserver`가 실제 `TraceLogger`·`DiagnosticRecorder`와 결합된 적이
+없어 fake로만 검증됐다.
 
-`04`에만 진입 게이트가 있다. **실측 근거가 있는 두 번째 예약 흐름의
-spec 또는 evidence**가 확보되기 전에는 진입하지 않으며, 미확보 시
-이 패키지는 `03`에서 완료 처리한다. `01`~`03`은 오픈런 코드만으로
-결정·검증할 수 있어 게이트가 없다.
+**예외 격리는 한 곳도 바꾸지 않았다.** 작업 중 현재 격리가 비대칭임을
+발견했다 — `trace` 호출 10곳 중 6곳만 격리돼 있고, 나머지에서 exporter가
+던지면 실행이 `FAILED`로 죽는다. `emit`은 더 나아가 `RunResult` 자체를
+막는다. 통일하면 동작이 바뀌므로 보존하고 issue #20으로 분리했다.
+`RunObserver`의 `send`/`sendSafe` 구분으로 그 비대칭이 코드에 드러난다.
 
-**새 예약 흐름 자체는 이 패키지 범위 밖이다.** 웨이팅·줄서기의
-실사이트 실측 근거가 아직 없다.
+다음은 02 커널·흐름 경계다. 01 병합 후 최신 `main`에서 브랜치를 만든다.
 
 ## 직전 완료 작업
 
