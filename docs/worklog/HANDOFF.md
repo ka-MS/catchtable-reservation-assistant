@@ -12,10 +12,10 @@
 `orchestrator.ts`에서 관측(텔레메트리 payload 조립·전송)을 제어와 분리했다.
 동작 무변경 리팩터다.
 
-`orchestrator.ts` 1,630 → 1,194줄. `observation/payloads.ts`(순수 함수)와
-`observation/run-observer.ts`(스탬핑·예외 경계·관측 정책)가 신설됐다.
-`npm run check` 573/573 통과하며 **기존 테스트 540개는 무수정**이다.
-특성화 21개와 payload golden 12개를 추가했다.
+`orchestrator.ts` 1,630 → 1,190줄. `observation/payloads.ts` 401줄(순수 함수)과
+`observation/run-observer.ts` 332줄(스탬핑·예외 경계·관측 정책)이 신설됐다.
+`npm run check` 611/611 통과하며 **기존 테스트 540개는 무수정**이다.
+특성화 21개, payload golden 24개, 관측 예외 경계 계약 26개를 추가했다.
 
 실사이트 dry-run 2회(`run-fbce1b4f`, `run-5cd25ceb`)로 실제 `TraceLogger`
 배선에서의 스탬핑과 payload 키 집합을 확인했다. 계약 밖 키 0건이다.

@@ -302,18 +302,34 @@ test("preparationAttributes는 execution·page가 없으면 생략한다", () =>
 });
 
 test("preparationAttributes는 execution·page를 순서대로 펼치고 extra를 마지막에 둔다", () => {
-  const data = preparationAttributes(
+  pinPayload(preparationAttributes(
     "ENTERING_RESERVATION", "stage_start",
     { capturedAt: 10, tabId: 3, windowId: 5, tabActive: true, windowFocused: false },
     { visibilityState: "visible", hasFocus: true, viewportWidth: 1280, viewportHeight: 720,
       visualViewportWidth: 1280, visualViewportHeight: 700, activeElementTag: "button",
       activeElementRole: null, activeElementId: "reserve", urlKind: "shop", fingerprint: "fp" },
     { waitingOnly: false },
-  );
-  assert.deepStrictEqual(Object.keys(data).slice(0, 4),
-    ["preparationStage", "preparationPhase", "runContextCapturedAt", "runTabId"]);
-  assert.equal(Object.keys(data).at(-1), "waitingOnly");
-  assert.equal(data.pageActiveElementRole, null);
+  ), {
+    preparationStage: "ENTERING_RESERVATION",
+    preparationPhase: "stage_start",
+    runContextCapturedAt: 10,
+    runTabId: 3,
+    runWindowId: 5,
+    runTabActive: true,
+    runWindowFocused: false,
+    pageVisibilityState: "visible",
+    pageHasFocus: true,
+    pageViewportWidth: 1280,
+    pageViewportHeight: 720,
+    pageVisualViewportWidth: 1280,
+    pageVisualViewportHeight: 700,
+    pageActiveElementTag: "button",
+    pageActiveElementRole: null,
+    pageActiveElementId: "reserve",
+    pageUrlKind: "shop",
+    pageFingerprint: "fp",
+    waitingOnly: false,
+  });
 });
 
 const SHADOW_EVENT = {
@@ -323,21 +339,42 @@ const SHADOW_EVENT = {
   bodyReadCompletedMonoMs: 160, payloadClassifiedMonoMs: 170, bridgeReceivedMonoMs: 180,
 };
 
-test("availabilityBodyAttributes는 wake 수락 시 claim 필드를 채운다", () => {
-  const data = availabilityBodyAttributes(
+test("availabilityBodyAttributes는 wake 수락 시 전량을 고정한다", () => {
+  pinPayload(availabilityBodyAttributes(
     SHADOW_EVENT,
     { cycle: 2, correlationId: "cycle:2:request:7", quality: "EXACT", stale: false },
     { accepted: true, discardReason: null, signal: { kind: "scan_wake" } },
     1140, true, 190,
-  );
-  assert.equal(data.phase, "body");
-  assert.equal(data.availableMinutes, "1140,1170");
-  assert.equal(data.availableCount, 2);
-  assert.equal(data.bridgeDelayMs, 10);
-  assert.equal(data.bodyToWakeMs, 10);
-  assert.equal(data.claimSource, "body");
-  assert.equal(data.claimAgreement, true);
-  assert.equal(data.signalKind, "scan_wake");
+  ), {
+    phase: "body",
+    cycle: 2,
+    requestSequence: 7,
+    sequence: 7,
+    correlationId: "cycle:2:request:7",
+    correlationQuality: "EXACT",
+    requestDate: "260903",
+    personCount: 2,
+    classification: "POPULATED",
+    responseStatus: 200,
+    availableCount: 2,
+    availableMinutes: "1140,1170",
+    selectedMinutes: 1140,
+    matchesTarget: true,
+    stale: false,
+    requestSentMonoMs: 100,
+    responseCompletedMonoMs: 150,
+    bodyReadCompletedMonoMs: 160,
+    payloadClassifiedMonoMs: 170,
+    bridgeReceivedMonoMs: 180,
+    bridgeDelayMs: 10,
+    wakeAccepted: true,
+    wakeDiscardReason: null,
+    signalKind: "scan_wake",
+    wakeAtMonoMs: 190,
+    bodyToWakeMs: 10,
+    claimSource: "body",
+    claimAgreement: true,
+  });
 });
 
 test("availabilityBodyAttributes는 wake 거절 시 claim을 none/null로 둔다", () => {
@@ -362,12 +399,31 @@ const DOM_CORR = {
   mutationObservedAfterTarget: true, lastMutationMonoMs: 880,
 };
 
-test("domCorrelationAttributes는 body가 없으면 claimSource를 dom으로 둔다", () => {
-  const data = domCorrelationAttributes(DOM_CORR, "dom_compare");
-  assert.equal(data.phase, "dom_compare");
-  assert.equal(data.claimSource, "dom");
-  assert.equal(data.bodySequence, null);
-  assert.equal(Object.keys(data).length, 22);
+test("domCorrelationAttributes는 body가 없을 때 전량을 고정한다", () => {
+  pinPayload(domCorrelationAttributes(DOM_CORR, "dom_compare"), {
+    phase: "dom_compare",
+    cycle: 3,
+    requestSequence: null,
+    correlationId: null,
+    correlationQuality: "NONE",
+    domMinutes: 1140,
+    domObservedMonoMs: 900,
+    bodySequence: null,
+    bodyClassification: "none",
+    bodySelectedMinutes: null,
+    agreement: null,
+    responseCompletedMonoMs: null,
+    payloadClassifiedMonoMs: null,
+    bridgeReceivedMonoMs: null,
+    bridgeToDomMs: null,
+    targetResponseToDomMs: null,
+    bodyLeadOverDomMs: null,
+    mutationGenerationAtTargetClick: 0,
+    mutationGenerationAtDom: 1,
+    mutationObservedAfterTarget: true,
+    lastMutationMonoMs: 880,
+    claimSource: "dom",
+  });
 });
 
 test("domCorrelationAttributes는 body가 있으면 claimSource를 body로 둔다", () => {
@@ -378,6 +434,31 @@ const WAKE = {
   kind: "scan_wake", cycle: 1, requestSequence: 7, quality: "EXACT", selectedMinutes: 1140,
   responseCompletedMonoMs: 100, payloadClassifiedMonoMs: 110, bridgeReceivedMonoMs: 120, wakeAtMonoMs: 130,
 };
+
+test("wakeResultAttributes는 후보가 있을 때 전량을 고정한다", () => {
+  pinPayload(wakeResultAttributes(WAKE, 200, true, false, 3, 190, 180), {
+    phase: "wake_result",
+    wakeReason: "verified_target_body",
+    cycle: 1,
+    requestSequence: 7,
+    correlationQuality: "EXACT",
+    selectedMinutes: 1140,
+    responseCompletedMonoMs: 100,
+    payloadClassifiedMonoMs: 110,
+    bridgeReceivedMonoMs: 120,
+    wakeAtMonoMs: 130,
+    domCandidateMonoMs: 200,
+    bodyToWakeMs: 10,
+    wakeToDomMs: 70,
+    responseToDomMs: 100,
+    wakeCandidateFound: true,
+    wakeFallbackUsed: false,
+    wakeScanCount: 3,
+    baselineNextScanAtMonoMs: 190,
+    wakeScanAtMonoMs: 180,
+    wakeAdvanceMs: 10,
+  });
+});
 
 test("wakeResultAttributes는 후보가 없으면 파생 시간을 null로 둔다", () => {
   const data = wakeResultAttributes(WAKE, null, false, true, 3, null, null);
@@ -391,6 +472,25 @@ test("wakeResultAttributes는 전진분을 0 이상으로 clamp한다", () => {
   assert.equal(wakeResultAttributes(WAKE, 200, true, false, 3, 150, 180).wakeAdvanceMs, 0);
   assert.equal(wakeResultAttributes(WAKE, 200, true, false, 3, 190, 180).wakeAdvanceMs, 10);
   assert.equal(wakeResultAttributes(WAKE, 200, true, false, 3, 190, 180).wakeToDomMs, 70);
+});
+
+test("emptyExitAttributes는 조기 종료 적용 시 전량을 고정한다", () => {
+  pinPayload(emptyExitAttributes({ ...WAKE, kind: "empty_exit" }, true, false, 300), {
+    phase: "empty_early_exit",
+    signalKind: "empty_exit",
+    cycle: 1,
+    requestSequence: 7,
+    correlationQuality: "EXACT",
+    responseCompletedMonoMs: 100,
+    payloadClassifiedMonoMs: 110,
+    bridgeReceivedMonoMs: 120,
+    wakeAtMonoMs: 130,
+    exitAtMonoMs: 300,
+    bodyToExitMs: 180,
+    targetStillSelected: true,
+    finalDomCandidateFound: false,
+    emptyEarlyExitApplied: true,
+  });
 });
 
 test("emptyExitAttributes는 목표 선택과 후보 유무로 적용 여부를 파생한다", () => {

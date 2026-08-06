@@ -14,11 +14,11 @@ src/content/observation/payloads.ts        신규   401줄
 src/content/observation/run-observer.ts    신규   332줄
 
 tests/orchestrator-observation.test.mjs    신규  21개  특성화
-tests/observation-payloads.test.mjs        신규  22개  순수 함수 golden
+tests/observation-payloads.test.mjs        신규  24개  순수 함수 golden
 tests/observation-run-observer.test.mjs    신규  26개  예외 경계 계약
 
 기존 테스트                                 540개 무수정
-전체                                       609/609 통과
+전체                                       611/611 통과
 ```
 
 `src/content/index.ts`를 포함한 나머지 80개 파일은 변경하지 않았다.
@@ -237,7 +237,8 @@ emit이 던짐                     → start()가 reject, RunResult 없음
 
 `preparationAttributes`, `availabilityBodyAttributes`,
 `domCorrelationAttributes`, `wakeResultAttributes`, `emptyExitAttributes`,
-`clockSampleAttributes` — 각각 golden test를 붙였다(10개 추가).
+`clockSampleAttributes` — 각각 **출력 객체 전량과 키 순서를 고정하는**
+golden test를 붙였다(12개 추가).
 
 컨텍스트 멤버 수(2 → 4)와 결과 크기도 실제 값으로 갱신했다.
 

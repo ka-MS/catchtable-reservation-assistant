@@ -26,7 +26,7 @@
 npm run check
   version validation passed: 1.1.2
   typecheck                  통과
-  tests 609 / pass 609 / fail 0
+  tests 611 / pass 611 / fail 0
   dist validation passed
   independence validation passed  (MAIN/ISOLATED 격리)
 
@@ -39,9 +39,9 @@ git diff --check              통과
 |---|---|---|
 | 기존 스위트 | 540 | **무수정** |
 | `orchestrator-observation.test.mjs` | 21 | 특성화(baseline 고정) |
-| `observation-payloads.test.mjs` | 22 | 순수 함수 golden |
+| `observation-payloads.test.mjs` | 24 | 순수 함수 golden |
 | `observation-run-observer.test.mjs` | 26 | 예외 경계 계약 (리뷰 반영) |
-| **합계** | **609** | |
+| **합계** | **611** | |
 
 ### 왜 기존 테스트만으로는 부족했나
 
@@ -121,7 +121,7 @@ function pinPayload(actual, expected) {
   src/content/observation/payloads.ts        신규   401
   src/content/observation/run-observer.ts    신규   332
   tests/orchestrator-observation.test.mjs    신규    21개
-  tests/observation-payloads.test.mjs        신규    22개
+  tests/observation-payloads.test.mjs        신규    24개
   tests/observation-run-observer.test.mjs    신규    26개
 
 변경하지 않은 파일
