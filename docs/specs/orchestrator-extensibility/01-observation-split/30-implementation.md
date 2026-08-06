@@ -9,15 +9,16 @@
 ## 결과
 
 ```
-src/content/orchestrator.ts              1,630 → 1,194줄  (-436)
-src/content/observation/payloads.ts        신규   205줄
-src/content/observation/run-observer.ts    신규   447줄
+src/content/orchestrator.ts              1,630 → 1,190줄  (-440)
+src/content/observation/payloads.ts        신규   401줄
+src/content/observation/run-observer.ts    신규   332줄
 
-tests/orchestrator-observation.test.mjs    신규   462줄 (21개)
-tests/observation-payloads.test.mjs        신규   281줄 (12개)
+tests/orchestrator-observation.test.mjs    신규  21개  특성화
+tests/observation-payloads.test.mjs        신규  22개  순수 함수 golden
+tests/observation-run-observer.test.mjs    신규  26개  예외 경계 계약
 
 기존 테스트                                 540개 무수정
-전체                                       573/573 통과
+전체                                       609/609 통과
 ```
 
 `src/content/index.ts`를 포함한 나머지 80개 파일은 변경하지 않았다.
@@ -34,8 +35,9 @@ tests/observation-payloads.test.mjs        신규   281줄 (12개)
 | `46d28dc` | `RunObserver` 도입, trace 10곳 이동 | 1,466 → 1,244 |
 | `43df667` | run event·breadcrumb·`failureData` 이동 | 1,244 → 1,175 |
 | `4ee4e20` | availability 콜백 개명, 경계 역할 명시 | 1,175 → 1,194 |
+| (리뷰 반영) | 격리 경계 복구, 빌더 승격, 미사용 import 제거 | 1,194 → 1,190 |
 
-마지막 커밋에서 줄이 는 것은 주석 때문이다.
+`4ee4e20`에서 줄이 느는 것은 주석 때문이다.
 
 ## 계층
 
@@ -193,3 +195,54 @@ emit이 던짐                     → start()가 reject, RunResult 없음
 | "관측 전용 catch 9 → 1" | fallback이 5종이라 1로 합칠 수 없다 | 리뷰 |
 | "trace가 던지면 `start()` reject" | `FAILED` 종결. reject는 `emit`일 때만 | 특성화 테스트 작성 |
 | "25ms 루프 안에 관측 없음" | 조건부 관측 2개가 루프 안에 있다 | 성공 기준 8 실행 |
+
+## PR #21 리뷰 반영
+
+리뷰에서 네 건이 지적됐고 **전부 사실이었다.**
+
+### [P1] 격리 경계가 축소돼 있었다 — 동작 무변경 위반
+
+`sendSafe(code, severity, message, options)` 형태였을 때 **options 객체가
+호출 전에 평가**돼 `ctx.serverAt()`·`ctx.state()` 예외가 경계 밖으로 샜다.
+이동 전에는 스탬핑 계산까지 `try` 안에 있었다.
+
+```
+수정 전:  wakeResult()     ❌ 전파됨: serverAt boom
+          clockSamples()   ❌ 전파됨: serverAt boom
+수정 후:  전부 ✅ 격리됨
+```
+
+`clockSamples()`가 특히 위험했다. `execute()`의 `finally`에서 호출되므로
+던지면 terminal `RunResult`를 덮고 flush를 건너뛴다.
+
+`sendSafe`를 **thunk 기반**으로 바꿔 스탬핑·payload 조립을 전부 경계
+안에 넣었다. `preparation`·`emptyExit`과 동일한 패턴이 됐다.
+
+`tests/observation-run-observer.test.mjs`(26개)를 추가해 메서드별 경계
+계약을 고정했다 — 격리 메서드 4개 × (`serverAt`·`state`·`trace` 실패),
+전파 메서드 4개 + `emit`, 표본별 독립 격리, 스탬핑 계약, `failureData`
+순서·독립성.
+
+### [P1] HANDOFF가 #20을 건너뛰게 돼 있었다
+
+`Blocking backlog: 없음`으로 두고 다음 작업을 02로 적어, `AGENTS.md` §5에
+따라 다음 작업자가 #20을 건너뛸 수 있었다. #20을 blocking으로 지정하고
+다음 작업을 **#20 격리 통일 판단**으로 바꿨다.
+
+### [P2] 설계와 구현이 어긋나 있었다
+
+설계는 인라인 attribute 빌더 6개를 `payloads.ts`로 승격한다고 선언했으나
+실제로는 `RunObserver`에 인라인으로 남아 있었다. 의도적 범위 축소가
+아니라 그냥 하지 않은 것이었으므로 **승격을 완료**했다.
+
+`preparationAttributes`, `availabilityBodyAttributes`,
+`domCorrelationAttributes`, `wakeResultAttributes`, `emptyExitAttributes`,
+`clockSampleAttributes` — 각각 golden test를 붙였다(10개 추가).
+
+컨텍스트 멤버 수(2 → 4)와 결과 크기도 실제 값으로 갱신했다.
+
+### [P3] 미사용 import
+
+`toggleCycleAttributes`, `TimingMark`, `ToggleCycleTrace`, `TogglePlan`이
+추출 후 `orchestrator.ts`에서 쓰이지 않았다. `noUnusedLocals`가 꺼져 있어
+typecheck가 잡지 못했다. 제거했다.

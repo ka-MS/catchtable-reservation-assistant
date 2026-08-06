@@ -23,7 +23,17 @@ import type { BodyCorrelation, DomCorrelation } from "../availability-correlatio
 import type { AvailabilityWakeDecision, AvailabilityWakeSignal } from "../availability-dom-wake.js";
 import type { PreparationPageContext } from "../preparation-observation.js";
 import type { StageSnapshot } from "../adapter/snapshot.js";
-import { stageSnapshotData, toggleCycleAttributes, type ToggleCycleTrace } from "./payloads.js";
+import {
+  availabilityBodyAttributes,
+  clockSampleAttributes,
+  domCorrelationAttributes,
+  emptyExitAttributes,
+  preparationAttributes,
+  stageSnapshotData,
+  toggleCycleAttributes,
+  wakeResultAttributes,
+  type ToggleCycleTrace,
+} from "./payloads.js";
 
 /** 관측이 세션에서 읽는 것 — 이 셋이 전부다. */
 export interface ObservationContext {
@@ -110,14 +120,13 @@ export class RunObserver {
     this.deps.trace?.(code, severity, message, options);
   }
 
-  /** 예외를 삼킨다. 이동 전 `try/catch`로 감싸여 있던 지점 전용. */
-  private sendSafe(
-    code: TraceCode,
-    severity: TraceSeverity,
-    message: string,
-    options: { serverAt?: number | null; state?: RunState | null; attributes: TraceAttributes; error?: unknown },
-  ): void {
-    this.safeCall(() => this.send(code, severity, message, options), undefined);
+  /**
+   * 예외를 삼킨다. **thunk를 받는 이유**: 인자로 options 객체를 받으면
+   * `ctx.serverAt()`·`ctx.state()`가 호출 전에 평가돼 경계 밖에서 던진다.
+   * 이동 전에는 스탬핑 계산까지 `try` 안에 있었으므로 그 범위를 보존한다.
+   */
+  private sendSafe(build: () => void): void {
+    this.safeCall(build, undefined);
   }
 
   // --- Run event와 breadcrumb ----------------------------------------------
@@ -172,43 +181,18 @@ export class RunObserver {
 
   /** 격리됨. 페이지 컨텍스트 캡처 실패는 별도로 흡수하고 trace는 계속 나간다. */
   preparation(phase: PreparationPhase, attributes: TraceAttributes = {}, severity: TraceSeverity = "trace"): void {
-    this.safeCall(() => {
+    this.sendSafe(() => {
       const page = this.safeCall<PreparationPageContext | null>(
         () => this.deps.capturePreparationContext?.() ?? null,
         null,
       );
-      const execution = this.executionContext;
       const state = this.ctx.state();
       this.send("PREPARATION_OBSERVED", severity, `준비 단계 ${phase} 상태를 기록했습니다.`, {
         serverAt: this.ctx.serverAt(),
         state,
-        attributes: {
-          preparationStage: state,
-          preparationPhase: phase,
-          ...(execution ? {
-            runContextCapturedAt: execution.capturedAt,
-            runTabId: execution.tabId,
-            runWindowId: execution.windowId,
-            runTabActive: execution.tabActive,
-            runWindowFocused: execution.windowFocused,
-          } : {}),
-          ...(page ? {
-            pageVisibilityState: page.visibilityState,
-            pageHasFocus: page.hasFocus,
-            pageViewportWidth: page.viewportWidth,
-            pageViewportHeight: page.viewportHeight,
-            pageVisualViewportWidth: page.visualViewportWidth,
-            pageVisualViewportHeight: page.visualViewportHeight,
-            pageActiveElementTag: page.activeElementTag,
-            pageActiveElementRole: page.activeElementRole,
-            pageActiveElementId: page.activeElementId,
-            pageUrlKind: page.urlKind,
-            pageFingerprint: page.fingerprint,
-          } : {}),
-          ...attributes,
-        },
+        attributes: preparationAttributes(state, phase, this.executionContext, page, attributes),
       });
-    }, undefined);
+    });
   }
 
   // --- Availability shadow -------------------------------------------------
@@ -230,36 +214,8 @@ export class RunObserver {
       `슬롯 응답 shadow를 ${event.classification}로 분류했습니다.`, {
         serverAt: this.ctx.serverAt(),
         state: this.ctx.state(),
-        attributes: {
-          phase: "body",
-          cycle: correlation.cycle,
-          requestSequence: event.sequence,
-          sequence: event.sequence,
-          correlationId: correlation.correlationId,
-          correlationQuality: correlation.quality,
-          requestDate: event.requestDate,
-          personCount: event.personCount,
-          classification: event.classification,
-          responseStatus: event.responseStatus,
-          availableCount: event.availableMinutes.length,
-          availableMinutes: event.availableMinutes.join(","),
-          selectedMinutes,
-          matchesTarget,
-          stale: correlation.stale,
-          requestSentMonoMs: event.requestSentMonoMs,
-          responseCompletedMonoMs: event.responseCompletedMonoMs,
-          bodyReadCompletedMonoMs: event.bodyReadCompletedMonoMs,
-          payloadClassifiedMonoMs: event.payloadClassifiedMonoMs,
-          bridgeReceivedMonoMs: event.bridgeReceivedMonoMs,
-          bridgeDelayMs: event.bridgeReceivedMonoMs - event.payloadClassifiedMonoMs,
-          wakeAccepted: decision.accepted,
-          wakeDiscardReason: decision.discardReason,
-          signalKind: decision.signal?.kind ?? null,
-          wakeAtMonoMs,
-          bodyToWakeMs: wakeAtMonoMs - event.bridgeReceivedMonoMs,
-          claimSource: decision.accepted ? "body" : "none",
-          claimAgreement: decision.accepted ? true : null,
-        },
+        attributes: availabilityBodyAttributes(
+          event, correlation, decision, selectedMinutes, matchesTarget, wakeAtMonoMs),
       });
   }
 
@@ -268,30 +224,7 @@ export class RunObserver {
     this.send("AVAILABILITY_SHADOW", "trace", "body와 DOM 슬롯 후보를 비교했습니다.", {
       serverAt: this.ctx.serverAt(),
       state: this.ctx.state(),
-      attributes: {
-        phase,
-        cycle: correlation.cycle,
-        requestSequence: correlation.requestSequence,
-        correlationId: correlation.correlationId,
-        correlationQuality: correlation.quality,
-        domMinutes: correlation.domMinutes,
-        domObservedMonoMs: correlation.domObservedMonoMs,
-        bodySequence: correlation.requestSequence,
-        bodyClassification: correlation.bodyClassification,
-        bodySelectedMinutes: correlation.bodySelectedMinutes,
-        agreement: correlation.agreement,
-        responseCompletedMonoMs: correlation.responseCompletedMonoMs,
-        payloadClassifiedMonoMs: correlation.payloadClassifiedMonoMs,
-        bridgeReceivedMonoMs: correlation.bridgeReceivedMonoMs,
-        bridgeToDomMs: correlation.bridgeToDomMs,
-        targetResponseToDomMs: correlation.targetResponseToDomMs,
-        bodyLeadOverDomMs: correlation.bodyLeadOverDomMs,
-        mutationGenerationAtTargetClick: correlation.mutationGenerationAtTargetClick,
-        mutationGenerationAtDom: correlation.mutationGenerationAtDom,
-        mutationObservedAfterTarget: correlation.mutationObservedAfterTarget,
-        lastMutationMonoMs: correlation.lastMutationMonoMs,
-        claimSource: correlation.requestSequence === null ? "dom" : "body",
-      },
+      attributes: domCorrelationAttributes(correlation, phase),
     });
   }
 
@@ -305,35 +238,13 @@ export class RunObserver {
     baselineNextScanAtMonoMs: number | null,
     wakeScanAtMonoMs: number | null,
   ): void {
-    this.sendSafe("AVAILABILITY_SHADOW", "trace", "body wake-up 이후 DOM 후보를 확인했습니다.", {
-      serverAt: this.ctx.serverAt(),
-      state: this.ctx.state(),
-      attributes: {
-        phase: "wake_result",
-        wakeReason: "verified_target_body",
-        cycle: signal.cycle,
-        requestSequence: signal.requestSequence,
-        correlationQuality: signal.quality,
-        selectedMinutes: signal.selectedMinutes,
-        responseCompletedMonoMs: signal.responseCompletedMonoMs,
-        payloadClassifiedMonoMs: signal.payloadClassifiedMonoMs,
-        bridgeReceivedMonoMs: signal.bridgeReceivedMonoMs,
-        wakeAtMonoMs: signal.wakeAtMonoMs,
-        domCandidateMonoMs: candidateObservedMonoMs,
-        bodyToWakeMs: signal.wakeAtMonoMs - signal.bridgeReceivedMonoMs,
-        wakeToDomMs: candidateObservedMonoMs === null ? null : candidateObservedMonoMs - signal.wakeAtMonoMs,
-        responseToDomMs: candidateObservedMonoMs === null
-          ? null
-          : candidateObservedMonoMs - signal.responseCompletedMonoMs,
-        wakeCandidateFound: candidateFound,
-        wakeFallbackUsed: fallbackUsed,
-        wakeScanCount: scanCount,
-        baselineNextScanAtMonoMs,
-        wakeScanAtMonoMs,
-        wakeAdvanceMs: baselineNextScanAtMonoMs === null || wakeScanAtMonoMs === null
-          ? null
-          : Math.max(0, baselineNextScanAtMonoMs - wakeScanAtMonoMs),
-      },
+    this.sendSafe(() => {
+      this.send("AVAILABILITY_SHADOW", "trace", "body wake-up 이후 DOM 후보를 확인했습니다.", {
+        serverAt: this.ctx.serverAt(),
+        state: this.ctx.state(),
+        attributes: wakeResultAttributes(signal, candidateObservedMonoMs, candidateFound,
+          fallbackUsed, scanCount, baselineNextScanAtMonoMs, wakeScanAtMonoMs),
+      });
     });
   }
 
@@ -346,9 +257,8 @@ export class RunObserver {
     targetStillSelected: boolean,
     finalDomCandidateFound: boolean,
   ): void {
-    this.safeCall(() => {
+    this.sendSafe(() => {
       const exitAtMonoMs = this.ctx.monoNow();
-      const emptyEarlyExitApplied = targetStillSelected && !finalDomCandidateFound;
       const message = finalDomCandidateFound
         ? "EXACT EMPTY 응답 직후 슬롯 DOM 후보를 확인해 조기 종료하지 않았습니다."
         : targetStillSelected
@@ -357,24 +267,9 @@ export class RunObserver {
       this.send("AVAILABILITY_SHADOW", "trace", message, {
         serverAt: this.ctx.serverAt(),
         state: this.ctx.state(),
-        attributes: {
-          phase: "empty_early_exit",
-          signalKind: signal.kind,
-          cycle: signal.cycle,
-          requestSequence: signal.requestSequence,
-          correlationQuality: signal.quality,
-          responseCompletedMonoMs: signal.responseCompletedMonoMs,
-          payloadClassifiedMonoMs: signal.payloadClassifiedMonoMs,
-          bridgeReceivedMonoMs: signal.bridgeReceivedMonoMs,
-          wakeAtMonoMs: signal.wakeAtMonoMs,
-          exitAtMonoMs,
-          bodyToExitMs: exitAtMonoMs - signal.bridgeReceivedMonoMs,
-          targetStillSelected,
-          finalDomCandidateFound,
-          emptyEarlyExitApplied,
-        },
+        attributes: emptyExitAttributes(signal, targetStillSelected, finalDomCandidateFound, exitAtMonoMs),
       });
-    }, undefined);
+    });
   }
 
   // --- 기준시계 원시 표본 ---------------------------------------------------
@@ -384,23 +279,13 @@ export class RunObserver {
     if (frozen.samples.length === 0) return;
     const total = frozen.samples.length;
     frozen.samples.forEach((sample, index) => {
-      this.sendSafe("CLOCK_SAMPLE", "trace", `기준시계 원시 표본 ${index + 1}/${total}을 기록했습니다.`, {
-        serverAt: this.ctx.serverAt(),
-        // Raw 진단 event가 terminal prune를 반복 트리거하지 않도록 run state는 싣지 않는다.
-        state: null,
-        attributes: {
-          clockSampleIndex: index + 1,
-          clockSampleTotal: total,
-          clockSampleFreezeReason: frozen.reason,
-          clockSampleT0MonoMs: sample.t0,
-          clockSampleT1MonoMs: sample.t1,
-          clockSampleServerDateMs: sample.serverDateMs,
-          clockSampleRttMs: sample.rttMs,
-          clockSampleOffsetLowerMs: sample.lowerMs,
-          clockSampleOffsetCenterMs: (sample.lowerMs + sample.upperMs) / 2,
-          clockSampleOffsetUpperMs: sample.upperMs,
-          clockSampleFromCache: sample.fromCache,
-        },
+      this.sendSafe(() => {
+        this.send("CLOCK_SAMPLE", "trace", `기준시계 원시 표본 ${index + 1}/${total}을 기록했습니다.`, {
+          serverAt: this.ctx.serverAt(),
+          // Raw 진단 event가 terminal prune를 반복 트리거하지 않도록 run state는 싣지 않는다.
+          state: null,
+          attributes: clockSampleAttributes(sample, index, total, frozen.reason),
+        });
       });
     });
   }

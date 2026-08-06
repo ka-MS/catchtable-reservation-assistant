@@ -124,12 +124,16 @@ trace까지 함께 던질 때만 발생한다. 어느 쪽이든 **관측 실패�
 
 ```
 src/content/observation/
-  payloads.ts       순수 함수. 세션 의존 0.        (~330줄)
-  run-observer.ts   스탬핑 + 예외 격리 + 관측 정책 (~220줄)
+  payloads.ts       순수 함수. 세션 의존 0.          401줄
+  run-observer.ts   스탬핑 + 예외 격리 + 관측 정책   332줄
 
 src/content/orchestrator.ts
-  RunSession        제어만                        (~1,050줄)
+  RunSession        제어만                        1,190줄
 ```
+
+초안의 예상치(330 / 220 / 1,050)는 실제와 달랐다. `payloads.ts`는 승격
+대상 빌더 6개를 포함해 더 커졌고, `orchestrator.ts`는 예상보다 덜 줄었다.
+위 값이 구현 결과다.
 
 ### Layer 1 — `payloads.ts`
 
@@ -147,10 +151,12 @@ src/content/orchestrator.ts
 ### Layer 2 — `RunObserver`
 
 ```ts
-/** 관측이 세션에서 읽는 것 — 이 두 개가 전부다. */
+/** 관측이 세션에서 읽는 것 — 넷이다. */
 interface ObservationContext {
+  now(): number;               // wall clock (RunEvent.at)
   serverAt(): number | null;   // serverClockReady ? serverClock.now() : null
   state(): RunState;
+  monoNow(): number;           // emptyExit의 exitAtMonoMs
 }
 
 interface ObservationDeps {
@@ -177,24 +183,18 @@ export class RunObserver {
     }
   }
 
-  /** 스탬핑만 하고 예외는 전파한다. 현재 격리되지 않은 4개 지점용. */
-  private emitTrace(
-    code: TraceCode, severity: TraceSeverity, message: string,
-    attributes: TraceAttributes,
-  ): void {
-    this.deps.trace?.(code, severity, message, {
-      serverAt: this.ctx.serverAt(),
-      state: this.ctx.state(),
-      attributes,
-    });
+  /** 예외를 전파한다. 이동 전 감싸여 있지 않던 지점 전용. */
+  private send(code, severity, message, options): void {
+    this.deps.trace?.(code, severity, message, options);
   }
 
-  /** 스탬핑 + 예외 격리. 현재 try/catch로 감싸인 6개 지점용. */
-  private safeTrace(
-    code: TraceCode, severity: TraceSeverity, message: string,
-    attributes: TraceAttributes,
-  ): void {
-    this.safeCall(() => this.emitTrace(code, severity, message, attributes), undefined);
+  /**
+   * 예외를 삼킨다. **thunk를 받는다** — options 객체를 인자로 받으면
+   * `ctx.serverAt()`·`ctx.state()`가 호출 전에 평가돼 경계 밖에서 던진다.
+   * 이동 전에는 스탬핑 계산까지 `try` 안에 있었으므로 그 범위를 보존한다.
+   */
+  private sendSafe(build: () => void): void {
+    this.safeCall(build, undefined);
   }
 
   // 관측 메서드는 '사실'만 받고 payload 조립은 내부에서 한다.
@@ -210,14 +210,16 @@ export class RunObserver {
 }
 ```
 
-세션 쪽 배선은 클로저 두 개로 끝난다. 관측 계층이 `RunSession`을 통째로
+세션 쪽 배선은 클로저 넷으로 끝난다. 관측 계층이 `RunSession`을 통째로
 알 필요가 없고, 순환 의존도 생기지 않는다.
 
 ```ts
 this.observe = new RunObserver(
   {
+    now: () => deps.clock.now(),
     serverAt: () => this.serverClockReady ? this.serverClock.now() : null,
     state: () => this.machine.state,
+    monoNow: () => deps.monotonicClock.now(),
   },
   deps,
   executionContext,

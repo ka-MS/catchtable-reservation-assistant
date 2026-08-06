@@ -279,3 +279,143 @@ test("slotClickDispatchedEventData는 arrival이 있으면 클릭까지의 간�
     clockOffsetMs: 0,
   });
 });
+
+// ---------------------------------------------------------------------------
+// 관측 계층 attribute 빌더 (SP-025/01 리뷰 반영으로 RunObserver에서 승격)
+// ---------------------------------------------------------------------------
+
+import {
+  availabilityBodyAttributes,
+  clockSampleAttributes,
+  domCorrelationAttributes,
+  emptyExitAttributes,
+  preparationAttributes,
+  wakeResultAttributes,
+} from "../dist/content/observation/payloads.js";
+
+test("preparationAttributes는 execution·page가 없으면 생략한다", () => {
+  pinPayload(preparationAttributes("SELECTING_DATE", "decision", undefined, null, { preparationDecision: "ready" }), {
+    preparationStage: "SELECTING_DATE",
+    preparationPhase: "decision",
+    preparationDecision: "ready",
+  });
+});
+
+test("preparationAttributes는 execution·page를 순서대로 펼치고 extra를 마지막에 둔다", () => {
+  const data = preparationAttributes(
+    "ENTERING_RESERVATION", "stage_start",
+    { capturedAt: 10, tabId: 3, windowId: 5, tabActive: true, windowFocused: false },
+    { visibilityState: "visible", hasFocus: true, viewportWidth: 1280, viewportHeight: 720,
+      visualViewportWidth: 1280, visualViewportHeight: 700, activeElementTag: "button",
+      activeElementRole: null, activeElementId: "reserve", urlKind: "shop", fingerprint: "fp" },
+    { waitingOnly: false },
+  );
+  assert.deepStrictEqual(Object.keys(data).slice(0, 4),
+    ["preparationStage", "preparationPhase", "runContextCapturedAt", "runTabId"]);
+  assert.equal(Object.keys(data).at(-1), "waitingOnly");
+  assert.equal(data.pageActiveElementRole, null);
+});
+
+const SHADOW_EVENT = {
+  sequence: 7, requestDate: "260903", personCount: 2, classification: "POPULATED",
+  responseStatus: 200, availableMinutes: [1140, 1170],
+  requestSentMonoMs: 100, responseCompletedMonoMs: 150,
+  bodyReadCompletedMonoMs: 160, payloadClassifiedMonoMs: 170, bridgeReceivedMonoMs: 180,
+};
+
+test("availabilityBodyAttributes는 wake 수락 시 claim 필드를 채운다", () => {
+  const data = availabilityBodyAttributes(
+    SHADOW_EVENT,
+    { cycle: 2, correlationId: "cycle:2:request:7", quality: "EXACT", stale: false },
+    { accepted: true, discardReason: null, signal: { kind: "scan_wake" } },
+    1140, true, 190,
+  );
+  assert.equal(data.phase, "body");
+  assert.equal(data.availableMinutes, "1140,1170");
+  assert.equal(data.availableCount, 2);
+  assert.equal(data.bridgeDelayMs, 10);
+  assert.equal(data.bodyToWakeMs, 10);
+  assert.equal(data.claimSource, "body");
+  assert.equal(data.claimAgreement, true);
+  assert.equal(data.signalKind, "scan_wake");
+});
+
+test("availabilityBodyAttributes는 wake 거절 시 claim을 none/null로 둔다", () => {
+  const data = availabilityBodyAttributes(
+    SHADOW_EVENT,
+    { cycle: null, correlationId: null, quality: "NONE", stale: true },
+    { accepted: false, discardReason: "stale", signal: null },
+    null, false, 190,
+  );
+  assert.equal(data.claimSource, "none");
+  assert.equal(data.claimAgreement, null);
+  assert.equal(data.signalKind, null);
+  assert.equal(data.wakeDiscardReason, "stale");
+});
+
+const DOM_CORR = {
+  cycle: 3, requestSequence: null, correlationId: null, quality: "NONE",
+  domMinutes: 1140, domObservedMonoMs: 900, bodyClassification: "none", bodySelectedMinutes: null,
+  agreement: null, responseCompletedMonoMs: null, payloadClassifiedMonoMs: null,
+  bridgeReceivedMonoMs: null, bridgeToDomMs: null, targetResponseToDomMs: null,
+  bodyLeadOverDomMs: null, mutationGenerationAtTargetClick: 0, mutationGenerationAtDom: 1,
+  mutationObservedAfterTarget: true, lastMutationMonoMs: 880,
+};
+
+test("domCorrelationAttributes는 body가 없으면 claimSource를 dom으로 둔다", () => {
+  const data = domCorrelationAttributes(DOM_CORR, "dom_compare");
+  assert.equal(data.phase, "dom_compare");
+  assert.equal(data.claimSource, "dom");
+  assert.equal(data.bodySequence, null);
+  assert.equal(Object.keys(data).length, 22);
+});
+
+test("domCorrelationAttributes는 body가 있으면 claimSource를 body로 둔다", () => {
+  assert.equal(domCorrelationAttributes({ ...DOM_CORR, requestSequence: 9 }, "dom_compare_late").claimSource, "body");
+});
+
+const WAKE = {
+  kind: "scan_wake", cycle: 1, requestSequence: 7, quality: "EXACT", selectedMinutes: 1140,
+  responseCompletedMonoMs: 100, payloadClassifiedMonoMs: 110, bridgeReceivedMonoMs: 120, wakeAtMonoMs: 130,
+};
+
+test("wakeResultAttributes는 후보가 없으면 파생 시간을 null로 둔다", () => {
+  const data = wakeResultAttributes(WAKE, null, false, true, 3, null, null);
+  assert.equal(data.wakeToDomMs, null);
+  assert.equal(data.responseToDomMs, null);
+  assert.equal(data.wakeAdvanceMs, null);
+  assert.equal(data.bodyToWakeMs, 10);
+});
+
+test("wakeResultAttributes는 전진분을 0 이상으로 clamp한다", () => {
+  assert.equal(wakeResultAttributes(WAKE, 200, true, false, 3, 150, 180).wakeAdvanceMs, 0);
+  assert.equal(wakeResultAttributes(WAKE, 200, true, false, 3, 190, 180).wakeAdvanceMs, 10);
+  assert.equal(wakeResultAttributes(WAKE, 200, true, false, 3, 190, 180).wakeToDomMs, 70);
+});
+
+test("emptyExitAttributes는 목표 선택과 후보 유무로 적용 여부를 파생한다", () => {
+  const base = { ...WAKE, kind: "empty_exit" };
+  assert.equal(emptyExitAttributes(base, true, false, 300).emptyEarlyExitApplied, true);
+  assert.equal(emptyExitAttributes(base, true, true, 300).emptyEarlyExitApplied, false);
+  assert.equal(emptyExitAttributes(base, false, false, 300).emptyEarlyExitApplied, false);
+  assert.equal(emptyExitAttributes(base, true, false, 300).bodyToExitMs, 180);
+});
+
+test("clockSampleAttributes는 인덱스를 1부터 매기고 중앙값을 파생한다", () => {
+  pinPayload(clockSampleAttributes(
+    { t0: 10, t1: 50, serverDateMs: 1_000, rttMs: 40, lowerMs: 950, upperMs: 1_990, fromCache: true },
+    0, 2, "armed",
+  ), {
+    clockSampleIndex: 1,
+    clockSampleTotal: 2,
+    clockSampleFreezeReason: "armed",
+    clockSampleT0MonoMs: 10,
+    clockSampleT1MonoMs: 50,
+    clockSampleServerDateMs: 1_000,
+    clockSampleRttMs: 40,
+    clockSampleOffsetLowerMs: 950,
+    clockSampleOffsetCenterMs: 1_470,
+    clockSampleOffsetUpperMs: 1_990,
+    clockSampleFromCache: true,
+  });
+});

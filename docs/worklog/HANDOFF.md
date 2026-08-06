@@ -1,7 +1,9 @@
 # HANDOFF
 
 **갱신:** 2026-08-07
-**Blocking backlog:** 없음 (`main` 기준)
+**Blocking backlog:** [#20](https://github.com/ka-MS/catchtable-reservation-assistant/issues/20)
+관측 예외 격리 비대칭 — SP-025/01 병합 후 02 착수 **전에** 처리하거나
+명시적으로 해제한다.
 
 ## 진행 중 브랜치
 
@@ -25,7 +27,12 @@
 막는다. 통일하면 동작이 바뀌므로 보존하고 issue #20으로 분리했다.
 `RunObserver`의 `send`/`sendSafe` 구분으로 그 비대칭이 코드에 드러난다.
 
-다음은 02 커널·흐름 경계다. 01 병합 후 최신 `main`에서 브랜치를 만든다.
+다음은 **#20 격리 통일 판단**이다. 02 커널·흐름 경계가 아니다.
+
+01이 `RunObserver`의 `send`(전파) / `sendSafe`(격리) 구분으로 비대칭을
+코드에 드러냈으므로 판단 근거가 갖춰졌다. 02가 같은 파일을 다시 크게
+움직이기 전에 처리하는 편이 비용이 낮다. 처리하지 않기로 한다면 이
+HANDOFF에서 blocking을 명시적으로 해제하고 근거를 남긴다.
 
 ## 직전 완료 작업
 

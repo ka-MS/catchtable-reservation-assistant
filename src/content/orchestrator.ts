@@ -43,10 +43,6 @@ import {
   slotDetectedEventData,
   stageSnapshotData,
   targetClickMetricData,
-  toggleCycleAttributes,
-  type TimingMark,
-  type ToggleCycleTrace,
-  type TogglePlan,
 } from "./observation/payloads.js";
 import { RunObserver, type DiagnosticsPort } from "./observation/run-observer.js";
 
