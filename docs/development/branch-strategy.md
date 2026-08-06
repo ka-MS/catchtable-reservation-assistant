@@ -11,6 +11,7 @@
 - 기능: `codex/feat-<짧은 이름>`
 - 수정: `codex/fix-<짧은 이름>`
 - 문서: `codex/docs-<짧은 이름>`
+- 구조 리팩터: `codex/refactor-<짧은 이름>`
 - 릴리스·도구: `codex/chore-<짧은 이름>`
 - 큰 재설계만 별도 장기 브랜치를 사용한다.
 
