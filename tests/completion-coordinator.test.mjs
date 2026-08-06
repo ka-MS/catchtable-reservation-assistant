@@ -95,6 +95,10 @@ test("0원 폼은 필수 입력·약관 뒤 outer claim 1회와 성공 근거로
   ]);
   assert.equal(telemetry[0].attributes.catchPaySelected, true);
   assert.equal(telemetry[0].attributes.generalPaymentSelected, false);
+  // 답변 본문은 저장하지 않으므로 설정 여부만 남는다. 빈 필수 입력이 있는 실행을
+  // 나중에 판독할 때 이 값이 없으면 완주 자체가 모순처럼 보인다.
+  assert.equal(telemetry[0].attributes.emptyRequiredMultilineCount, 3);
+  assert.equal(telemetry[0].attributes.requiredFormDefaultAnswerSet, true);
   assert.equal([...document.querySelectorAll('input[type="checkbox"]')]
     .filter((input) => (input.closest("label")?.textContent ?? "").includes("[선택]"))
     .some((input) => input.checked), false);
