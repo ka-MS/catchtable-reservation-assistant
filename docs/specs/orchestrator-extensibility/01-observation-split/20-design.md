@@ -262,13 +262,20 @@ snapshot 캡처와 `diagnostics.failure()`의 **독립 실행 순서를 보존**
 `observeAvailabilityDom`(569행)도 같은 구조다. `correlateDom` 호출은
 제어, 이후 trace는 관측이다.
 
-### ③ 핫패스 성능은 중립이다
+### ③ 핫패스 성능은 중립이다 — 단 "루프 안에 관측이 없다"는 아니다
 
-25ms·10ms·5ms 루프 **안에서 호출되는 관측은 없다.** `traceCycle`은
-사이클 종료 시 1회다([10-analysis.md](../10-analysis.md) §3).
+지켜야 할 불변식은 **"매 반복 경로에 관측이 없다"** 이다. 루프 안에
+관측 호출 자체는 있다([10-analysis.md](../10-analysis.md) §3).
 
-이 사실을 `runToggleCycle`에 주석으로 못박는다. 이후 누군가 루프 안에
-관측을 추가하는 것을 막는 유일한 수단이다.
+- `applyPendingEmptyExit` → `traceAvailabilityEmptyExit` — `empty_exit`
+  wake 신호가 대기 중일 때만, 사이클당 최대 1회
+- `traceCycle("EMPTY_EARLY_EXIT")` — 조기 종료 확정 시에만, 사이클당 최대 1회
+
+둘 다 실행 직후 `break` 하거나 `return` 하므로 반복 비용에 누적되지 않는다.
+
+이 구분을 `runToggleCycle`에 주석으로 못박는다. "루프 안에 관측 금지"로
+적으면 기존 코드와 모순돼 주석이 무시되므로, **"반복 경로에 관측 금지,
+종료 직전 1회는 허용"** 으로 적는다.
 
 ## 검증
 
@@ -305,8 +312,10 @@ snapshot 캡처와 `diagnostics.failure()`의 **독립 실행 순서를 보존**
    않는 두 가지를 diff에서 직접 확인한다.
    - (a) 제어 복원력 `catch` 11개(271·435·472·479·725·730·869·913·
      1035·1173·1377)가 변경되지 않았을 것
-   - (b) `runToggleCycle`의 스캔 루프 내부에 observer 호출이 추가되지
-     않았을 것
+   - (b) `runToggleCycle` 스캔 루프의 **매 반복 경로**에 observer 호출이
+     추가되지 않았을 것. 기존의 조건부 1회 호출
+     (`traceAvailabilityEmptyExit`, `traceCycle("EMPTY_EARLY_EXIT")`)은
+     그대로 두며, 이들이 실행 직후 루프를 벗어나는 구조도 유지할 것
 
 2~5는 이 단계에서 새로 추가하는 테스트이며, 추출 **이전에** 현재
 동작을 고정하는 용도로 먼저 작성한다(실패 테스트 우선). 8은 리뷰
