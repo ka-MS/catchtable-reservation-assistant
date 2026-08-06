@@ -47,6 +47,7 @@ import {
   type ToggleCycleTrace,
   type TogglePlan,
 } from "./observation/payloads.js";
+import { RunObserver } from "./observation/run-observer.js";
 
 // `stageSnapshotData`는 `tests/snapshot-data.test.mjs`가 이 모듈에서 직접
 // import한다. 테스트 무수정을 유지하기 위해 re-export를 남긴다.
@@ -225,6 +226,7 @@ class RunSession {
   private readonly availabilityCorrelation = new AvailabilityCorrelationTracker();
   private readonly availabilityWake = new AvailabilityDomWake();
   private readonly authorizationHandle: OneShotAuthorizationHandle;
+  private readonly observe: RunObserver;
 
   constructor(
     private readonly deps: Dependencies,
@@ -239,6 +241,15 @@ class RunSession {
     // frame 1(monotonic): 기준시계 오차·wall-clock 점프와 무관한 실제 경과.
     this.runStartMonoMs = deps.monotonicClock.now();
     this.authorizationHandle = new OneShotAuthorizationHandle(authorization);
+    this.observe = new RunObserver(
+      {
+        serverAt: () => (this.serverClockReady ? this.serverClock.now() : null),
+        state: () => this.machine.state,
+        monoNow: () => deps.monotonicClock.now(),
+      },
+      deps,
+      executionContext,
+    );
   }
 
   private monoFromRunStartMs(): number {
@@ -275,53 +286,6 @@ class RunSession {
       } catch {
         // Diagnostics must not affect reservation control.
       }
-    }
-  }
-
-  private tracePreparation(
-    phase: "stage_start" | "condition_changed" | "dispatch_before" | "dispatch_after" | "decision",
-    attributes: TraceAttributes = {},
-    severity: TraceSeverity = "trace",
-  ): void {
-    try {
-      let page: PreparationPageContext | null = null;
-      try {
-        page = this.deps.capturePreparationContext?.() ?? null;
-      } catch {
-        page = null;
-      }
-      const execution = this.executionContext;
-      this.deps.trace?.("PREPARATION_OBSERVED", severity, `준비 단계 ${phase} 상태를 기록했습니다.`, {
-        serverAt: this.serverClockReady ? this.serverClock.now() : null,
-        state: this.machine.state,
-        attributes: {
-          preparationStage: this.machine.state,
-          preparationPhase: phase,
-          ...(execution ? {
-            runContextCapturedAt: execution.capturedAt,
-            runTabId: execution.tabId,
-            runWindowId: execution.windowId,
-            runTabActive: execution.tabActive,
-            runWindowFocused: execution.windowFocused,
-          } : {}),
-          ...(page ? {
-            pageVisibilityState: page.visibilityState,
-            pageHasFocus: page.hasFocus,
-            pageViewportWidth: page.viewportWidth,
-            pageViewportHeight: page.viewportHeight,
-            pageVisualViewportWidth: page.visualViewportWidth,
-            pageVisualViewportHeight: page.visualViewportHeight,
-            pageActiveElementTag: page.activeElementTag,
-            pageActiveElementRole: page.activeElementRole,
-            pageActiveElementId: page.activeElementId,
-            pageUrlKind: page.urlKind,
-            pageFingerprint: page.fingerprint,
-          } : {}),
-          ...attributes,
-        },
-      });
-    } catch {
-      // 준비 진단은 예약 결과를 바꾸지 않는다.
     }
   }
 
@@ -435,12 +399,7 @@ class RunSession {
       if (!TERMINAL.has(this.machine.state)) {
         const message = error instanceof Error ? error.message : "알 수 없는 실행 오류";
         const failure = this.failureData(message, undefined, error);
-        this.deps.trace?.("RUN_FAILED", "error", message, {
-          serverAt: this.serverClockReady ? this.serverClock.now() : null,
-          state: "FAILED",
-          attributes: failure as TraceAttributes,
-          error,
-        });
+        this.observe.runFailed(message, failure as TraceAttributes, error);
         this.transition("FAILED", message, { error: message, data: failure });
       }
       return this.finish();
@@ -493,43 +452,10 @@ class RunSession {
         bridgeReceivedMonoMs: event.bridgeReceivedMonoMs,
         wakeAtMonoMs,
       });
-      this.deps.trace?.("AVAILABILITY_SHADOW", event.classification === "UNPARSABLE" ? "warn" : "trace",
-        `슬롯 응답 shadow를 ${event.classification}로 분류했습니다.`, {
-          serverAt: this.serverClockReady ? this.serverClock.now() : null,
-          state: this.machine.state,
-          attributes: {
-            phase: "body",
-            cycle: correlation.cycle,
-            requestSequence: event.sequence,
-            sequence: event.sequence,
-            correlationId: correlation.correlationId,
-            correlationQuality: correlation.quality,
-            requestDate: event.requestDate,
-            personCount: event.personCount,
-            classification: event.classification,
-            responseStatus: event.responseStatus,
-            availableCount: event.availableMinutes.length,
-            availableMinutes: event.availableMinutes.join(","),
-            selectedMinutes: selected?.minutes ?? null,
-            matchesTarget: acceptedCorrelation,
-            stale: correlation.stale,
-            requestSentMonoMs: event.requestSentMonoMs,
-            responseCompletedMonoMs: event.responseCompletedMonoMs,
-            bodyReadCompletedMonoMs: event.bodyReadCompletedMonoMs,
-            payloadClassifiedMonoMs: event.payloadClassifiedMonoMs,
-            bridgeReceivedMonoMs: event.bridgeReceivedMonoMs,
-            bridgeDelayMs: event.bridgeReceivedMonoMs - event.payloadClassifiedMonoMs,
-            wakeAccepted: wakeDecision.accepted,
-            wakeDiscardReason: wakeDecision.discardReason,
-            signalKind: wakeDecision.signal?.kind ?? null,
-            wakeAtMonoMs,
-            bodyToWakeMs: wakeAtMonoMs - event.bridgeReceivedMonoMs,
-            claimSource: wakeDecision.accepted ? "body" : "none",
-            claimAgreement: wakeDecision.accepted ? true : null,
-          },
-        });
+      this.observe.availabilityBody(
+        event, correlation, wakeDecision, selected?.minutes ?? null, acceptedCorrelation, wakeAtMonoMs);
       if (correlation.lateDomCorrelation) {
-        this.traceAvailabilityDomCorrelation(correlation.lateDomCorrelation, "dom_compare_late");
+        this.observe.availabilityDom(correlation.lateDomCorrelation, "dom_compare_late");
       }
     } catch {
       // 비신뢰 bridge payload의 후처리는 예약 흐름으로 예외를 전파하지 않는다.
@@ -546,126 +472,9 @@ class RunSession {
         observedMonoMs,
         mutation,
       );
-      this.traceAvailabilityDomCorrelation(correlation, "dom_compare");
+      this.observe.availabilityDom(correlation, "dom_compare");
     } catch {
       // Shadow 비교는 기존 DOM 후보 반환을 막지 않는다.
-    }
-  }
-
-  private traceAvailabilityDomCorrelation(
-    correlation: DomCorrelation,
-    phase: "dom_compare" | "dom_compare_late",
-  ): void {
-    this.deps.trace?.("AVAILABILITY_SHADOW", "trace", "body와 DOM 슬롯 후보를 비교했습니다.", {
-        serverAt: this.serverClockReady ? this.serverClock.now() : null,
-        state: this.machine.state,
-        attributes: {
-          phase,
-          cycle: correlation.cycle,
-          requestSequence: correlation.requestSequence,
-          correlationId: correlation.correlationId,
-          correlationQuality: correlation.quality,
-          domMinutes: correlation.domMinutes,
-          domObservedMonoMs: correlation.domObservedMonoMs,
-          bodySequence: correlation.requestSequence,
-          bodyClassification: correlation.bodyClassification,
-          bodySelectedMinutes: correlation.bodySelectedMinutes,
-          agreement: correlation.agreement,
-          responseCompletedMonoMs: correlation.responseCompletedMonoMs,
-          payloadClassifiedMonoMs: correlation.payloadClassifiedMonoMs,
-          bridgeReceivedMonoMs: correlation.bridgeReceivedMonoMs,
-          bridgeToDomMs: correlation.bridgeToDomMs,
-          targetResponseToDomMs: correlation.targetResponseToDomMs,
-          bodyLeadOverDomMs: correlation.bodyLeadOverDomMs,
-          mutationGenerationAtTargetClick: correlation.mutationGenerationAtTargetClick,
-          mutationGenerationAtDom: correlation.mutationGenerationAtDom,
-          mutationObservedAfterTarget: correlation.mutationObservedAfterTarget,
-          lastMutationMonoMs: correlation.lastMutationMonoMs,
-          claimSource: correlation.requestSequence === null ? "dom" : "body",
-        },
-      });
-  }
-
-  private traceAvailabilityWakeResult(
-    signal: Extract<AvailabilityWakeSignal, { kind: "scan_wake" }>,
-    candidateObservedMonoMs: number | null,
-    candidateFound: boolean,
-    fallbackUsed: boolean,
-    scanCount: number,
-    baselineNextScanAtMonoMs: number | null,
-    wakeScanAtMonoMs: number | null,
-  ): void {
-    try {
-      this.deps.trace?.("AVAILABILITY_SHADOW", "trace", "body wake-up 이후 DOM 후보를 확인했습니다.", {
-        serverAt: this.serverClockReady ? this.serverClock.now() : null,
-        state: this.machine.state,
-        attributes: {
-          phase: "wake_result",
-          wakeReason: "verified_target_body",
-          cycle: signal.cycle,
-          requestSequence: signal.requestSequence,
-          correlationQuality: signal.quality,
-          selectedMinutes: signal.selectedMinutes,
-          responseCompletedMonoMs: signal.responseCompletedMonoMs,
-          payloadClassifiedMonoMs: signal.payloadClassifiedMonoMs,
-          bridgeReceivedMonoMs: signal.bridgeReceivedMonoMs,
-          wakeAtMonoMs: signal.wakeAtMonoMs,
-          domCandidateMonoMs: candidateObservedMonoMs,
-          bodyToWakeMs: signal.wakeAtMonoMs - signal.bridgeReceivedMonoMs,
-          wakeToDomMs: candidateObservedMonoMs === null ? null : candidateObservedMonoMs - signal.wakeAtMonoMs,
-          responseToDomMs: candidateObservedMonoMs === null
-            ? null
-            : candidateObservedMonoMs - signal.responseCompletedMonoMs,
-          wakeCandidateFound: candidateFound,
-          wakeFallbackUsed: fallbackUsed,
-          wakeScanCount: scanCount,
-          baselineNextScanAtMonoMs,
-          wakeScanAtMonoMs,
-          wakeAdvanceMs: baselineNextScanAtMonoMs === null || wakeScanAtMonoMs === null
-            ? null
-            : Math.max(0, baselineNextScanAtMonoMs - wakeScanAtMonoMs),
-        },
-      });
-    } catch {
-      // Wake-up diagnostics cannot change the reservation result.
-    }
-  }
-
-  private traceAvailabilityEmptyExit(
-    signal: Extract<AvailabilityWakeSignal, { kind: "empty_exit" }>,
-    targetStillSelected: boolean,
-    finalDomCandidateFound: boolean,
-  ): void {
-    try {
-      const exitAtMonoMs = this.deps.monotonicClock.now();
-      const emptyEarlyExitApplied = targetStillSelected && !finalDomCandidateFound;
-      const message = finalDomCandidateFound
-        ? "EXACT EMPTY 응답 직후 슬롯 DOM 후보를 확인해 조기 종료하지 않았습니다."
-        : targetStillSelected
-          ? "EXACT EMPTY 응답으로 현재 날짜 토글 cycle을 종료했습니다."
-          : "EXACT EMPTY 응답을 받았지만 목표 날짜 선택이 풀려 조기 종료하지 않았습니다.";
-      this.deps.trace?.("AVAILABILITY_SHADOW", "trace", message, {
-        serverAt: this.serverClockReady ? this.serverClock.now() : null,
-        state: this.machine.state,
-        attributes: {
-          phase: "empty_early_exit",
-          signalKind: signal.kind,
-          cycle: signal.cycle,
-          requestSequence: signal.requestSequence,
-          correlationQuality: signal.quality,
-          responseCompletedMonoMs: signal.responseCompletedMonoMs,
-          payloadClassifiedMonoMs: signal.payloadClassifiedMonoMs,
-          bridgeReceivedMonoMs: signal.bridgeReceivedMonoMs,
-          wakeAtMonoMs: signal.wakeAtMonoMs,
-          exitAtMonoMs,
-          bodyToExitMs: exitAtMonoMs - signal.bridgeReceivedMonoMs,
-          targetStillSelected,
-          finalDomCandidateFound,
-          emptyEarlyExitApplied,
-        },
-      });
-    } catch {
-      // EMPTY diagnostics cannot change the reservation result.
     }
   }
 
@@ -716,32 +525,8 @@ class RunSession {
   private traceFrozenReferenceClockSamples(): void {
     const frozen = this.frozenReferenceClockSamples;
     this.frozenReferenceClockSamples = null;
-    if (!frozen || frozen.samples.length === 0) return;
-    const total = frozen.samples.length;
-    frozen.samples.forEach((sample, index) => {
-      try {
-        this.deps.trace?.("CLOCK_SAMPLE", "trace", `기준시계 원시 표본 ${index + 1}/${total}을 기록했습니다.`, {
-          serverAt: this.serverClockReady ? this.serverClock.now() : null,
-          // Raw 진단 event가 terminal prune를 반복 트리거하지 않도록 run state는 싣지 않는다.
-          state: null,
-          attributes: {
-            clockSampleIndex: index + 1,
-            clockSampleTotal: total,
-            clockSampleFreezeReason: frozen.reason,
-            clockSampleT0MonoMs: sample.t0,
-            clockSampleT1MonoMs: sample.t1,
-            clockSampleServerDateMs: sample.serverDateMs,
-            clockSampleRttMs: sample.rttMs,
-            clockSampleOffsetLowerMs: sample.lowerMs,
-            clockSampleOffsetCenterMs: (sample.lowerMs + sample.upperMs) / 2,
-            clockSampleOffsetUpperMs: sample.upperMs,
-            clockSampleFromCache: sample.fromCache,
-          },
-        });
-      } catch {
-        // Trace exporter 오류는 예약 결과를 바꾸지 않는다.
-      }
-    });
+    if (!frozen) return;
+    this.observe.clockSamples(frozen);
   }
 
   private applyReferenceClockEstimate(estimate: ReferenceClockEstimate): void {
@@ -768,25 +553,25 @@ class RunSession {
 
   private stepReporter(): StepReporter {
     return {
-      stageStart: () => this.tracePreparation("stage_start", { preparationStage: this.machine.state }),
-      conditionChanged: (attributes) => this.tracePreparation("condition_changed", attributes),
-      dispatchBefore: (action, attempt) => this.tracePreparation("dispatch_before", {
+      stageStart: () => this.observe.preparation("stage_start", { preparationStage: this.machine.state }),
+      conditionChanged: (attributes) => this.observe.preparation("condition_changed", attributes),
+      dispatchBefore: (action, attempt) => this.observe.preparation("dispatch_before", {
         preparationAction: action,
         preparationAttempt: attempt,
         preparationRecoveryDecision: attempt === 1 ? "initial" : "retry",
       }),
-      dispatchAfter: (action, attempt, dispatched) => this.tracePreparation("dispatch_after", {
+      dispatchAfter: (action, attempt, dispatched) => this.observe.preparation("dispatch_after", {
         preparationAction: action,
         preparationAttempt: attempt,
         preparationDispatched: dispatched,
         preparationRecoveryDecision: attempt === 1 ? "confirm" : "final_confirm",
       }),
-      obstacleDismissed: () => this.tracePreparation("dispatch_after", {
+      obstacleDismissed: () => this.observe.preparation("dispatch_after", {
         preparationAction: "dismiss_promo",
         preparationDispatched: true,
         preparationRecoveryDecision: "retry",
       }),
-      decision: (decision, cause, attempts) => this.tracePreparation("decision", {
+      decision: (decision, cause, attempts) => this.observe.preparation("decision", {
         preparationDecision: decision,
         ...(cause === null ? {} : { preparationErrorCode: cause }),
         preparationAttempt: attempts,
@@ -929,15 +714,10 @@ class RunSession {
     let wakeBaselineNextScanAtMonoMs: number | null = null;
     let wakeScanAtMonoMs: number | null = null;
     let adjacentDateValue: string | null = this.adjacentDate;
-    const traceCycle = (result: string) => this.deps.trace?.(
-      "DATE_TOGGLE_CYCLE",
-      result === "NO_SLOT" || result === "SLOT_FOUND" || result === "EMPTY_EARLY_EXIT" ? "trace" : "warn",
-      `날짜 토글 #${cycle}: ${result}`,
+    const traceCycle = (result: string) => this.observe.toggleCycle(
+      serverClock.now(),
       {
-        serverAt: serverClock.now(),
-        state: "REFRESHING_SLOTS",
-        attributes: toggleCycleAttributes({
-          cycle,
+        cycle,
           phase: plan.phase,
           adjacentDate: adjacentDateValue,
           adjacentPlannedAt: plan.adjacentClickAtMs,
@@ -954,8 +734,7 @@ class RunSession {
           wakeUsed: wakeSignal !== null,
           wakeRequestSequence: wakeSignal?.requestSequence ?? null,
           wakeCorrelationQuality: wakeSignal?.quality ?? null,
-          wakeFallbackUsed,
-        }),
+        wakeFallbackUsed,
       },
     );
     const adjacentWait = await waitUntil(plan.adjacentClickAtMs, {
@@ -1103,12 +882,12 @@ class RunSession {
       const emptySignal = wakeSignal;
       const targetStillSelected = this.deps.calendar.inspect(config.reservationDate).targetSelected;
       if (!targetStillSelected) {
-        this.traceAvailabilityEmptyExit(emptySignal, false, false);
+        this.observe.emptyExit(emptySignal, false, false);
         wakeSignal = null;
         return { applied: false, candidate: null };
       }
       const finalCandidate = inspectSlots();
-      this.traceAvailabilityEmptyExit(emptySignal, true, finalCandidate !== null);
+      this.observe.emptyExit(emptySignal, true, finalCandidate !== null);
       wakeSignal = null;
       if (finalCandidate === null) {
         wakeFallbackUsed = false;
@@ -1122,6 +901,11 @@ class RunSession {
       wakeScanAtMonoMs = this.deps.monotonicClock.now();
       wakeBaselineNextScanAtMonoMs = wakeScanAtMonoMs;
     }
+    // 관측 계약(SP-025/01): 이 루프의 **매 반복 경로**에는 관측 호출을 넣지
+    // 않는다. 25ms·10ms 간격으로 도는 슬롯 감지 구간이다. 종료가 확정된
+    // 직후의 1회 관측(applyPendingEmptyExit 내부, EMPTY_EARLY_EXIT)은
+    // 허용된다 — 실행 즉시 break 하거나 return 하므로 반복 비용에 누적되지
+    // 않는다.
     while (!controller.signal.aborted && remainingDetectionMs() > 0) {
       candidate = inspectSlots();
       if (candidate) break;
@@ -1171,7 +955,7 @@ class RunSession {
       wakeFallbackUsed = candidate === null
         || wakeCandidateObservedMonoMs === null
         || wakeCandidateObservedMonoMs > wakeSignal.bridgeReceivedMonoMs + ARRIVAL_BURST_MS;
-      this.traceAvailabilityWakeResult(
+      this.observe.wakeResult(
         wakeSignal,
         wakeCandidateObservedMonoMs,
         candidate !== null,
@@ -1215,16 +999,13 @@ class RunSession {
       return this.timedOut("클릭 직전 감시 종료 시각에 도달했습니다.");
     }
     if (!this.deps.slots.clickSlot(candidate)) {
-      this.deps.trace?.("SLOT_CLICKED", "warn", `${candidate.label} 슬롯 클릭에 실패했습니다.`, {
-        serverAt: serverClock.now(),
-        state: "SLOT_DETECTED",
-        attributes: {
+      this.observe.slotClicked("warn", `${candidate.label} 슬롯 클릭에 실패했습니다.`,
+        serverClock.now(), "SLOT_DETECTED", {
           slotMinutes: candidate.minutes,
           slotLabel: candidate.label,
           clickOk: false,
           slotTransitionOutcome: "contention_before_dispatch",
-        },
-      });
+        });
       this.transition("REFRESHING_SLOTS", "슬롯이 dispatch 전에 사라져 날짜 토글을 재개합니다.", {
         data: {
           slotMinutes: candidate.minutes,
@@ -1235,16 +1016,13 @@ class RunSession {
       return null;
     }
     const slotClickDispatchedAt = serverClock.now();
-    this.deps.trace?.("SLOT_CLICKED", "info", `${candidate.label} 슬롯을 클릭했습니다.`, {
-      serverAt: slotClickDispatchedAt,
-      state: "SLOT_CLICK_DISPATCHED",
-      attributes: {
+    this.observe.slotClicked("info", `${candidate.label} 슬롯을 클릭했습니다.`,
+      slotClickDispatchedAt, "SLOT_CLICK_DISPATCHED", {
         slotMinutes: candidate.minutes,
         slotLabel: candidate.label,
         clickOk: true,
         slotTransitionOutcome: "dispatched",
-      },
-    });
+      });
     this.transition("SLOT_CLICK_DISPATCHED", `${candidate.label} 슬롯 클릭을 전달했습니다.`, {
       data: {
         ...slotClickDispatchedEventData(
