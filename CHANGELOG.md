@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.2](https://github.com/ka-MS/catchtable-reservation-assistant/compare/v1.1.1...v1.1.2) (2026-08-06)
+
+
+### Bug Fixes
+
+* form_ready에 필수 입력 기본 답변 설정 여부 기록 ([#18](https://github.com/ka-MS/catchtable-reservation-assistant/issues/18)) ([76fab18](https://github.com/ka-MS/catchtable-reservation-assistant/commit/76fab180c92307e44caba9969100bdf0e076c052))
+* 예약 폼·완료 화면 문구 변형 대응과 실패 근거 관측 ([#16](https://github.com/ka-MS/catchtable-reservation-assistant/issues/16)) ([413f9d1](https://github.com/ka-MS/catchtable-reservation-assistant/commit/413f9d1f46c976698d8b0fafdc4d3073468ca0f6))
+
 ## [1.1.1](https://github.com/ka-MS/catchtable-reserve/compare/v1.1.0...v1.1.1) (2026-08-05)
 
 
