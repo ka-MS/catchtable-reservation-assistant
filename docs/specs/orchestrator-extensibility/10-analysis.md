@@ -232,32 +232,62 @@ DI 컨테이너, 교체된 적 없는 인터페이스 — 은 **하나도 관측
   내용을 보는 곳은 `entryMode`와 `availabilityProbeMode` 두 군데뿐이다.
 - **시계·스케줄러** — 흐름 중립.
 
-## 7. 핫패스가 세션에서 쓰는 상태
+## 7. 오픈런 전용 세션 상태의 사용처
 
-[00-index.md](00-index.md)의 03·04 분리 근거다.
+[00-index.md](00-index.md)의 03·04 분리 근거이자, **03의 범위를 정하는
+표**다.
 
-| 필드 | 사용 행 | 성격 |
-|---|---|---|
-| `adjacentDate` | 881(`confirmPageReady`), 950 | 오픈런 전용 |
-| `toggleCycle` | 935 | 오픈런 전용 |
-| `adjacentTiming` | 1003, 1224 | 오픈런 전용 |
-| `targetTiming` | 1043, 1224 | 오픈런 전용 |
-| `watchLive` | 439(`execute`), 971, 1089 | 오픈런 전용 |
-| `lastArrivalAt` | 440(`execute`), 972, 1090, 1225, 1270 | 오픈런 전용 |
-| `availabilityWake` | 475, 502, 1027~1210 | 오픈런 전용 |
-| `availabilityCorrelation` | 499, 562, 1020 | 오픈런 전용 |
+8개 필드는 **핫패스(908~1212) 안에만 있지 않다.** setup, 핫패스 제어,
+telemetry 소비, cleanup 네 곳에 걸쳐 있다.
 
-**8개 전부 오픈런 전용이고 핫패스 밖에서 쓰이지 않는다.**
-`execute`·`confirmPageReady`에 걸친 항목도 그 setup 자체가 오픈런
-전용이다(인접 가용 날짜 확인, `slotWatch` 등록, shadow listener 등록).
+| 필드 | setup | 핫패스 제어 | telemetry 소비 | cleanup |
+|---|---|---|---|---|
+| `adjacentDate` | 881 `confirmPageReady` | 950 | — | — |
+| `toggleCycle` | — | 935 | — | — |
+| `adjacentTiming` | — | 1003 set | **1224** `advanceFromSlot` | — |
+| `targetTiming` | — | 1043 set | **1224** `advanceFromSlot` | — |
+| `watchLive` | 439 `slotWatch` 콜백 | 1089 `detectDeadline` | 971 | — |
+| `lastArrivalAt` | 440 `slotWatch` 콜백 | 1090 `detectDeadline` | 972, **1225**, **1270** | — |
+| `availabilityWake` | 432 listener 등록, 502 `offer` | 1027, 1138, 1154, 1166, 1184, 1205, 1210 | — | **475** `reset` |
+| `availabilityCorrelation` | 499 `correlateBody`, 562 `correlateDom` | 1020 `registerCycle` | 562 이후 trace | — |
 
-따라서:
+### 확정된 것
 
-- **03(추출)** — "전략이 자기 상태를 소유한다"는 원칙은 이 표만으로
-  도출된다. 새 흐름의 근거 없이 결정·검증할 수 있다.
-- **04(일반화)** — 커널이 전략에 넘길 컨텍스트의 모양은 이 표만으로
-  정할 수 없다. 지금 정하면 위 8개가 컨텍스트에 들어가고, 두 번째
-  흐름이 오면 맞지 않는다.
+**8개 전부 오픈런 전용이다.** 인접 날짜, 토글 사이클, XHR 도착 시각,
+wake 신호는 다른 흐름에 해당 개념이 없다. `execute`·`confirmPageReady`에
+걸친 setup도 그 자체가 오픈런 전용이다(인접 가용 날짜 확인, `slotWatch`
+등록, shadow listener 등록).
+
+따라서 **"전략이 자기 상태를 소유한다"는 원칙은 이 표만으로 도출된다.**
+새 흐름의 근거 없이 결정·검증할 수 있다. 이것이 03에 게이트가 없는 근거다.
+
+### 확정되지 않은 것 — 03의 정확한 경계
+
+03은 "핫패스 약 300줄을 옮기는 단순 추출"이 아니다. 위 표대로라면
+setup·cleanup·post-slot 결과 소비·telemetry 계약까지 경계를 새로 그어야
+한다. 다음은 아직 미결이다.
+
+- `advanceFromSlot`(1214~)이 전략에 속하는가, 커널에 남는가
+  (`adjacentTiming`·`targetTiming`·`lastArrivalAt`을 소비한다)
+- shadow listener 등록(432)과 `reset`(475)을 전략 생명주기로 옮기는가
+- `confirmPageReady`의 인접 가용 날짜 확인을 준비 단계에 남기는가
+
+### 01 완료 후 이 표를 재도출한다
+
+굵게 표시한 telemetry 소비 지점(971, 972, 1224, 1225, 1270)은 전부
+payload 조립이다. **01(관측 분리) 이후에는 이들이 관측 계층의 입력이
+되므로 제어 코드에서 사라진다.** `availabilityCorrelation`의 499·562도
+제어(correlate)와 관측(trace)으로 갈라진다.
+
+즉 01이 끝나면 이 표가 실질적으로 단순해진다. **03의 무게이트 범위는
+01 완료 시점의 재측정 결과로 확정하며**, 그 전에는 위 미결 항목을
+설계로 확정하지 않는다.
+
+### 04에 게이트가 있는 이유
+
+커널이 전략에 넘길 컨텍스트의 모양은 이 표만으로 정할 수 없다. 지금
+정하면 위 8개 개념이 컨텍스트에 들어가고, 두 번째 흐름이 오면 맞지
+않는다.
 
 ## 관련 문서
 

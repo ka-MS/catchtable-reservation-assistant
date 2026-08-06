@@ -50,13 +50,20 @@
 
 관측 계층 안에서도 실패의 뜻이 다르므로 하나의 정책으로 뭉치지 않는다.
 
-| 대상 | 실패 시 | 근거 |
-|---|---|---|
-| `trace` 전송 | 삼킨다 | 진단 목적. 예약 결과와 무관 |
-| `diagnostics.breadcrumb` | 삼킨다 | 위와 같음 |
-| `diagnostics.failure` | 삼키되 `null` 반환 | 실패해도 전이 payload는 나가야 한다 |
-| `captureSnapshot` | 삼키되 `null` 반환 | **`diagnostics.failure`와 독립.** 현재 384·389행이 별도 블록이며, snapshot 실패 후에도 `failure()`가 실행된다 |
-| **`deps.emit`** | **삼키지 않는다** | 현재 동작. `emit()`의 try/catch는 `diagnostics.breadcrumb`만 감싼다(292~297행). run event는 필수 경로다 |
+각 대상은 **fallback 값이 다르므로 독립 경계**다. 하나로 합칠 수 없다.
+
+| 대상 | 현재 행 | 실패 시 fallback | 근거 |
+|---|---|---|---|
+| `trace` 전송 | 342, 648, 686, 760 | `undefined` (무시) | 진단 목적. 예약 결과와 무관 |
+| `diagnostics.breadcrumb` | 294, 361 | `undefined` (무시) | 위와 같음 |
+| `capturePreparationContext` | 309 | `null` → payload에서 생략 | 페이지 컨텍스트 없이도 trace는 나가야 한다 |
+| `captureSnapshot` | 386 | `null` → `{}` 병합 | **`diagnostics.failure`와 독립.** 현재 384·389행이 별도 블록이며, snapshot 실패 후에도 `failure()`가 실행된다 |
+| `diagnostics.failure` | 391 | `null` → `diagnosticSnapshotId` 생략 | 실패해도 전이 payload는 나가야 한다 |
+| **`deps.emit`** | — | **삼키지 않는다** | 현재 동작. `emit()`의 try/catch는 `diagnostics.breadcrumb`만 감싼다(292~297행). run event는 필수 경로다 |
+
+따라서 관측 계층 안의 **독립 경계는 5개**이며, 범용 헬퍼
+`safeCall(fn, fallback)` 하나를 5곳에서 쓰는 형태가 된다. 인라인
+`try/catch`는 호출부에서 0이 되지만 경계 수 자체는 1이 아니다.
 
 `deps.emit`을 관측 계층으로 옮기면서 실수로 감싸면 회귀다. 이동 후에도
 예외가 그대로 전파되어야 한다.
@@ -109,20 +116,25 @@ export class RunObserver {
     private readonly executionContext?: RunExecutionContext,
   ) {}
 
-  /** trace 전송 격리 지점. 호출자는 try/catch를 쓰지 않는다. */
+  /** 범용 격리 헬퍼. 대상마다 fallback이 다르므로 값을 받는다. */
+  private safeCall<T>(fn: () => T, fallback: T): T {
+    try {
+      return fn();
+    } catch {
+      return fallback;   // 관측은 예약 결과를 바꾸지 않는다.
+    }
+  }
+
+  /** trace 전송 경계. 호출자는 try/catch를 쓰지 않는다. */
   private safeTrace(
     code: TraceCode, severity: TraceSeverity, message: string,
     attributes: TraceAttributes,
   ): void {
-    try {
-      this.deps.trace?.(code, severity, message, {
-        serverAt: this.ctx.serverAt(),
-        state: this.ctx.state(),
-        attributes,
-      });
-    } catch {
-      // 관측은 예약 결과를 바꾸지 않는다.
-    }
+    this.safeCall(() => this.deps.trace?.(code, severity, message, {
+      serverAt: this.ctx.serverAt(),
+      state: this.ctx.state(),
+      attributes,
+    }), undefined);
   }
 
   // 관측 메서드는 '사실'만 받고 payload 조립은 내부에서 한다.
@@ -274,9 +286,14 @@ tests/snapshot-data.test.mjs  무변경 (orchestrator.ts에서 stageSnapshotData
 orchestrator.ts              1,630 → 약 1,050  (제어만)
 observation/payloads.ts               약 330   (순수, golden test 대상)
 observation/run-observer.ts           약 220
-관측 전용 빈 catch             9 → 1
-제어 복원력 catch             11 → 11 (불변)
-혼합 catch                     2 → 분할 후 각각 유지
+관측 전용 인라인 catch          9 → 0   (호출부에서 사라짐)
+  └ 관측 계층 독립 경계             5     (safeCall 헬퍼 1개를 5곳에서 사용)
+제어 복원력 catch             11 → 11  (불변)
+혼합 catch                     2 → 분할 후 제어·관측 각각 유지
 ```
+
+경계가 1개가 아닌 이유는 `trace`·`breadcrumb`·페이지 컨텍스트 캡처·
+snapshot·`diagnostics.failure`의 fallback 값이 각각 다르기 때문이다
+(위 "실패 의미를 각각 정의한다" 표).
 
 후속 단계(`03` 핫패스 전략 추출)의 대상이 1,630줄에서 약 1,050줄로 줄어든다.

@@ -90,8 +90,9 @@ spec 또는 evidence**가 확보되기 전에는 진입하지 않으며, 미확�
 
 CatchPay 예약 완주 구현·적대적 리뷰 수정 뒤 기준은 다음과 같다.
 
-- `npm run check`: 518/518 tests, typecheck, dist validation,
-  MAIN/ISOLATED independence 통과
+- `npm run check`: 540/540 tests, typecheck, dist validation,
+  MAIN/ISOLATED independence 통과 (2026-08-07 `main` @ `0fa0af2` 기준.
+  아래 Chrome E2E 항목은 예약 완주 구현 당시 518/518 시점의 기록이다)
 - 통제된 Chrome:
   - 0원 CatchPay 실예약 생성 뒤 사용자 취소
   - 비로그인 `login_required`, submit 0회
