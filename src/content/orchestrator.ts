@@ -253,7 +253,16 @@ class RunSession {
   ): void {
     this.machine.transition(state, reason, { error: extra.error, userStopped: extra.userStopped });
     if (TERMINAL.has(state)) this.terminalReason = reason;
-    this.observe.event("state", reason, { state, ...extra.data });
+    // 관측 실패는 실행을 막지 않지만(SP-026) 그 사실은 드러나야 한다.
+    // terminal 전이에만 싣는다 — 실패 0이면 attribute를 넣지 않아 기존
+    // payload가 그대로다. `finally` 단계(clockSamples)의 실패는 이 시점
+    // 이후라 집계되지 않는다(20-design §한계 1).
+    const observationFailures = TERMINAL.has(state) ? this.observe.observationFailures() : 0;
+    this.observe.event("state", reason, {
+      state,
+      ...(observationFailures > 0 ? { observationFailureCount: observationFailures } : {}),
+      ...extra.data,
+    });
     this.observe.stateChanged(state, reason, extra.data);
   }
 

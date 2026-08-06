@@ -377,42 +377,43 @@ test("captureSnapshot·diagnostics.failure가 던져도 handoff 경로가 유지
 });
 
 // ---------------------------------------------------------------------------
-// 3. 비격리 보존 — 현재 전파하는 지점은 계속 전파해야 한다
-//    (관측 분리 과정에서 실수로 삼키게 되는 회귀를 막는다)
-//    격리 통일 여부는 별도 판단 대상이다: issue #20
+// 3. 관측 실패는 실행을 중단시키지 않는다 (SP-026, issue #20)
+//
+//    SP-025/01까지는 이 지점들이 전파해 실행을 FAILED로 종결시켰다.
+//    통일 이후에는 전부 삼키고 실패 횟수만 terminal event에 남긴다.
 // ---------------------------------------------------------------------------
 
-test("deps.emit이 던지면 예외가 start() 밖으로 전파된다", async () => {
-  // execute()의 catch가 FAILED 전이를 시도하는데 그 전이가 다시 emit을
-  // 부르며 또 던진다. 결과적으로 RunResult가 반환되지 않는다.
+test("deps.emit이 던져도 실행은 정상 종결한다", () => {
+  // 이전: start()가 reject돼 RunResult가 반환되지 않았고 ATTEMPT_FINISHED도
+  // 전달되지 않았다. 이제 예약 실행 자체는 끝까지 간다.
   const h = harness({ throwOn: { emit: true } });
-  await assert.rejects(() => h.run(), /emit boom/);
+  return h.run().then((result) => {
+    assert.equal(result.state, "DRY_RUN_COMPLETED");
+  });
 });
 
-test("격리되지 않은 trace 지점(DATE_TOGGLE_CYCLE)이 던지면 실행이 FAILED로 죽는다", async () => {
-  // 전파된 예외를 execute()의 catch가 받아 FAILED로 종결한다.
-  // reject는 아니지만 관측 실패가 예약 실행을 끝낸다는 사실은 같다.
+test("DATE_TOGGLE_CYCLE trace가 던져도 실행은 정상 종결한다", async () => {
   const h = harness({ throwOn: { trace: "DATE_TOGGLE_CYCLE" } });
   const result = await h.run();
 
-  assert.equal(result.state, "FAILED");
-  assert.equal(result.message, "trace boom");
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
 });
 
-test("격리되지 않은 trace 지점(SLOT_CLICKED)이 던지면 실행이 FAILED로 죽는다", async () => {
+test("SLOT_CLICKED trace가 던져도 실행은 정상 종결한다", async () => {
   const h = harness({
     configOverrides: { dryRun: false },
     throwOn: { trace: "SLOT_CLICKED" },
   });
   const result = await h.run();
 
-  assert.equal(result.state, "FAILED");
-  assert.equal(result.message, "trace boom");
+  assert.notEqual(result.state, "FAILED");
 });
 
-test("모든 trace가 던지면 FAILED 전이의 RUN_FAILED도 던져 start()가 reject된다", async () => {
+test("모든 trace가 던져도 실행은 정상 종결한다", async () => {
   const h = harness({ throwOn: { trace: true } });
-  await assert.rejects(() => h.run(), /trace boom/);
+  const result = await h.run();
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
 });
 
 test("격리된 trace 지점(AVAILABILITY_SHADOW)이 던져도 실행은 계속된다", async () => {
@@ -427,6 +428,38 @@ test("격리된 trace 지점(CLOCK_SAMPLE)이 던져도 terminal 결과가 바�
   const result = await h.run();
 
   assert.equal(result.state, "DRY_RUN_COMPLETED");
+});
+
+// ---------------------------------------------------------------------------
+// 3-1. 삼킨 실패는 terminal event에 드러난다
+// ---------------------------------------------------------------------------
+
+test("실패가 없으면 observationFailureCount가 payload에 없다", async () => {
+  const h = harness();
+  await h.run();
+
+  const terminal = eventData(h.events, "DRY_RUN_COMPLETED");
+  assert.equal("observationFailureCount" in terminal, false);
+});
+
+test("trace 실패가 terminal event의 observationFailureCount로 드러난다", async () => {
+  const h = harness({ throwOn: { trace: "DATE_TOGGLE_CYCLE" } });
+  await h.run();
+
+  const terminal = eventData(h.events, "DRY_RUN_COMPLETED");
+  assert.ok(terminal.observationFailureCount >= 1,
+    "삼킨 관측 실패가 terminal payload에 드러나야 한다");
+});
+
+test("terminal이 아닌 상태 전이에는 observationFailureCount가 붙지 않는다", async () => {
+  const h = harness({ throwOn: { trace: "AVAILABILITY_SHADOW" } });
+  await h.run();
+
+  const nonTerminal = h.events.filter((e) => e.data?.state === "REFRESHING_SLOTS");
+  assert.ok(nonTerminal.length > 0);
+  for (const event of nonTerminal) {
+    assert.equal("observationFailureCount" in event.data, false);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -454,8 +487,10 @@ test("captureSnapshot이 던지면 snapshot 필드 없이 진단 id만 payload�
   const h = harness({ calendarBroken: true, throwOn: { captureSnapshot: true } });
   await h.run();
 
+  // captureSnapshot 실패도 관측 실패로 집계돼 terminal payload에 드러난다.
   pinPayload(eventData(h.events, "HANDED_OFF"), {
     state: "HANDED_OFF",
+    observationFailureCount: 1,
     snapshotRunState: "PREPARING_PAGE",
     diagnosticSnapshotId: "diag-1",
   });
