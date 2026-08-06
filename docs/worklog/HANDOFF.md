@@ -24,11 +24,9 @@
 경로 evidence는 성공 실행이 실패 스냅샷을 남기지 않아 미기록으로
 남는다. 병합을 막는 항목은 아니다.
 
-**별도 확인 대상:** 같은 번들에서 `form_ready`가
-`emptyRequiredMultilineCount=1`을 기록했는데
-`requiredFormDefaultAnswer`가 빈 문자열인데도 완주했다. 코드 경로상
-인계돼야 하는 조합이라 `[필수]` textarea 판정의 결정성을 확인해야
-한다. 이번 패키지 범위 밖이고 완주를 막지 않았다.
+필수 multiline 카운트 관련 의심은 오독으로 판명됐다. 번들의
+`requiredFormDefaultAnswer`가 빈 문자열인 것은 telemetry 비저장 처리
+결과이며 런타임 값이 아니다. 판정 결함은 없다.
 
 ## 현재 제품 상태
 

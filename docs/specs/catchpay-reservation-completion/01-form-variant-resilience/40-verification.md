@@ -106,32 +106,39 @@ RUN_TERMINATED    COMPLETED
 4·5는 자동 테스트로 고정돼 있으나 실사이트 관측 근거는 아직 없다.
 다음에 인계로 끝난 실행의 번들을 받으면 채운다.
 
-### 미해결 관측 — 필수 multiline 카운트 불일치
+### 필수 multiline 카운트 — 오독 정정
 
-`form_ready`가 `emptyRequiredMultilineCount=1`을 기록했는데
-`requiredFormDefaultAnswer`는 빈 문자열이었다
-(`manifest.json`·`run.csv` `configJson` 모두 `""`). 코드 경로상
-`fillRequiredMultiline()`은 빈 답변에서 즉시 `false`를 반환하고
-`필수 입력을 안전하게 채울 수 없어 제출하지 않습니다.`로 인계해야 한다.
-그런데 이 실행은 `COMPLETED`로 끝났다.
+`form_ready`가 `emptyRequiredMultilineCount=1`을 기록했는데 번들의
+`requiredFormDefaultAnswer`가 빈 문자열이라, 코드 경로상 인계돼야 하는
+조합인데 완주했다고 처음 판단했다. **오독이었다.**
 
-baseline과 루프 첫 `inspect()` 사이에는 `await`가 없어 같은 DOM이어야
-하므로, 두 값이 달랐다는 것은 다음 중 하나를 뜻한다.
+`requiredFormDefaultAnswer`는 사용자 자유 입력이므로 telemetry에
+저장할 때 의도적으로 비운다(`trace-logger.ts` `cleanConfig`,
+`trace-ingestor.ts`). 같은 값이 `sensitiveValues`로 등록돼 이벤트
+문자열에서도 `[REDACTED]`로 치환된다. 즉 번들의 `""`는 **비저장 처리
+결과이지 런타임 값이 아니다.**
 
-- `[필수]` textarea 판정이 결정적이지 않다
-- section heading fallback이 필수가 아닌 textarea를 필수로 오판했고
-  그 판정이 두 호출 사이에 바뀌었다
+실행은 설계대로 동작했다.
 
-이 경로는 이번 패키지에서 건드리지 않았고 완주를 막지도 않았다.
-원인 미상이므로 **별도 확인 대상**으로 남긴다. 추측으로 판정을 바꾸지
-않는다.
+```
+baseline    empty=1
+루프 1회차   empty=1 → 설정된 답변으로 채움 → continue
+루프 2회차   empty=0 → 필수 약관 7개 동의(250ms settle)
+            → 제출 → COMPLETED
+```
+
+`form_ready`(+4.476s) → `outer_claim`(+6.000s)의 1.524초 간격이 이
+흐름과 맞는다. 판정 비결정성도, `[필수]` 오판도 아니다.
+
+재발 방지로 `form_ready`에 `requiredFormDefaultAnswerSet` boolean을
+추가했다. 답변 본문은 계속 저장하지 않으면서 설정 여부만 남겨,
+`emptyRequiredMultilineCount > 0`인 실행의 완주를 모순 없이 읽게 한다.
 
 ## 남은 미실측
 
 - 개별 매장이 `예약하기`와 `자동결제로 예약하기` 중 어느 라벨을
   쓰는지의 분포. 완주 성공만으로는 구분되지 않는다. 판정에는 영향이
   없다.
-- 필수 multiline 카운트 불일치의 원인. 위 미해결 관측 참조.
 - 완료 오버레이가 떠 있는 동안 방문예정 `li`가 항상 렌더되는지.
   1차에서 목록 일치가 관측됐으나 오버레이 표시 시점의 타이밍
   의존성은 별도로 계측하지 않았다.

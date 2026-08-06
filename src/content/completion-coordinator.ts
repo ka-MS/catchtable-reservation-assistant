@@ -132,6 +132,10 @@ export class CompletionCoordinator {
       uncheckedRequiredAgreementCount: baseline.facts.uncheckedRequiredAgreementCount,
       emptyRequiredMultilineCount: baseline.facts.emptyRequiredMultilineCount,
       optionalAgreementCount: baseline.facts.optionalAgreementCount,
+      // 답변 본문은 telemetry에 저장하지 않는다(trace-logger.ts cleanConfig). 설정 여부까지
+      // 안 남기면 저장된 config의 빈 문자열이 "미설정"으로 오독돼, 빈 필수 입력이 있는데도
+      // 완주한 실행이 모순처럼 보인다.
+      requiredFormDefaultAnswerSet: config.requiredFormDefaultAnswer.trim() !== "",
     });
     if (baseline.facts.currentAmountKrw === 0) {
       // 0원 실행에는 PIN이 필요하지 않으므로 폼 판정 즉시 one-shot handle을 비운다.
