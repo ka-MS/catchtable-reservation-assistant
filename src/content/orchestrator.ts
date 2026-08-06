@@ -306,7 +306,7 @@ class RunSession {
     try {
       try {
         this.deps.availabilityShadow?.start(this.config.stopAtMs + 30_000, (event) => {
-          this.observeAvailabilityBody(event);
+          this.onAvailabilityBody(event);
         });
       } catch {
         // Shadow 관측은 제어 경로와 격리한다.
@@ -359,7 +359,19 @@ class RunSession {
     }
   }
 
-  private observeAvailabilityBody(event: ReceivedAvailabilityShadowEvent): void {
+  /**
+   * shadow body 수신 콜백. **이름과 달리 제어다** — `availabilityWake.offer()`의
+   * 반환이 핫패스의 wake 신호를 결정한다. 관측은 뒤에 붙는다.
+   *
+   * `try/catch`는 두 가지를 겸한다.
+   *   1. 제어 보호 — bridge payload는 비신뢰 입력이라 상관관계 계산이 던질 수 있다.
+   *   2. 관측 흡수 — 뒤따르는 두 trace 실패도 여기서 삼켜진다.
+   *
+   * 2번 때문에 **trace가 던지면 late DOM 비교가 건너뛰어진다.** 의도된 설계는
+   * 아니지만 현재 동작이므로 보존한다. 여기를 두 개의 catch로 쪼개면 그
+   * 건너뜀이 사라져 동작이 바뀐다(issue #20).
+   */
+  private onAvailabilityBody(event: ReceivedAvailabilityShadowEvent): void {
     try {
       const candidates = event.availableMinutes.map((minutes) => ({
         key: `shadow:${minutes}`,
@@ -393,7 +405,14 @@ class RunSession {
     }
   }
 
-  private observeAvailabilityDom(candidate: SlotCandidate, cycle: number): void {
+  /**
+   * DOM 후보를 body 응답과 대조한다. 상관관계 계산은 제어 자료 구조를
+   * 갱신하고, 그 결과를 관측이 기록한다.
+   *
+   * `try/catch`는 제어 보호가 목적이다 — 대조 실패가 이미 확정된 DOM 후보
+   * 반환을 막아서는 안 된다. 관측 실패도 함께 삼켜진다.
+   */
+  private correlateDomCandidate(candidate: SlotCandidate, cycle: number): void {
     try {
       const observedMonoMs = this.deps.monotonicClock.now();
       const mutation = this.mutationSnapshot();
@@ -901,7 +920,7 @@ class RunSession {
       this.availabilityWake.endCycle(cycle);
       return { kind: "retry" };
     }
-    this.observeAvailabilityDom(candidate, cycle);
+    this.correlateDomCandidate(candidate, cycle);
     traceCycle("SLOT_FOUND");
     this.availabilityWake.endCycle(cycle);
     return { kind: "slot", candidate };
