@@ -196,6 +196,7 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 | 02-kernel-flow-boundary/ | 미작성 | 01 완료 후 착수 |
 | 03-hot-path-extraction/ | 미작성 | 02 완료 후 착수 |
 | 04-flow-selection/ | 미작성 | 03 완료 + 진입 조건 충족 후 착수 |
+| [99-agent-process-notes.md](99-agent-process-notes.md) | 기록 | 작업 방식과 트러블슈팅 회고. 제품 기준이 아니며 별도 경로로 이관 예정 |
 
 ## 기준 문서
 
