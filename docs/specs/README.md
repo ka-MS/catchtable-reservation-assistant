@@ -50,6 +50,7 @@
 | SP-020 | 2026-07-16 | 실행 구조 | 현재 기준 | Run control plane | [run-control-plane/20-design.md](run-control-plane/20-design.md) |
 | SP-021 | 2026-07-20 | UI·운영 | 완료 | 예약 설정 빠른 동작 | [reservation-quick-actions/10-design.md](reservation-quick-actions/10-design.md) |
 | SP-022 | 2026-07-25 | 예약 완주 | 현재 기준 | CatchPay 예약 완주 | [catchpay-reservation-completion/00-index.md](catchpay-reservation-completion/00-index.md) |
+| SP-022/01 | — | — | — | 예약 폼 변형 복원력 | [catchpay-reservation-completion/01-form-variant-resilience/00-index.md](catchpay-reservation-completion/01-form-variant-resilience/00-index.md) |
 | SP-023 | 2026-07-30 | 개발·릴리스 | 진행 | 릴리스 버저닝 | [release-versioning/00-index.md](release-versioning/00-index.md) |
 | SP-024 | 2026-08-05 | UI·운영 | 완료 | Side Panel 온보딩 투어 | [onboarding-tour/10-design.md](onboarding-tour/10-design.md) |
 

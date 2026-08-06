@@ -38,7 +38,7 @@ test("content script is an import-free IIFE bundle with opt-in completion safety
   assert.match(content, /__ctReserveInjected/);
   assert.match(content, /reservationCompletionEnabled/);
   assert.match(content, /COMPLETION_DISPATCH_CLAIM/);
-  assert.match(decoded, /자동결제로 예약하기/);
+  assert.match(decoded, /예약하기\$/);
   assert.match(decoded, /자동결제로 예약을 완료했습니다/);
   assert.match(content, /\/ct\/mydining\/my\/planned/);
   assert.doesNotMatch(content, /main h1/);

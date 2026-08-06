@@ -1,7 +1,18 @@
 # HANDOFF
 
-**갱신:** 2026-07-28
-**Blocking backlog:** 없음
+**갱신:** 2026-08-06
+**Blocking backlog:** 없음 (`main` 기준)
+
+## 진행 중 브랜치
+
+`codex/fix-form-intent-and-final-button` — 예약 폼 변형 복원력
+([SP-022/01](../specs/catchpay-reservation-completion/01-form-variant-resilience/00-index.md)).
+`intent_mismatch` 원인(시각 표기 불일치)과 `예약하기` CTA 변형을
+수정하고 실패 근거 관측을 추가했다. `npm run check` 534/534 통과.
+
+**병합 전 조건:** 실사이트 E2E는 사용자가 진행하기로 했고 아직
+완료되지 않았다. `40-verification.md`의 확인 항목을 채우기 전에는
+병합하지 않는다.
 
 ## 현재 제품 상태
 

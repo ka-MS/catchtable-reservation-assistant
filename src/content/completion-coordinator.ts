@@ -18,7 +18,8 @@ export interface ReservationCompletionIntent {
 
 export type CompletionResult =
   | { kind: "completed"; message: string }
-  | { kind: "handed_off"; message: string; claimed: boolean }
+  /** evidence는 폼 판정으로 인계된 경우의 근거다. 다른 인계 경로는 남길 근거가 없어 생략한다. */
+  | { kind: "handed_off"; message: string; claimed: boolean; evidence?: TraceAttributes }
   | { kind: "stopped"; message: string }
   | { kind: "timed_out"; message: string };
 
@@ -47,14 +48,6 @@ const AGREEMENT_SETTLE_MS = 250;
 const PIN_DIGIT_SETTLE_MS = 100;
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
-function formTime(minutes: number): string {
-  const hour24 = Math.floor(minutes / 60);
-  const minute = minutes % 60;
-  const period = hour24 < 12 ? "오전" : "오후";
-  const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
-  return `${period} ${hour12}:${String(minute).padStart(2, "0")}`;
-}
-
 function options(intent: ReservationCompletionIntent, maxPaymentAmountKrw: number): ReservationFormInspectOptions {
   const [year, month, day] = intent.reservationDate.split("-").map(Number);
   const weekday = WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
@@ -62,13 +55,11 @@ function options(intent: ReservationCompletionIntent, maxPaymentAmountKrw: numbe
     expectation: {
       shopDisplayName: intent.shopDisplayName,
       dateText: `${String(month).padStart(2, "0")}월 ${String(day).padStart(2, "0")}일`,
-      timeText: formTime(intent.selectedMinutes),
       personText: `${intent.personCount}명`,
     },
     successExpectation: {
       shopDisplayName: intent.shopDisplayName,
       listingDateText: `${year}.${String(month).padStart(2, "0")}.${String(day).padStart(2, "0")} (${weekday})`,
-      timeText: formTime(intent.selectedMinutes),
       personText: `${intent.personCount}명`,
     },
     maxPaymentAmountKrw,
@@ -127,6 +118,9 @@ export class CompletionCoordinator {
         kind: "handed_off",
         message: `예약 폼의 로그인·예약 내용·CatchPay·금액을 안전하게 확인하지 못했습니다. (${reason})`,
         claimed: false,
+        evidence: baseline.kind === "unknown"
+          ? baseline.evidence
+          : { formInspectionKind: baseline.kind },
       };
     }
     this.telemetry("form_ready", {
@@ -151,7 +145,14 @@ export class CompletionCoordinator {
       }
       const inspection = this.deps.adapter.inspect(inspectOptions);
       if (inspection.kind !== "ready" || inspection.facts.optionalAgreementFingerprint !== optionalBaseline) {
-        return { kind: "handed_off", message: "필수 입력 처리 중 예약 폼이 변경돼 제출하지 않습니다.", claimed: false };
+        return {
+          kind: "handed_off",
+          message: "필수 입력 처리 중 예약 폼이 변경돼 제출하지 않습니다.",
+          claimed: false,
+          evidence: inspection.kind === "unknown"
+            ? inspection.evidence
+            : { formInspectionKind: inspection.kind, formOptionalAgreementChanged: inspection.kind === "ready" },
+        };
       }
       if (inspection.facts.emptyRequiredMultilineCount > 0) {
         if (!this.deps.adapter.fillRequiredMultiline(inspection.fingerprint, config.requiredFormDefaultAnswer)) {

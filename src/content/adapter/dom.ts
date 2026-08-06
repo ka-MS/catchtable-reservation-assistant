@@ -6,6 +6,14 @@ export function normalizedText(value: string | null | undefined): string {
   return cleanText(value).toLocaleLowerCase("ko-KR");
 }
 
+/** 진단·telemetry에 남기는 화면 텍스트에서 전화번호와 이메일을 지운다. */
+export function maskPii(value: string): string {
+  return value
+    // 전화번호: 하이픈·점·공백·구분자 없음 모두 마스킹.
+    .replace(/\d{2,3}[-.\s]?\d{3,4}[-.\s]?\d{4}/g, "###")
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "###@###");
+}
+
 export function isElementHidden(element: Element): boolean {
   const view = element.ownerDocument.defaultView;
   for (let current: Element | null = element; current; current = current.parentElement) {
