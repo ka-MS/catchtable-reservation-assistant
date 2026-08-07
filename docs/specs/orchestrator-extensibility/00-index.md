@@ -196,7 +196,7 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 | [01-observation-split/20-design.md](01-observation-split/20-design.md) | 승인됨 | 관측 분리 계약과 이동 매핑 |
 | [01-observation-split/30-implementation.md](01-observation-split/30-implementation.md) | 완료 | 커밋 순서, 계층, 보존 항목 |
 | [01-observation-split/40-verification.md](01-observation-split/40-verification.md) | 완료 | 성공 기준 대조, 주장 대조, 실사이트 확인 |
-| 02-kernel-flow-boundary/ | 미작성 | 01 완료 후 착수 |
+| [02-kernel-flow-boundary/20-design.md](02-kernel-flow-boundary/20-design.md) | 승인 대기 | 커널·흐름 경계, 흐름 훅 계약, 착수 전 재평가 |
 | 03-hot-path-extraction/ | 미작성 | 02 완료 후 착수 |
 | 04-flow-selection/ | 미작성 | 03 완료 + 진입 조건 충족 후 착수 |
 | [99-agent-process-notes.md](99-agent-process-notes.md) | 기록 | 작업 방식과 트러블슈팅 회고. 제품 기준이 아니며 별도 경로로 이관 예정 |
@@ -222,7 +222,11 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 - 01 관측 분리: **완료.** 611/611 통과(기존 테스트 540개 무수정),
   실사이트 dry-run 2회로 스탬핑·payload 확인. 성공 기준 8개 전부 충족.
   `orchestrator.ts` 1,630 → 1,190줄.
-- 02 커널·흐름 경계: **미착수.** 설계 미작성. 선행 조건(#20)은 해소됐다.
+- 02 커널·흐름 경계: **설계 완료, 구현 중.**
+  [20-design](02-kernel-flow-boundary/20-design.md)에 착수 전 재평가와
+  결합 5건을 기록했다. 01의 전제는 유지된다. 미결이던
+  `confirmPageReady`의 소속은 **흐름**으로 정했다. 기준선은 1,198줄이다
+  (01 산출물 1,190줄 + SP-026 8줄).
 - 03 핫패스 전략 추출: 미착수. 설계 미작성.
 - 04 전략 일반화·흐름 선택: **진입 조건 미충족.** 두 번째 흐름의 실측
   근거 없음.
