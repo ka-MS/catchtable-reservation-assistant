@@ -33,6 +33,12 @@ const LINK = /\]\(([^)\s]+?)(?:\s+"[^"]*")?\)/g;
  *
  * 길이를 보존하려고 같은 길이의 공백으로 치환한다 — 그래야 이 함수가
  * 링크 정규식의 오프셋에 영향을 주지 않는다.
+ *
+ * **닫히지 않은 펜스는 여전히 오탐이다.** CommonMark은 그것을 문서 끝까지
+ * 코드로 보지만 여기서는 여는·닫는 쌍을 요구해 매치되지 않고, 안의 링크가
+ * 실검사된다. 의도한 선택이다 — 문서 끝까지 삼키게 만들면 그 뒤의 정상
+ * 링크가 통째로 검사에서 빠진다. CI 게이트에서는 시끄러운 오탐이 조용한
+ * 미탐보다 낫고, 애초에 깨진 마크다운은 다른 이유로도 손봐야 한다.
  */
 function stripCode(markdown) {
   const blank = (m) => m.replace(/[^\n]/g, " ");
@@ -97,9 +103,13 @@ for (const match of stripCode(catalog).matchAll(LINK)) {
   if (isExternal(target) || target === "") continue;
   const dir = path.posix.dirname(path.posix.normalize(target));
   if (dir === "." || dir.startsWith("..")) continue;
-  // 중첩 패키지는 상위 패키지도 등록된 것으로 본다.
-  const parts = dir.split("/");
-  for (let i = 1; i <= parts.length; i += 1) registered.add(parts.slice(0, i).join("/"));
+  // 링크가 가리키는 디렉터리 **그 자체만** 등록으로 본다.
+  //
+  // 초안은 상위 경로도 함께 등록했다가 되돌렸다 — 자식만 카탈로그에 있으면
+  // 부모가 미등록인 채 빠져나가, 이 파일이 방금 고친 미탐의 축소판이 다시
+  // 열린다. 현재 45개 패키지가 전부 직접 링크로 등록돼 있어 상위 경로
+  // 자동등록에 기대는 패키지는 하나도 없다.
+  registered.add(dir);
 }
 
 /** `.md`를 직접 담고 있는 디렉터리가 패키지다. 깊이 제한 없이 찾는다. */
