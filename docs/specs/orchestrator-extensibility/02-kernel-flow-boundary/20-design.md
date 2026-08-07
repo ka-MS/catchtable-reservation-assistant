@@ -66,17 +66,36 @@ cleanup 순서를 새 흐름이 다시 구현한다**는 뜻이다. 한 곳에�
 
 ### 경계
 
-`RunSession`을 둘로 가른다.
+`RunSession`을 둘로 가른다. **둘 다 `orchestrator.ts`에 둔다.**
 
 ```
-RunKernel   (신규 src/content/kernel/run-kernel.ts)
-  생명주기 봉투 · 안전 계약 · 상태 머신 · 시계 · 관측 · 공용 준비
-RunSession  (orchestrator.ts에 잔류)
-  오픈런 흐름 — confirmPageReady · waitForOpen · searchAndReserve · 핫패스
+RunKernel   생명주기 봉투 · 안전 계약 · 상태 머신 · 시계 · 관측 · 공용 준비
+RunSession  오픈런 흐름 — confirmPageReady · waitForOpen · searchAndReserve · 핫패스
 ```
 
 이름을 `RunSession` 그대로 두는 이유는 03이 여기서 핫패스를 다시 떼어내기
 때문이다. 02에서 `OpenRunFlow`로 개명하면 03에서 또 바뀐다.
+
+#### 왜 별도 파일로 빼지 않는가
+
+초안은 `src/content/kernel/run-kernel.ts`를 신설하려 했다. 구현 직전에
+막혔다.
+
+`tests/build-regression.test.mjs`는 **`dist/content/orchestrator.js`의 소스
+텍스트**를 직접 읽어 안전 계약을 검사한다. `authorizationHandle.dispose()`가
+`Promise.allSettled([` 보다 앞이고 같은 블록 안(800자 이내)인지, `start()`가
+`new RunSession(` 뒤·`await session.execute()` 앞에서 raw authorization을
+버리는지를 문자열 위치로 확인한다. 커널을 다른 파일로 옮기면 이 문자열들이
+`orchestrator.js`에서 사라져 **테스트가 깨진다.**
+
+[00-index §중단 조건](../00-index.md#중단-조건)은 "기존 테스트를 수정해야만
+통과시킬 수 있을 때"를 경계를 잘못 그었다는 신호로 본다. 여기서 필요한
+경계는 **클래스 경계**이지 파일 경계가 아니다. 파일 분리는 이 단계의 목표에
+아무것도 더하지 않으므로 하지 않는다.
+
+파일을 나누려면 `build-regression`의 대상 파일을 함께 옮겨야 한다. 그것은
+소스 텍스트 검사의 성격상 정당한 갱신일 수 있으나, **이 단계에서 조용히
+곁들일 변경이 아니다.** 필요해지면 그때 단독으로 판단한다.
 
 ### 커널이 소유하는 것
 
