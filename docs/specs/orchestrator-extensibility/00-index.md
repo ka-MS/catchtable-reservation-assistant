@@ -199,7 +199,7 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 | [02-kernel-flow-boundary/20-design.md](02-kernel-flow-boundary/20-design.md) | 승인됨 | 커널·흐름 경계, 흐름 훅 계약, 착수 전 재평가 |
 | [02-kernel-flow-boundary/30-implementation.md](02-kernel-flow-boundary/30-implementation.md) | 완료 | 커밋 순서, 계층, 결합 5건 처리, 보존 항목 |
 | [02-kernel-flow-boundary/40-verification.md](02-kernel-flow-boundary/40-verification.md) | 완료 | 성공 기준 대조, 주장 대조, 미확인 항목 |
-| 03-hot-path-extraction/ | 미작성 | 02 완료 후 착수 |
+| [03-hot-path-extraction/20-design.md](03-hot-path-extraction/20-design.md) | 승인 대기 | 핫패스 경계, 상태 소유권 이동, 착수 전 재평가 |
 | 04-flow-selection/ | 미작성 | 03 완료 + 진입 조건 충족 후 착수 |
 | [99-agent-process-notes.md](99-agent-process-notes.md) | 기록 | 작업 방식과 트러블슈팅 회고. 제품 기준이 아니며 별도 경로로 이관 예정 |
 
@@ -232,9 +232,13 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
   실사이트 dry-run(`run-3f7ecd6b`)으로 cleanup 순서와 flush, 관측 실패
   0건을 확인했다. 성공 기준 7개 전부 충족
   ([40-verification](02-kernel-flow-boundary/40-verification.md)).
-- 03 핫패스 전략 추출: 미착수. 설계 미작성. 대상은 `RunSession` 719줄 안의
-  핫패스와 흐름 상태 8개이며, 범위는 02 결과 재측정으로 확정한다.
-  `RunKernel.offsetMs` 죽은 필드 정리를 함께 다룬다.
+- 03 핫패스 전략 추출: **설계 완료, 구현 중.**
+  [20-design](03-hot-path-extraction/20-design.md)에 재측정과 경계를 기록했다.
+  미결이던 `advanceFromSlot` 소속은 **RunSession 잔류**, shadow listener는
+  **핫패스 소유**로 정했다. 02와 달리 별도 파일(`flow/open-run-hot-path.ts`)로
+  뺀다 — `build-regression`이 검사하는 문자열 5개가 전부 `RunKernel`·
+  `OpenRunOrchestrator`에 있어 `orchestrator.ts`에 남기 때문이다.
+  `RunKernel.offsetMs` 죽은 필드는 별도 커밋으로 지운다.
 - 04 전략 일반화·흐름 선택: **진입 조건 미충족.** 두 번째 흐름의 실측
   근거 없음.
 - 새 예약 흐름(웨이팅·줄서기): 실측 근거 없음. 별도 패키지 대상.
