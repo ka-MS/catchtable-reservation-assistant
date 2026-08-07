@@ -199,7 +199,8 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 | [02-kernel-flow-boundary/20-design.md](02-kernel-flow-boundary/20-design.md) | 승인됨 | 커널·흐름 경계, 흐름 훅 계약, 착수 전 재평가 |
 | [02-kernel-flow-boundary/30-implementation.md](02-kernel-flow-boundary/30-implementation.md) | 완료 | 커밋 순서, 계층, 결합 5건 처리, 보존 항목 |
 | [02-kernel-flow-boundary/40-verification.md](02-kernel-flow-boundary/40-verification.md) | 완료 | 성공 기준 대조, 주장 대조, 미확인 항목 |
-| [03-hot-path-extraction/20-design.md](03-hot-path-extraction/20-design.md) | 승인 대기 | 핫패스 경계, 상태 소유권 이동, 착수 전 재평가 |
+| [03-hot-path-extraction/20-design.md](03-hot-path-extraction/20-design.md) | 승인됨 | 핫패스 경계, 상태 소유권 이동, 착수 전 재평가 |
+| [03-hot-path-extraction/40-verification.md](03-hot-path-extraction/40-verification.md) | 완료 | 성공 기준 대조, 되돌린 설계 결정, 미확인 항목 |
 | 04-flow-selection/ | 미작성 | 03 완료 + 진입 조건 충족 후 착수 |
 | [99-agent-process-notes.md](99-agent-process-notes.md) | 기록 | 작업 방식과 트러블슈팅 회고. 제품 기준이 아니며 별도 경로로 이관 예정 |
 
@@ -232,7 +233,12 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
   실사이트 dry-run(`run-3f7ecd6b`)으로 cleanup 순서와 flush, 관측 실패
   0건을 확인했다. 성공 기준 7개 전부 충족
   ([40-verification](02-kernel-flow-boundary/40-verification.md)).
-- 03 핫패스 전략 추출: **설계 완료, 구현 중.**
+- 03 핫패스 전략 추출: **완료(실사이트 확인 대기).** 625/625 통과(기존
+  테스트 무수정). `orchestrator.ts` 1,310 → 925줄, `OpenRunHotPath` 464줄
+  신규. 상태 8개가 `orchestrator.ts`에 한 건도 남지 않았다.
+  `adjacentDate` 생성자 주입은 `start()` 훅 순서 때문에 철회했다
+  ([40-verification](03-hot-path-extraction/40-verification.md)).
+  이전 기록:
   [20-design](03-hot-path-extraction/20-design.md)에 재측정과 경계를 기록했다.
   미결이던 `advanceFromSlot` 소속은 **RunSession 잔류**, shadow listener는
   **핫패스 소유**로 정했다. 02와 달리 별도 파일(`flow/open-run-hot-path.ts`)로
