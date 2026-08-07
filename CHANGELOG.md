@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.3](https://github.com/ka-MS/catchtable-reservation-assistant/compare/v1.1.2...v1.1.3) (2026-08-07)
+
+
+### Bug Fixes
+
+* 관측 실패가 예약 실행을 중단시키지 않도록 통일 (SP-026) ([#22](https://github.com/ka-MS/catchtable-reservation-assistant/issues/22)) ([0d2463a](https://github.com/ka-MS/catchtable-reservation-assistant/commit/0d2463ad67dba5f602d9db1d69828633076ec16b))
+* 흐름 cleanup 실패가 커널 정리와 flush를 막지 않도록 ([#28](https://github.com/ka-MS/catchtable-reservation-assistant/issues/28)) ([7c97ab1](https://github.com/ka-MS/catchtable-reservation-assistant/commit/7c97ab125e0c7b22eecb25e226e02d75c1392e90)), closes [#27](https://github.com/ka-MS/catchtable-reservation-assistant/issues/27)
+
+
+### Code Refactoring
+
+* orchestrator 관측 분리 (SP-025/01) ([#21](https://github.com/ka-MS/catchtable-reservation-assistant/issues/21)) ([13027bf](https://github.com/ka-MS/catchtable-reservation-assistant/commit/13027bf155c9a8a7bc188e840dcb15cc1226d186)), closes [#20](https://github.com/ka-MS/catchtable-reservation-assistant/issues/20)
+* 오픈런 핫패스 전략 추출 (SP-025/03) ([#30](https://github.com/ka-MS/catchtable-reservation-assistant/issues/30)) ([95f3319](https://github.com/ka-MS/catchtable-reservation-assistant/commit/95f3319ce5c6c96044239098fe5f2598db329c7d))
+* 커널·흐름 경계 (SP-025/02) ([#25](https://github.com/ka-MS/catchtable-reservation-assistant/issues/25)) ([ae992c5](https://github.com/ka-MS/catchtable-reservation-assistant/commit/ae992c55e18b1cc7d65889609cacae1acc0385d3))
+
 ## [1.1.2](https://github.com/ka-MS/catchtable-reservation-assistant/compare/v1.1.1...v1.1.2) (2026-08-06)
 
 
