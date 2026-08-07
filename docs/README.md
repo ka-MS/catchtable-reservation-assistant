@@ -54,5 +54,10 @@ worklog과 완료된 spec의 과거 기본값·정책은 당시 상태를 기록
 - [오픈 타이밍 성능](specs/open-timing-performance/open-timing-performance-analysis.md)
 - [실행 진단 bundle](specs/run-diagnostics/run-diagnostics.md)
 
+`worklog/`는 세션 단위 시간축 기록이다. "언제 무슨 작업을 했고 무엇을
+결정했는가"를 남기며, 구현 세부와 검증 수치는 담지 않고 해당 spec을
+링크한다. `HANDOFF.md`는 현재 상태 하나만 유지하므로 시간축을 대체하지
+못한다. 작성 기준은 `AGENTS.md` §7을 따른다.
+
 완료된 spec과 worklog는 현재 진입 문서가 아니라 구현 근거와 회귀
 의도를 보존하는 기록입니다.
