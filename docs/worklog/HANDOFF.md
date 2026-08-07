@@ -9,12 +9,19 @@ SP-026으로 **해소**했다(2026-08-07).
 `codex/refactor-kernel-flow-boundary` — SP-025 02 커널·흐름 경계.
 
 `RunSession`의 안전 계약(PIN 폐기 순서, terminal 단정 금지, cleanup
-순서)을 오픈런 흐름 정의에서 분리한다. 설계와 착수 전 재평가는
-[02/20-design](../specs/orchestrator-extensibility/02-kernel-flow-boundary/20-design.md)에
-있다. 결합 5건, 미결이던 `confirmPageReady` 소속 결정, 흐름 훅 계약을
-담았다. 수치는 그 문서에만 둔다.
+순서)을 오픈런 흐름 정의에서 분리했다. 커널이 생명주기 봉투를 소유하고
+흐름은 `start`/`steps`/`cleanup` 훅으로 끼운다.
 
-동작 무변경이며, 핫패스 이동은 03 몫이다.
+- 설계와 착수 전 재평가:
+  [02/20-design](../specs/orchestrator-extensibility/02-kernel-flow-boundary/20-design.md)
+- 결과와 미확인 항목:
+  [02/40-verification](../specs/orchestrator-extensibility/02-kernel-flow-boundary/40-verification.md)
+
+수치는 위 문서에만 둔다.
+
+**병합 전 남은 것:** Chrome 오픈런 dry-run 1회(성공 기준 5)가 미확인이다.
+동작 무변경이고 기존 테스트를 무수정 통과하지만 실사이트 확인을 대신하지
+않는다. 필요 여부는 사용자 판단이다.
 
 ## 직전 완료 작업
 
