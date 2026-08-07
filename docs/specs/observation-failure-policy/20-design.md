@@ -218,16 +218,8 @@ union과 CSV 열이 늘어나고 그 trace 자체도 실패할 수 있다. 비�
 
 ## 검증 결과
 
-```
-npm run check          618/618 통과
-git diff --check       통과
-
-주장 대조
-  (a) 제어 복원력 catch      11/11 유지 (orchestrator.ts 빈 catch 13개 불변)
-  (b) onAvailabilityBody     catch 1개 유지
-      correlateDomCandidate  catch 1개 유지
-  (c) 스캔 루프 매 반복 카운터 참조   0건
-```
+[40-verification.md](40-verification.md) 참조. 설계 문서는 결과 수치를
+재기술하지 않는다.
 
 **성공 기준 1~7 전부 충족.** 상세는 [40-verification.md](40-verification.md).
 
