@@ -6,15 +6,16 @@ SP-026으로 **해소**했다(2026-08-07).
 
 ## 진행 중 브랜치
 
-`codex/fix-check-docs` — [#26](https://github.com/ka-MS/catchtable-reservation-assistant/issues/26)
-문서 검사 결함 수정.
+`codex/docs-sp025-complete` — SP-025 완료 처리와 04 이관.
 
-미탐 2건(중첩 패키지 미순회, 부분 문자열 매칭)과 오탐 2건(코드 안 링크,
-확장 스킴)을 고쳤다. 누락돼 있던 `SP-025/02`·`/03` 카탈로그 등록도 넣었다.
-결정과 남은 것은 [워크로그](2026-08-07-07-check-docs-fixes.md)에 있다.
+`orchestrator-extensibility`를 03에서 완료 처리하고, 04 전략 일반화·흐름
+선택을 [#34](https://github.com/ka-MS/catchtable-reservation-assistant/issues/34)로
+이관했다. 진입 조건 2번(두 번째 흐름의 실측 근거)이 미확보라 착수 시점에
+정해 둔 규칙을 그대로 적용한 것이다. 근거는
+[워크로그](2026-08-07-08-sp025-complete.md)에 있다.
 
-`#26`의 5번(`.claude/skills` 제외)은 **미해결**이다. 제안된 수정이 무효라
-별도 판단이 필요하다.
+새 예약 흐름은 해당 흐름 패키지를 새로 만들어 진행한다. 이 패키지로
+되돌리지 않는다.
 
 ## 직전 완료 작업
 
@@ -127,6 +128,10 @@ git diff --check
 - RT-11: 동질 actual-open 공식 p95·wake counterfactual
 - RT-12: 현재 probe-off 구성 actual-open 확인 표본
 - RT-13: `inactive_cycle` 기회비용 분석
+- [#34](https://github.com/ka-MS/catchtable-reservation-assistant/issues/34)
+  전략 일반화·흐름 선택 (SP-025/04 이관, 실측 근거 확보가 게이트)
+- [#33](https://github.com/ka-MS/catchtable-reservation-assistant/issues/33)
+  스킬 문서의 경로 참조 검사
 - ExecutionPhase control plane Phase 3
 - 사전 점검, DOM drift 대응과 취소 자리 감시
 
