@@ -113,11 +113,27 @@ listener는 `hotPath.onAvailabilityBody`를 부른다.
 | `watchLive`·`lastArrivalAt` | `start()` 콜백, 토글, `advanceFromSlot` | 핫패스 소유. `start()`가 `hotPath.noteArrival()` 호출, `advanceFromSlot`은 읽기 접근자 |
 | `adjacentTiming`·`targetTiming` | 토글 | 핫패스 소유 |
 | `toggleCycle` | `searchAndReserve` | 핫패스 소유. 루프 구동은 `RunSession`에 남고 사이클 번호는 핫패스가 센다 |
-| `adjacentDate` | `confirmPageReady`가 쓰고 토글이 읽음 | **핫패스 소유, 생성자 주입.** `confirmPageReady`가 확정한 값을 핫패스 생성 시 넘긴다 |
+| `adjacentDate` | `confirmPageReady`가 쓰고 토글이 읽음 | 핫패스 소유. `armAdjacentDate()`로 흐름이 확정값을 넘긴다 |
 
-`adjacentDate`만 방향이 다르다. 흐름이 확정하고 핫패스가 소비하는 값이라
-필드 공유 대신 **생성 시점 주입**으로 바꾼다. 그러면 핫패스는 인접 날짜가
-없는 상태로 존재할 수 없다.
+### 생성자 주입은 철회했다
+
+초안은 `adjacentDate`를 생성자로 주입해 "인접 날짜 없는 핫패스는 존재할 수
+없다"를 타입으로 강제하려 했다. **구현에서 되돌렸다.**
+
+`start()` 훅은 `confirmPageReady`보다 **먼저** 돈다(02의 실행 순서). 그
+훅이 등록하는 slotWatch 콜백이 핫패스의 `noteArrival()`을 부르므로, 핫패스는
+`confirmPageReady`보다 앞서 존재해야 한다. 생성자 주입으로 두면 객체가 늦게
+생겨 **그 사이 도착 신호가 유실된다** — 동작 변경이며 이 단계의 조건 위반이다.
+
+따라서 생성은 `RunSession` 생성자에서 하고, 인접 날짜는
+`armAdjacentDate()`로 나중에 넘긴다. `adjacentDate`의 타입은 이전과 같은
+`string | null`이라 판정 동작도 그대로다.
+
+### `advanceFromSlot`이 읽는 상태는 셋이다
+
+초안은 `lastArrivalAt` 하나로 적었으나 실제로는 `adjacentTiming`·
+`targetTiming`도 읽는다(`slotDetectedEventData` 인자). 셋을 묶어
+`detectionTiming` 접근자 하나로 노출한다. 쓰기는 핫패스만 한다.
 
 ### 커널 접근
 
