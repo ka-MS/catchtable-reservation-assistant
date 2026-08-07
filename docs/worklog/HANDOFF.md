@@ -6,21 +6,15 @@ SP-026으로 **해소**했다(2026-08-07).
 
 ## 진행 중 브랜치
 
-`codex/refactor-hot-path-extraction` — SP-025 03 핫패스 전략 추출.
+`codex/fix-check-docs` — [#26](https://github.com/ka-MS/catchtable-reservation-assistant/issues/26)
+문서 검사 결함 수정.
 
-`RunSession`의 핫패스와 오픈런 전용 상태 8개를
-`src/content/flow/open-run-hot-path.ts`로 뺀다. 경계는 **슬롯을 찾을
-때까지**이며 슬롯 이후(`advanceFromSlot`·`advancePostSlot`)는 남는다.
-설계와 재측정은
-[03/20-design](../specs/orchestrator-extensibility/03-hot-path-extraction/20-design.md)에
-있다. 수치는 그 문서에만 둔다.
+미탐 2건(중첩 패키지 미순회, 부분 문자열 매칭)과 오탐 2건(코드 안 링크,
+확장 스킴)을 고쳤다. 누락돼 있던 `SP-025/02`·`/03` 카탈로그 등록도 넣었다.
+결정과 남은 것은 [워크로그](2026-08-07-07-check-docs-fixes.md)에 있다.
 
-동작 무변경이며 핫패스 상수를 만지지 않았다. 625/625 통과, 기존 테스트
-무수정. `RunKernel.offsetMs` 죽은 필드도 별도 커밋으로 지웠다.
-
-실사이트 dry-run(`run-f1c72402`)으로 성공 기준 5까지 충족했다. 02 실행과
-payload 키 집합을 대조해 세 이벤트 모두 동일함을 확인했다. 병합을 막는
-항목은 없다.
+`#26`의 5번(`.claude/skills` 제외)은 **미해결**이다. 제안된 수정이 무효라
+별도 판단이 필요하다.
 
 ## 직전 완료 작업
 

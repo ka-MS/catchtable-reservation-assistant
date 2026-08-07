@@ -26,13 +26,45 @@ const files = [...await markdownFiles(ROOT), "AGENTS.md", "CLAUDE.md", "README.m
 // --- 1. 내부 링크가 실제 파일을 가리키는가 --------------------------------
 
 const LINK = /\]\(([^)\s]+?)(?:\s+"[^"]*")?\)/g;
+
+/**
+ * 코드 블록과 인라인 코드를 지운다. 그 안의 링크는 **예시**이지 참조가
+ * 아니다(#26). 지우지 않으면 링크 작성법을 설명하는 문서가 CI를 깨뜨린다.
+ *
+ * 길이를 보존하려고 같은 길이의 공백으로 치환한다 — 그래야 이 함수가
+ * 링크 정규식의 오프셋에 영향을 주지 않는다.
+ *
+ * **닫히지 않은 펜스는 여전히 오탐이다.** CommonMark은 그것을 문서 끝까지
+ * 코드로 보지만 여기서는 여는·닫는 쌍을 요구해 매치되지 않고, 안의 링크가
+ * 실검사된다. 의도한 선택이다 — 문서 끝까지 삼키게 만들면 그 뒤의 정상
+ * 링크가 통째로 검사에서 빠진다. CI 게이트에서는 시끄러운 오탐이 조용한
+ * 미탐보다 낫고, 애초에 깨진 마크다운은 다른 이유로도 손봐야 한다.
+ */
+function stripCode(markdown) {
+  const blank = (m) => m.replace(/[^\n]/g, " ");
+  return markdown
+    .replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?^ {0,3}\1[^\n]*$/gm, blank) // 펜스
+    .replace(/(`+)[^`\n]*?\1/g, blank);                                // 인라인
+}
+
+/**
+ * 파일 경로가 아닌 링크를 건너뛴다.
+ *
+ * 스킴을 열거하지 않고 **URI 스킴 일반형**으로 판정한다(#26). `chrome:`,
+ * `about:` 같은 확장 프로그램 스킴을 하나씩 추가하다 보면 빠뜨린 것이
+ * 깨진 링크로 보고된다. `//host` 프로토콜 상대 경로도 같은 이유로 뺀다.
+ */
+function isExternal(raw) {
+  return /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//") || raw.startsWith("#");
+}
+
 let linkCount = 0;
 
 for (const file of files) {
-  const markdown = await readFile(file, "utf8");
+  const markdown = stripCode(await readFile(file, "utf8"));
   for (const match of markdown.matchAll(LINK)) {
     const raw = match[1];
-    if (/^(https?:|mailto:|#)/.test(raw)) continue;
+    if (isExternal(raw)) continue;
     const target = raw.split("#")[0];
     if (target === "") continue;
     linkCount += 1;
@@ -49,15 +81,51 @@ for (const file of files) {
 //
 // `docs/specs/README.md`의 등록 규칙은 새 패키지를 만들면 카탈로그에
 // 올리도록 요구한다. 누락되면 다음 작업자가 그 패키지를 못 찾는다.
+//
+// 이전 구현은 최상위 `docs/specs/*`만 순회하고 `catalog.includes(name + "/")`
+// 로 판정해 두 가지를 놓쳤다(#26).
+//
+// - **중첩 패키지**(`SP-025/02` 같은 단계 패키지)가 순회 대상이 아니었다.
+//   실제로 `SP-025/02`·`/03`이 미등록인 채 CI를 두 번 통과했다.
+// - 부분 문자열 매칭이라 기존 항목의 접미사와 겹치는 이름이 빠져나갔다
+//   (`telemetry/`가 `run-telemetry/` 때문에 통과).
+//
+// 지금은 카탈로그의 **링크 경로를 파싱해** 등록된 패키지 집합을 만들고
+// 실제 디렉터리와 대조한다. 두 결함이 같이 해소된다.
 
 const SPECS = path.join(ROOT, "specs");
 const catalog = await readFile(path.join(SPECS, "README.md"), "utf8");
-const packages = (await readdir(SPECS, { withFileTypes: true }))
-  .filter((entry) => entry.isDirectory())
-  .map((entry) => entry.name);
+
+/** 카탈로그 링크가 가리키는 디렉터리 경로 집합 (`docs/specs` 기준 상대). */
+const registered = new Set();
+for (const match of stripCode(catalog).matchAll(LINK)) {
+  const target = match[1].split("#")[0];
+  if (isExternal(target) || target === "") continue;
+  const dir = path.posix.dirname(path.posix.normalize(target));
+  if (dir === "." || dir.startsWith("..")) continue;
+  // 링크가 가리키는 디렉터리 **그 자체만** 등록으로 본다.
+  //
+  // 초안은 상위 경로도 함께 등록했다가 되돌렸다 — 자식만 카탈로그에 있으면
+  // 부모가 미등록인 채 빠져나가, 이 파일이 방금 고친 미탐의 축소판이 다시
+  // 열린다. 현재 45개 패키지가 전부 직접 링크로 등록돼 있어 상위 경로
+  // 자동등록에 기대는 패키지는 하나도 없다.
+  registered.add(dir);
+}
+
+/** `.md`를 직접 담고 있는 디렉터리가 패키지다. 깊이 제한 없이 찾는다. */
+async function specPackages(dir, prefix = "") {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const here = entries.some((e) => e.isFile() && e.name.endsWith(".md")) && prefix !== "";
+  const nested = await Promise.all(entries
+    .filter((e) => e.isDirectory())
+    .map((e) => specPackages(path.join(dir, e.name), prefix === "" ? e.name : `${prefix}/${e.name}`)));
+  return [...(here ? [prefix] : []), ...nested.flat()];
+}
+
+const packages = (await specPackages(SPECS)).sort();
 
 for (const name of packages) {
-  if (!catalog.includes(`${name}/`)) {
+  if (!registered.has(name)) {
     errors.push(`docs/specs/README.md: 카탈로그에 없는 패키지 -> ${name}/`);
   }
 }
