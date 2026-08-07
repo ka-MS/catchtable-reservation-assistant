@@ -1,6 +1,6 @@
 # 02 커널·흐름 경계 — 검증
 
-**상태:** 코드 검증 완료, 실사이트 확인 대기
+**상태:** 완료
 **설계:** [20-design.md](20-design.md) · **구현:** [30-implementation.md](30-implementation.md)
 
 ## 성공 기준 대조
@@ -13,7 +13,7 @@
 | 1 | 기존 테스트 무수정 통과 | **충족.** `git diff --name-only -- tests/`에 기존 파일 없음 |
 | 3 | `npm run check` 통과 | **충족.** 625/625, version·typecheck·dist·independence·docs |
 | 4 | `git diff --check` 통과 | **충족** |
-| 5 | Chrome 오픈런 dry-run 1회 | **미확인.** 아래 참조 |
+| 5 | Chrome 오픈런 dry-run 1회 | **충족.** 아래 참조 |
 | 6 | 생명주기 순서 고정 테스트 | **충족.** `tests/kernel-lifecycle.test.mjs` 3건 |
 | 7 | PIN 폐기가 흐름 cleanup보다 먼저임을 증명 | **충족.** 2번 테스트 |
 | 8 | 기대값을 추출 전 실행으로 덤프 | **충족.** 아래 참조 |
@@ -62,20 +62,56 @@
 | 기존 테스트 무수정 | `git diff --name-only -- tests/` 빈 결과 |
 | 흐름 본문이 커널 호출 재작성 외 무변경 | 재조립 스크립트가 원본 줄 구간을 그대로 이어 붙임 |
 
-## 미확인 항목
+## 실사이트 확인 (성공 기준 5)
 
-**성공 기준 5 (Chrome 오픈런 dry-run)는 아직 확인하지 않았다.** 이 단계는
-동작 무변경이고 625개 테스트가 통과하지만, 그것이 실사이트 확인을 대신하지
-않는다. 01은 dry-run 2회로 스탬핑과 payload를 확인했다.
+`run-3f7ecd6b-0a43-43fb-860c-c410768fd0b5` (mangam, 2026-09-03, dryRun,
+`entryMode=auto`, `availabilityProbeMode=empty_exit`,
+`toggleIntervalMs=100`). `DRY_RUN_COMPLETED`, 61 이벤트, **droppedCount 0**.
 
-특히 확인할 것은 다음 둘이다.
+준비 3단계를 모두 거쳐 토글 1회에서 슬롯을 찾고 종료했다. 설계가 걱정한
+두 가지를 이 번들이 답한다.
 
-- `flow.start()`로 옮긴 shadow·slotWatch 기동이 `CONFIGURED` 전이 전에
-  이뤄지는지
-- cleanup 순서 변화가 telemetry flush에 영향을 주지 않는지 (이벤트 누락
-  없이 실행이 종료되는지)
+### cleanup 순서가 flush에 영향을 주는가 — 아니다
 
-병합 전 확인이 필요한지는 사용자 판단이다.
+`CLOCK_SAMPLE` 17건(seq 45~61)이 `RUN_TERMINATED`(seq 44) **뒤에** 모두
+남았다. 이 이벤트는 `traceFrozenReferenceClockSamples()`가 내보내며, 새
+커널에서는 `finally` 안 **`flow.cleanup()` 다음** 자리다. 17건이 온전히
+기록되고 `droppedCount`가 0이라는 것은 흐름 cleanup을 거친 뒤에도 기준시계
+동결 표본 trace와 비동기 flush가 정상 실행됐다는 뜻이다.
+
+즉 `PIN 폐기 → flow.cleanup() → 기준시계 정지 → 동결 표본 trace → flush`
+순서가 실사이트에서 그대로 성립한다.
+
+### shadow 기동 시점 — 누락 없음
+
+첫 `AVAILABILITY_SHADOW`(seq 25, +1771ms)는 날짜 선택(+1694ms)이 유발한
+첫 슬롯 XHR을 잡았다. 그 앞의 유일한 동작은 예약하기 클릭(+1337ms)이며
+가용 슬롯 XHR을 만들지 않는다. **shadow가 놓친 응답이 없다.**
+
+다만 shadow 기동 자체는 trace를 남기지 않으므로, 이 번들은 기동이
+`CONFIGURED` 전이보다 **앞이라는 것과 모순되지 않음**을 보일 뿐 그 순서를
+직접 증명하지는 않는다. 순서 자체는 `tests/kernel-lifecycle.test.mjs` 1번이
+고정한다.
+
+### 관측 실패 0건
+
+terminal 전이(seq 44)의 attributes가 정확히
+`{"eventKind":"state","state":"DRY_RUN_COMPLETED"}`다.
+`observationFailureCount`가 없다 — SP-026 설계대로 실패 0이면 attribute를
+싣지 않으므로, 기존 payload가 그대로임을 함께 보여준다.
+
+### 핫패스
+
+토글 1회, `correlationQuality=EXACT`, `wakeReason=verified_target_body`,
+`wakeUsed=true`, `SLOT_FOUND`, body가 DOM보다 23.2ms 앞섰다. 스케줄 드리프트는
+인접 15ms·목표 67ms다. 핫패스 동작에 변화가 없다.
+
+### 이 번들이 답하지 못하는 것
+
+`extensionVersion`은 `1.1.2`로 `main`과 이 브랜치가 같다(`refactor:`는 버전을
+올리지 않는다). 번들만으로는 어느 빌드인지 구분할 수 없다. 동작 무변경이
+목표이므로 구분 가능한 trace 차이를 두지 않았기 때문이다. **이 브랜치 빌드를
+로드해 실행했다는 전제로 기록한다.**
 
 ## 03에 넘기는 것
 

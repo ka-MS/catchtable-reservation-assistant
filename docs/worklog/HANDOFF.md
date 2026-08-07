@@ -14,14 +14,16 @@ SP-026으로 **해소**했다(2026-08-07).
 
 - 설계와 착수 전 재평가:
   [02/20-design](../specs/orchestrator-extensibility/02-kernel-flow-boundary/20-design.md)
-- 결과와 미확인 항목:
+- 결과:
   [02/40-verification](../specs/orchestrator-extensibility/02-kernel-flow-boundary/40-verification.md)
 
 수치는 위 문서에만 둔다.
 
-**병합 전 남은 것:** Chrome 오픈런 dry-run 1회(성공 기준 5)가 미확인이다.
-동작 무변경이고 기존 테스트를 무수정 통과하지만 실사이트 확인을 대신하지
-않는다. 필요 여부는 사용자 판단이다.
+실사이트 dry-run(`run-3f7ecd6b`, mangam)으로 성공 기준 5까지 충족했다.
+`CLOCK_SAMPLE` 17건이 `RUN_TERMINATED` 뒤에 온전히 남아 흐름 cleanup 뒤의
+flush가 정상임을 보였다. droppedCount 0, 관측 실패 0건.
+
+병합을 막는 항목은 없다.
 
 ## 직전 완료 작업
 

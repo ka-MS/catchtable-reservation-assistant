@@ -224,12 +224,13 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 - 01 관측 분리: **완료.** 611/611 통과(기존 테스트 540개 무수정),
   실사이트 dry-run 2회로 스탬핑·payload 확인. 성공 기준 8개 전부 충족.
   `orchestrator.ts` 1,630 → 1,190줄.
-- 02 커널·흐름 경계: **완료(실사이트 확인 대기).** 625/625 통과(기존
+- 02 커널·흐름 경계: **완료.** 625/625 통과(기존
   622개 무수정). `RunKernel` 334줄과 `RunSession` 719줄로 갈랐고 안전
   계약은 커널이 소유한다. 미결이던 `confirmPageReady`의 소속은 **흐름**
   으로 정했다. 커널을 별도 파일로 빼려던 초안은 `build-regression`이
   `dist/content/orchestrator.js` 소스 텍스트를 검사하므로 철회했다.
-  Chrome dry-run(성공 기준 5)은 미확인이다
+  실사이트 dry-run(`run-3f7ecd6b`)으로 cleanup 순서와 flush, 관측 실패
+  0건을 확인했다. 성공 기준 7개 전부 충족
   ([40-verification](02-kernel-flow-boundary/40-verification.md)).
 - 03 핫패스 전략 추출: 미착수. 설계 미작성. 대상은 `RunSession` 719줄 안의
   핫패스와 흐름 상태 8개이며, 범위는 02 결과 재측정으로 확정한다.
