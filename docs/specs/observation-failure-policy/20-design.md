@@ -231,6 +231,8 @@ git diff --check       통과
 
 성공 기준 1~3, 5~7 충족. **기준 4는 직접 검증하지 못했다** — 아래 참조.
 
+실사이트 dry-run 결과는 [40-verification.md](40-verification.md) 참조.
+
 ### 미검증: 기준 4 (late DOM 비교 계속 실행)
 
 `lateDomCorrelation`은 DOM 상관관계가 먼저 잡힌 뒤 같은 cycle의 body가
