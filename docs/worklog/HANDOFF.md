@@ -6,25 +6,37 @@ SP-026으로 **해소**했다(2026-08-07).
 
 ## 진행 중 브랜치
 
-`codex/chore-workflow-guardrails` — 워크플로 가드레일.
+`codex/refactor-kernel-flow-boundary` — SP-025 02 커널·흐름 경계.
 
-작업 지침이 7개 문서에 흩어져 있고 그중 `AGENTS.md`만 자동 로드된다는
-점이 드러났다. 워크로그가 2026-07-27 이후 끊긴 이유도 작성 요구가
-`AGENTS.md`에 없었기 때문이다(recon 스킬과 개별 spec 패키지에만 있었다).
+`RunSession`의 안전 계약(PIN 폐기 순서, terminal 단정 금지, cleanup
+순서)을 오픈런 흐름 정의에서 분리했다. 커널이 생명주기 봉투를 소유하고
+흐름은 `start`/`steps`/`cleanup` 훅으로 끼운다.
 
-- `AGENTS.md` §7 신설 — 작업 유형별 산출물 표. 워크로그는 색인이지
-  보고서가 아님을 명시했다.
-- `scripts/check-docs.mjs` + `npm run check` 편입 — 문서 링크와 spec
-  카탈로그 등록을 기계가 검사한다. 수동으로 돌리던 것을 CI로 옮겼다.
-- `docs/README.md`에 워크로그 역할 명시.
-- 워크로그 두 건: 직전 세션(SP-025/01·SP-026) 소급분과 이 작업분.
-  새 규칙이 도입 시점부터 자기 자신에게 적용된다.
+- 설계와 착수 전 재평가:
+  [02/20-design](../specs/orchestrator-extensibility/02-kernel-flow-boundary/20-design.md)
+- 결과:
+  [02/40-verification](../specs/orchestrator-extensibility/02-kernel-flow-boundary/40-verification.md)
 
-허브 문서는 만들지 않았다. 자동 로드가 안 되면 홉만 늘어난다.
+수치는 위 문서에만 둔다.
 
-다음은 **SP-025 02 커널·흐름 경계**다. 최신 `main`에서 브랜치를 만든다.
+실사이트 dry-run(`run-3f7ecd6b`, mangam)으로 성공 기준 5까지 충족했다.
+`CLOCK_SAMPLE` 17건이 `RUN_TERMINATED` 뒤에 온전히 남아 흐름 cleanup 뒤의
+flush가 정상임을 보였다. droppedCount 0, 관측 실패 0건.
+
+병합을 막는 항목은 없다. 리뷰에서 나온
+[#27](https://github.com/ka-MS/catchtable-reservation-assistant/issues/27)은
+동작 변경이라 02(무변경 조건)에 넣지 않고 별도 `fix:`로 분리했다.
 
 ## 직전 완료 작업
+
+`codex/chore-workflow-guardrails` (`#24`) — 워크플로 가드레일.
+`AGENTS.md` §7(작업 유형별 산출물)과 `scripts/check-docs.mjs`를 추가해
+문서 링크·spec 카탈로그 검사를 `npm run check`로 옮겼다.
+
+`codex/refactor-observation-split` (`#21`), `codex/fix-observation-failure-policy`
+(`#22`) — SP-025 01 관측 분리와 SP-026 관측 실패 정책.
+
+
 
 `codex/fix-form-intent-and-final-button` (`#16`, `#18`로 병합됨)
 — 예약 폼 변형 복원력
@@ -85,9 +97,10 @@ SP-026으로 **해소**했다(2026-08-07).
 
 CatchPay 예약 완주 구현·적대적 리뷰 수정 뒤 기준은 다음과 같다.
 
-- `npm run check`: 540/540 tests, typecheck, dist validation,
-  MAIN/ISOLATED independence 통과 (2026-08-07 `main` @ `0fa0af2` 기준.
-  아래 Chrome E2E 항목은 예약 완주 구현 당시 518/518 시점의 기록이다)
+- `npm run check`: 622/622 tests, typecheck, dist validation,
+  MAIN/ISOLATED independence, docs validation 통과
+  (2026-08-07 `main` @ `3efeba0` 기준. 아래 Chrome E2E 항목은 예약 완주
+  구현 당시 518/518 시점의 기록이다)
 - 통제된 Chrome:
   - 0원 CatchPay 실예약 생성 뒤 사용자 취소
   - 비로그인 `login_required`, submit 0회
@@ -120,6 +133,8 @@ git diff --check
 - RT-11: 동질 actual-open 공식 p95·wake counterfactual
 - RT-12: 현재 probe-off 구성 actual-open 확인 표본
 - RT-13: `inactive_cycle` 기회비용 분석
+- [#27](https://github.com/ka-MS/catchtable-reservation-assistant/issues/27)
+  흐름 훅 예외가 커널 정리·flush를 막는다 (SP-025/02 리뷰에서 발견)
 - ExecutionPhase control plane Phase 3
 - 사전 점검, DOM drift 대응과 취소 자리 감시
 

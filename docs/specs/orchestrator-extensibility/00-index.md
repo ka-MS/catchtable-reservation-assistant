@@ -196,7 +196,9 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 | [01-observation-split/20-design.md](01-observation-split/20-design.md) | 승인됨 | 관측 분리 계약과 이동 매핑 |
 | [01-observation-split/30-implementation.md](01-observation-split/30-implementation.md) | 완료 | 커밋 순서, 계층, 보존 항목 |
 | [01-observation-split/40-verification.md](01-observation-split/40-verification.md) | 완료 | 성공 기준 대조, 주장 대조, 실사이트 확인 |
-| 02-kernel-flow-boundary/ | 미작성 | 01 완료 후 착수 |
+| [02-kernel-flow-boundary/20-design.md](02-kernel-flow-boundary/20-design.md) | 승인됨 | 커널·흐름 경계, 흐름 훅 계약, 착수 전 재평가 |
+| [02-kernel-flow-boundary/30-implementation.md](02-kernel-flow-boundary/30-implementation.md) | 완료 | 커밋 순서, 계층, 결합 5건 처리, 보존 항목 |
+| [02-kernel-flow-boundary/40-verification.md](02-kernel-flow-boundary/40-verification.md) | 완료 | 성공 기준 대조, 주장 대조, 미확인 항목 |
 | 03-hot-path-extraction/ | 미작성 | 02 완료 후 착수 |
 | 04-flow-selection/ | 미작성 | 03 완료 + 진입 조건 충족 후 착수 |
 | [99-agent-process-notes.md](99-agent-process-notes.md) | 기록 | 작업 방식과 트러블슈팅 회고. 제품 기준이 아니며 별도 경로로 이관 예정 |
@@ -222,8 +224,17 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 - 01 관측 분리: **완료.** 611/611 통과(기존 테스트 540개 무수정),
   실사이트 dry-run 2회로 스탬핑·payload 확인. 성공 기준 8개 전부 충족.
   `orchestrator.ts` 1,630 → 1,190줄.
-- 02 커널·흐름 경계: **미착수.** 설계 미작성. 선행 조건(#20)은 해소됐다.
-- 03 핫패스 전략 추출: 미착수. 설계 미작성.
+- 02 커널·흐름 경계: **완료.** 625/625 통과(기존
+  622개 무수정). `RunKernel` 334줄과 `RunSession` 719줄로 갈랐고 안전
+  계약은 커널이 소유한다. 미결이던 `confirmPageReady`의 소속은 **흐름**
+  으로 정했다. 커널을 별도 파일로 빼려던 초안은 `build-regression`이
+  `dist/content/orchestrator.js` 소스 텍스트를 검사하므로 철회했다.
+  실사이트 dry-run(`run-3f7ecd6b`)으로 cleanup 순서와 flush, 관측 실패
+  0건을 확인했다. 성공 기준 7개 전부 충족
+  ([40-verification](02-kernel-flow-boundary/40-verification.md)).
+- 03 핫패스 전략 추출: 미착수. 설계 미작성. 대상은 `RunSession` 719줄 안의
+  핫패스와 흐름 상태 8개이며, 범위는 02 결과 재측정으로 확정한다.
+  `RunKernel.offsetMs` 죽은 필드 정리를 함께 다룬다.
 - 04 전략 일반화·흐름 선택: **진입 조건 미충족.** 두 번째 흐름의 실측
   근거 없음.
 - 새 예약 흐름(웨이팅·줄서기): 실측 근거 없음. 별도 패키지 대상.
