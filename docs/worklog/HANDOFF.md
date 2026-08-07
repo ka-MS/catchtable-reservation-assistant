@@ -23,7 +23,9 @@ SP-026으로 **해소**했다(2026-08-07).
 `CLOCK_SAMPLE` 17건이 `RUN_TERMINATED` 뒤에 온전히 남아 흐름 cleanup 뒤의
 flush가 정상임을 보였다. droppedCount 0, 관측 실패 0건.
 
-병합을 막는 항목은 없다.
+병합을 막는 항목은 없다. 리뷰에서 나온
+[#27](https://github.com/ka-MS/catchtable-reservation-assistant/issues/27)은
+동작 변경이라 02(무변경 조건)에 넣지 않고 별도 `fix:`로 분리했다.
 
 ## 직전 완료 작업
 
@@ -131,6 +133,8 @@ git diff --check
 - RT-11: 동질 actual-open 공식 p95·wake counterfactual
 - RT-12: 현재 probe-off 구성 actual-open 확인 표본
 - RT-13: `inactive_cycle` 기회비용 분석
+- [#27](https://github.com/ka-MS/catchtable-reservation-assistant/issues/27)
+  흐름 훅 예외가 커널 정리·flush를 막는다 (SP-025/02 리뷰에서 발견)
 - ExecutionPhase control plane Phase 3
 - 사전 점검, DOM drift 대응과 취소 자리 감시
 

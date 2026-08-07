@@ -38,6 +38,9 @@
 
 ## 남은 것
 
+- [#27](https://github.com/ka-MS/catchtable-reservation-assistant/issues/27)
+  흐름 훅 예외가 커널 정리·flush를 막는다. PR 리뷰에서 지적됐다. 동작
+  무변경 조건 때문에 02에 넣지 않고 별도 `fix:`로 분리했다.
 - 03 핫패스 전략 추출. 대상은 `RunSession`에 남은 핫패스와 흐름 상태
   8개이며, 범위는 02 결과 재측정으로 확정한다.
 
