@@ -360,7 +360,18 @@ class RunKernel {
       // PIN 참조는 나머지 cleanup(비동기 flush 포함)보다 먼저, 그 안의 예외와 무관하게
       // 즉시 폐기한다 — dispose() 자체는 절대 던지지 않으므로 이 위치가 가장 이르고 안전하다.
       this.authorizationHandle.dispose();
-      flow.cleanup();
+      try {
+        flow.cleanup();
+      } catch (error) {
+        // 훅 경계의 계약(#27): 흐름 원복 실패가 커널의 정리·flush·RunResult를
+        // 무너뜨리지 않는다. 삼키되 **숨기지는 않는다** — 이 자리에 도달했다는
+        // 것은 흐름이 자원을 원복하지 못했다는 뜻이라 근거가 남아야 한다.
+        // 현재 흐름은 내부를 각자 감싸 도달하지 않으나 두 번째 흐름은 그
+        // 보장이 없다. 커버리지 0을 근거로 지우면 #27이 재발한다.
+        this.observe.event("error", "흐름 정리에 실패했습니다.", {
+          error: error instanceof Error ? error.message : "알 수 없는 정리 오류",
+        });
+      }
       this.stopReferenceClock("terminal"); // waitForOpen 도달 전 조기 종료 시 안전망
       this.traceFrozenReferenceClockSamples();
       await Promise.allSettled([
@@ -594,9 +605,15 @@ class RunSession implements RunFlowHooks {
   }
 
   /**
-   * 훅 3 — start()가 켠 것을 원복한다. 순서와 try/catch 모양은 이전
-   * finally 블록과 같다. 감싸지 않은 두 호출이 던지면 이후 cleanup과
-   * flush가 실행되지 않는 것도 그대로다(tests/kernel-lifecycle).
+   * 훅 3 — start()가 켠 것을 원복한다. 순서는 이전 finally 블록과 같다.
+   *
+   * 던질 수 있는 포트 호출 셋은 각자 감싼다(#27) — 하나가 실패해도 나머지
+   * 원복이 이어져야 observer·watch가 남지 않는다. 감싸지 않은
+   * `availabilityWake.reset()`은 내부 필드 초기화라 던지지 않는다.
+   *
+   * 여기서 새 포트 호출을 추가한다면 **반드시 감싼다.** 감싸지 않으면 그
+   * 뒤의 원복이 통째로 건너뛰어진다. 커널의 훅 경계 guard는 실행 결과와
+   * flush를 지킬 뿐, 이 메서드 내부의 남은 단계를 되살리지는 못한다.
    */
   cleanup(): void {
     try {
@@ -605,7 +622,13 @@ class RunSession implements RunFlowHooks {
       // Shadow 원복 실패도 terminal 결과를 바꾸지 않는다.
     }
     this.availabilityWake.reset();
-    this.deps.slotWatch?.stop();
+    try {
+      this.deps.slotWatch?.stop();
+    } catch {
+      // 감시 원복 실패가 뒤따르는 mutation watch 원복을 막지 않는다(#27).
+      // 커널 경계의 가드만으로는 흐름 cleanup 내부가 중간에 끊기는 것을
+      // 막지 못해 mutation observer가 남는다.
+    }
     try {
       this.deps.slotDomMutationWatch?.stop();
     } catch {
