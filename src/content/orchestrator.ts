@@ -1,14 +1,13 @@
-import { resolveAvailabilityProbeMode, validateReservationConfig } from "../shared/config.js";
+import { validateReservationConfig } from "../shared/config.js";
 import { estimateReferenceClock, type ReferenceClockEstimate, type ReferenceClockSample } from "../shared/clock.js";
 import { waitUntil, type Clock, type Sleep } from "../shared/scheduler.js";
 import { MonotonicEpochClock } from "../shared/monotonic-clock.js";
-import { selectPreferredSlot, type SlotCandidate } from "../shared/slot-selection.js";
+import { type SlotCandidate } from "../shared/slot-selection.js";
 import {
   type AvailabilityTargetCycleMarker,
   type ReceivedAvailabilityShadowEvent,
 } from "../shared/availability-shadow.js";
 import { RunStateMachine } from "../shared/state-machine.js";
-import { nextTogglePlan } from "../shared/toggle-schedule.js";
 import type { SlotRefreshWatchPort } from "./adapter/slot-refresh-watch.js";
 import type { SlotDomMutationWatchPort } from "./adapter/slot-dom-mutation-watch.js";
 import type { ReferenceClockPort } from "./reference-clock-sampler.js";
@@ -25,11 +24,6 @@ import type { PreparationResult } from "./preparation/result.js";
 import type { StepReporter, StepRunOptions } from "./preparation/step-runner.js";
 import type { PostSlotActionResult, PostSlotInspection } from "./adapter/post-slot.js";
 import type { StageSnapshot } from "./adapter/snapshot.js";
-import { AvailabilityCorrelationTracker, type DomCorrelation } from "./availability-correlation.js";
-import {
-  AvailabilityDomWake,
-  type AvailabilityWakeSignal,
-} from "./availability-dom-wake.js";
 import type { PreparationPageContext } from "./preparation-observation.js";
 import type {
   CompletionResult,
@@ -42,7 +36,6 @@ import {
   slotClickDispatchedEventData,
   slotDetectedEventData,
   stageSnapshotData,
-  targetClickMetricData,
 } from "./observation/payloads.js";
 import { RunObserver, type DiagnosticsPort } from "./observation/run-observer.js";
 import { OpenRunHotPath } from "./flow/open-run-hot-path.js";
@@ -592,13 +585,14 @@ class RunSession implements RunFlowHooks {
   /**
    * 훅 3 — start()가 켠 것을 원복한다. 순서는 이전 finally 블록과 같다.
    *
-   * 던질 수 있는 포트 호출 셋은 각자 감싼다(#27) — 하나가 실패해도 나머지
-   * 원복이 이어져야 observer·watch가 남지 않는다. 감싸지 않은
-   * `availabilityWake.reset()`은 내부 필드 초기화라 던지지 않는다.
+   * **이 메서드의 모든 호출은 각자 감싼다(#27).** 하나가 실패해도 나머지
+   * 원복이 이어져야 observer·watch가 남지 않는다. 커널의 훅 경계 guard는
+   * 실행 결과와 flush를 지킬 뿐, 이 메서드 내부의 남은 단계를 되살리지는
+   * 못한다.
    *
-   * 여기서 새 포트 호출을 추가한다면 **반드시 감싼다.** 감싸지 않으면 그
-   * 뒤의 원복이 통째로 건너뛰어진다. 커널의 훅 경계 guard는 실행 결과와
-   * flush를 지킬 뿐, 이 메서드 내부의 남은 단계를 되살리지는 못한다.
+   * `hotPath.reset()`도 감싼다. 지금은 필드 초기화 한 줄이라 던지지 않지만
+   * **다른 모듈**(`flow/open-run-hot-path.ts`)이라, 거기에 무언가 추가되는
+   * 것만으로 #27의 실패 모드가 이 파일을 고치지 않고 재현된다.
    */
   cleanup(): void {
     try {
@@ -606,7 +600,11 @@ class RunSession implements RunFlowHooks {
     } catch {
       // Shadow 원복 실패도 terminal 결과를 바꾸지 않는다.
     }
-    this.hotPath.reset();
+    try {
+      this.hotPath.reset();
+    } catch {
+      // 핫패스 원복 실패도 뒤따르는 watch 원복을 막지 않는다(#27).
+    }
     try {
       this.deps.slotWatch?.stop();
     } catch {

@@ -4,15 +4,11 @@ import { MonotonicEpochClock } from "../../shared/monotonic-clock.js";
 import { selectPreferredSlot, type SlotCandidate } from "../../shared/slot-selection.js";
 import type { ReceivedAvailabilityShadowEvent } from "../../shared/availability-shadow.js";
 import { nextTogglePlan } from "../../shared/toggle-schedule.js";
-import type { ReservationConfig, RunEvent } from "../../shared/types.js";
+import type { ReservationConfig } from "../../shared/types.js";
 import type { PostSlotInspection } from "../adapter/post-slot.js";
 import { AvailabilityCorrelationTracker } from "../availability-correlation.js";
 import { AvailabilityDomWake, type AvailabilityWakeSignal } from "../availability-dom-wake.js";
-import {
-  detectionClockData,
-  slotClickDispatchedEventData,
-  targetClickMetricData,
-} from "../observation/payloads.js";
+import { targetClickMetricData } from "../observation/payloads.js";
 import type { RunObserver } from "../observation/run-observer.js";
 import type { Dependencies, RunKernel, RunResult } from "../orchestrator.js";
 
