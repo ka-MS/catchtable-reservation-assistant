@@ -203,7 +203,6 @@ export class RunKernel {
   readonly observe: RunObserver;
   private readonly runId: string;
   private readonly machine: RunStateMachine;
-  private offsetMs: number | null = null;
   serverClockReady = false;
   private terminalReason = "실행이 종료됐습니다.";
   private preparationFailure: { cause: PreparationCause; attempts: number } | null = null;
@@ -432,7 +431,6 @@ export class RunKernel {
     const offset = estimate.source === "FALLBACK"
       ? this.deps.clock.now() - this.deps.monotonicClock.now()
       : estimate.offsetCenterMs;
-    this.offsetMs = offset;
     // ⚠️ t0/t1이 monotonic epoch이므로 재앵커도 monotonicClock 기준이어야 한다
     // (wall clock인 deps.clock을 쓰면 서로 다른 시간 공간을 더하는 버그가 된다).
     this.serverClock.anchor(this.deps.monotonicClock.now() + offset);
