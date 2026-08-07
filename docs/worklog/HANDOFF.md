@@ -1,38 +1,38 @@
 # HANDOFF
 
 **갱신:** 2026-08-07
-**Blocking backlog:** [#20](https://github.com/ka-MS/catchtable-reservation-assistant/issues/20)
-관측 예외 격리 비대칭 — SP-025/01 병합 후 02 착수 **전에** 처리하거나
-명시적으로 해제한다.
+**Blocking backlog:** 없음. [#20](https://github.com/ka-MS/catchtable-reservation-assistant/issues/20)은
+SP-026으로 **해소**했다(2026-08-07).
 
 ## 진행 중 브랜치
 
-`codex/refactor-observation-split` — 관측 분리
-([SP-025/01](../specs/orchestrator-extensibility/01-observation-split/30-implementation.md)).
-`orchestrator.ts`에서 관측(텔레메트리 payload 조립·전송)을 제어와 분리했다.
-동작 무변경 리팩터다.
+`codex/fix-observation-failure-policy` — 관측 실패 정책
+([SP-026](../specs/observation-failure-policy/20-design.md)). issue #20을 해소한다.
 
-`orchestrator.ts` 1,630 → 1,190줄. `observation/payloads.ts` 401줄(순수 함수)과
-`observation/run-observer.ts` 332줄(스탬핑·예외 경계·관측 정책)이 신설됐다.
-`npm run check` 611/611 통과하며 **기존 테스트 540개는 무수정**이다.
-특성화 21개, payload golden 24개, 관측 예외 경계 계약 26개를 추가했다.
+**계약: 관측은 예약 실행을 중단시키지 않는다. 대신 실패를 셈해 드러낸다.**
 
-실사이트 dry-run 2회(`run-fbce1b4f`, `run-5cd25ceb`)로 실제 `TraceLogger`
-배선에서의 스탬핑과 payload 키 집합을 확인했다. 계약 밖 키 0건이다.
-성공 기준 8개를 전부 충족했다.
+`RunObserver`의 모든 공개 메서드가 예외를 밖으로 내보내지 않는다. 이전에는
+`trace` 10곳 중 6곳만 격리돼 있어 나머지에서 exporter가 던지면 실행이
+`FAILED`로 죽었고, `emit`은 `RunResult` 자체를 막아 `ATTEMPT_FINISHED`
+전달까지 차단했다.
 
-**예외 격리는 한 곳도 바꾸지 않았다.** 작업 중 현재 격리가 비대칭임을
-발견했다 — `trace` 호출 10곳 중 6곳만 격리돼 있고, 나머지에서 exporter가
-던지면 실행이 `FAILED`로 죽는다. `emit`은 더 나아가 `RunResult` 자체를
-막는다. 통일하면 동작이 바뀌므로 보존하고 issue #20으로 분리했다.
-`RunObserver`의 `send`/`sendSafe` 구분으로 그 비대칭이 코드에 드러난다.
+삼킨 횟수는 `observationFailures()`로 노출되고 terminal 상태 전이 event에
+`observationFailureCount`로 실린다. 실패 0이면 attribute가 붙지 않아 기존
+payload는 그대로다. 진단 파이프라인이 죽은 것을 아무도 모르는 상태를 막는다.
 
-다음은 **#20 격리 통일 판단**이다. 02 커널·흐름 경계가 아니다.
+이 변경은 **동작 변경**이므로 기존 테스트 10건을 새 계약으로 뒤집었다.
+성공 기준 7개를 전부 충족했다.
 
-01이 `RunObserver`의 `send`(전파) / `sendSafe`(격리) 구분으로 비대칭을
-코드에 드러냈으므로 판단 근거가 갖춰졌다. 02가 같은 파일을 다시 크게
-움직이기 전에 처리하는 편이 비용이 낮다. 처리하지 않기로 한다면 이
-HANDOFF에서 blocking을 명시적으로 해제하고 근거를 남긴다.
+실사이트 dry-run 1회(`run-3bec38f4`)로 확인했다. **`observationFailureCount`
+열이 없다 — 실제 환경의 관측 실패 0건이다.** 이 측정은 이 변경으로 처음
+가능해졌다. payload 계약 밖 키도 0건이다.
+
+검증 수치와 상세는
+[SP-026 40-verification](../specs/observation-failure-policy/40-verification.md)에
+있다. **이 문서는 수치를 재기술하지 않는다** — 두 곳에 적으면 반드시
+어긋난다(실제로 이 PR에서 세 번 어긋났다).
+
+다음은 **SP-025 02 커널·흐름 경계**다. 최신 `main`에서 브랜치를 만든다.
 
 ## 직전 완료 작업
 

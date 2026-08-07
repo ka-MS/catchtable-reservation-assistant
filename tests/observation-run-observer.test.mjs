@@ -1,12 +1,13 @@
-// SP-025/01: `RunObserver`의 **예외 경계 계약**을 메서드 단위로 고정한다.
+// `RunObserver`의 **예외 경계 계약**을 메서드 단위로 고정한다.
 //
-// PR #21 리뷰에서 발견된 회귀를 막는다. `sendSafe(code, severity, message,
-// options)` 형태였을 때 options 객체가 호출 전에 평가돼 `ctx.serverAt()` 예외가
-// 경계 밖으로 샜다. 이동 전에는 스탬핑 계산까지 `try` 안에 있었으므로
-// 동작 무변경 위반이었다.
+// 계약(SP-026): 모든 공개 메서드는 예외를 밖으로 내보내지 않는다. 지점별로
+// 다르지 않다. 삼킨 횟수는 `observationFailures()`로 노출된다.
 //
-// `clockSamples()`는 특히 위험하다. `execute()`의 `finally`에서 호출되므로
-// 던지면 terminal `RunResult`를 덮고 flush를 건너뛴다.
+// SP-025/01에서는 격리가 비대칭이었고 이 파일이 그 비대칭을 고정했다.
+// SP-026이 통일하면서 전파를 단언하던 5건을 격리 단언으로 뒤집었다.
+//
+// `sendSafe`가 thunk를 받는 이유도 여기서 고정한다. options 객체를 인자로
+// 받으면 `ctx.serverAt()` 스탬핑이 호출 전에 평가돼 경계 밖으로 샌다.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { RunObserver } from "../dist/content/observation/run-observer.js";
@@ -45,7 +46,7 @@ const ISOLATED = [
   ["clockSamples", (o) => o.clockSamples({ reason: "terminal", samples: [SAMPLE] })],
 ];
 
-const PROPAGATING = [
+const ALSO_ISOLATED = [
   ["availabilityDom", (o) => o.availabilityDom({ cycle: 1, requestSequence: null, correlationId: null,
     quality: "NONE", domMinutes: 1140, domObservedMonoMs: 1, bodyClassification: "none",
     bodySelectedMinutes: null, agreement: null, responseCompletedMonoMs: null,
@@ -118,19 +119,35 @@ test("clockSamples(): 한 표본이 실패해도 나머지는 계속 기록된�
 });
 
 // ---------------------------------------------------------------------------
-// 2. 전파 지점은 계속 전파해야 한다 (실수로 삼키는 회귀 방지) — issue #20
+// 2. SP-026 이전에 전파하던 지점도 이제 격리된다 (issue #20)
 // ---------------------------------------------------------------------------
 
-for (const [name, call] of PROPAGATING) {
-  test(`${name}(): trace가 던지면 전파한다`, () => {
+for (const [name, call] of ALSO_ISOLATED) {
+  test(`${name}(): trace가 던져도 삼킨다`, () => {
     const { o } = observer({ deps: { trace: () => { throw new Error("trace boom"); } } });
-    assert.throws(() => call(o), /trace boom/);
+    assert.doesNotThrow(() => call(o));
+    assert.equal(o.observationFailures(), 1);
   });
 }
 
-test("event(): deps.emit이 던지면 전파한다", () => {
+test("event(): deps.emit이 던져도 삼킨다", () => {
   const { o } = observer({ deps: { emit: () => { throw new Error("emit boom"); } } });
-  assert.throws(() => o.event("state", "메시지", { state: "CONFIGURED" }), /emit boom/);
+  assert.doesNotThrow(() => o.event("state", "메시지", { state: "CONFIGURED" }));
+  assert.equal(o.observationFailures(), 1);
+});
+
+test("event(): emit이 던져도 breadcrumb은 시도된다 (별도 경계)", () => {
+  let breadcrumbCalled = false;
+  const { o } = observer({
+    deps: {
+      emit: () => { throw new Error("emit boom"); },
+      diagnostics: { breadcrumb: () => { breadcrumbCalled = true; }, failure: () => null, forceFlush: async () => undefined },
+    },
+  });
+  o.event("action", "메시지");
+
+  assert.equal(breadcrumbCalled, true, "emit 실패가 breadcrumb을 막으면 안 된다");
+  assert.equal(o.observationFailures(), 1);
 });
 
 test("event(): breadcrumb이 던져도 삼킨다", () => {
@@ -138,6 +155,42 @@ test("event(): breadcrumb이 던져도 삼킨다", () => {
     deps: { diagnostics: { breadcrumb: () => { throw new Error("bc boom"); }, failure: () => null, forceFlush: async () => undefined } },
   });
   assert.doesNotThrow(() => o.event("action", "메시지"));
+});
+
+// ---------------------------------------------------------------------------
+// 2-1. 실패 카운트
+// ---------------------------------------------------------------------------
+
+test("observationFailures()는 실패가 없으면 0이다", () => {
+  const { o } = observer();
+  o.preparation("stage_start");
+  o.event("state", "메시지", { state: "CONFIGURED" });
+  assert.equal(o.observationFailures(), 0);
+});
+
+test("observationFailures()는 여러 경계의 실패를 누적한다", () => {
+  const { o } = observer({
+    deps: {
+      trace: () => { throw new Error("trace boom"); },
+      emit: () => { throw new Error("emit boom"); },
+    },
+  });
+  o.preparation("stage_start");            // trace 실패 1
+  o.toggleCycle(1, { cycle: 1, phase: "p", adjacentDate: null, adjacentPlannedAt: 0,
+    adjacentClickedAt: null, targetPlannedAt: 0, targetClickedAt: null, targetSelectedAt: null,
+    slotScanCount: 0, availableSlotCount: 0, matchedSlotCount: 0, result: "NO_SLOT",
+    watch: "idle", arrivalAt: null, wakeUsed: false, wakeRequestSequence: null,
+    wakeCorrelationQuality: null, wakeFallbackUsed: true });   // trace 실패 2
+  o.event("state", "메시지", { state: "CONFIGURED" });          // emit 실패 3
+
+  assert.equal(o.observationFailures(), 3);
+});
+
+test("clockSamples()의 표본별 실패가 각각 집계된다", () => {
+  const { o } = observer({ deps: { trace: () => { throw new Error("trace boom"); } } });
+  o.clockSamples({ reason: "armed", samples: [SAMPLE, SAMPLE, SAMPLE] });
+
+  assert.equal(o.observationFailures(), 3);
 });
 
 // ---------------------------------------------------------------------------
@@ -193,6 +246,24 @@ test("failureData()는 snapshot 실패 후에도 diagnostics.failure를 부른�
 
   assert.deepStrictEqual(order, ["snapshot", "failure"]);
   assert.deepStrictEqual(data, { snapshotRunState: "REFRESHING_SLOTS", diagnosticSnapshotId: "diag-9" });
+});
+
+test("failureData()는 ctx.state()가 던져도 삼키고 extra만 돌려준다", () => {
+  // handoff·timeout·execute() catch에서 불리므로 여기서 던지면 terminal
+  // 처리 자체가 깨진다. 상태 조회까지 경계 안이어야 한다.
+  const { o } = observer({ ctx: { state: () => { throw new Error("state boom"); } } });
+
+  assert.deepStrictEqual(o.failureData("이유", { extra: 1 }), { extra: 1 });
+  assert.equal(o.observationFailures(), 1);
+});
+
+test("failureData()는 captureSnapshot이 던져도 상태·진단 id를 유지한다", () => {
+  const { o } = observer({ deps: { captureSnapshot: () => { throw new Error("snap boom"); } } });
+
+  assert.deepStrictEqual(o.failureData("이유"), {
+    snapshotRunState: "REFRESHING_SLOTS",
+    diagnosticSnapshotId: "diag-1",
+  });
 });
 
 test("failureData()는 diagnostics.failure 실패 시 id를 생략한다", () => {

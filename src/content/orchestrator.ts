@@ -253,7 +253,16 @@ class RunSession {
   ): void {
     this.machine.transition(state, reason, { error: extra.error, userStopped: extra.userStopped });
     if (TERMINAL.has(state)) this.terminalReason = reason;
-    this.observe.event("state", reason, { state, ...extra.data });
+    // 관측 실패는 실행을 막지 않지만(SP-026) 그 사실은 드러나야 한다.
+    // terminal 전이에만 싣는다 — 실패 0이면 attribute를 넣지 않아 기존
+    // payload가 그대로다. `finally` 단계(clockSamples)의 실패는 이 시점
+    // 이후라 집계되지 않는다(20-design §한계 1).
+    const observationFailures = TERMINAL.has(state) ? this.observe.observationFailures() : 0;
+    this.observe.event("state", reason, {
+      state,
+      ...(observationFailures > 0 ? { observationFailureCount: observationFailures } : {}),
+      ...extra.data,
+    });
     this.observe.stateChanged(state, reason, extra.data);
   }
 
@@ -359,13 +368,12 @@ class RunSession {
    * shadow body 수신 콜백. **이름과 달리 제어다** — `availabilityWake.offer()`의
    * 반환이 핫패스의 wake 신호를 결정한다. 관측은 뒤에 붙는다.
    *
-   * `try/catch`는 두 가지를 겸한다.
-   *   1. 제어 보호 — bridge payload는 비신뢰 입력이라 상관관계 계산이 던질 수 있다.
-   *   2. 관측 흡수 — 뒤따르는 두 trace 실패도 여기서 삼켜진다.
+   * `try/catch`의 목적은 **제어 보호**다 — bridge payload는 비신뢰 입력이라
+   * 상관관계 계산이 던질 수 있다.
    *
-   * 2번 때문에 **trace가 던지면 late DOM 비교가 건너뛰어진다.** 의도된 설계는
-   * 아니지만 현재 동작이므로 보존한다. 여기를 두 개의 catch로 쪼개면 그
-   * 건너뜀이 사라져 동작이 바뀐다(issue #20).
+   * 관측은 여기 기대지 않는다. `RunObserver`가 자체 격리하므로(SP-026)
+   * body trace가 실패해도 **뒤따르는 late DOM 비교는 계속 실행된다.** 두
+   * 관측은 독립이며, 하나가 실패했다고 다른 하나를 버리지 않는다.
    */
   private onAvailabilityBody(event: ReceivedAvailabilityShadowEvent): void {
     try {

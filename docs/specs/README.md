@@ -55,6 +55,7 @@
 | SP-024 | 2026-08-05 | UI·운영 | 완료 | Side Panel 온보딩 투어 | [onboarding-tour/10-design.md](onboarding-tour/10-design.md) |
 | SP-025 | 2026-08-07 | 실행 구조 | 진행 | 오케스트레이터 확장성 기반 | [orchestrator-extensibility/00-index.md](orchestrator-extensibility/00-index.md) |
 | SP-025/01 | — | — | — | 관측 분리 | [orchestrator-extensibility/01-observation-split/30-implementation.md](orchestrator-extensibility/01-observation-split/30-implementation.md) |
+| SP-026 | 2026-08-07 | 관측·진단 | 완료 | 관측 실패 정책 | [observation-failure-policy/40-verification.md](observation-failure-policy/40-verification.md) |
 
 ## 새 패키지 등록 규칙
 

@@ -4,16 +4,15 @@
 // `payloads.ts`의 순수 함수가 맡고, 이 클래스는 그것을 언제 어떤 스탬프와
 // 어떤 예외 경계로 내보낼지만 정한다.
 //
-// ⚠️ 예외 격리는 현재 동작을 그대로 보존한다. 통일하지 않는다.
+// **계약: 관측은 예약 실행을 중단시키지 않는다. 대신 실패를 셈해 드러낸다.**
 //
-// `trace` 호출은 두 종류다.
-//   - `sendSafe(...)` — 예외를 삼킨다. 이동 전 `try/catch`로 감싸여 있던 지점.
-//   - `send(...)`     — 예외를 전파한다. 이동 전 감싸여 있지 않던 지점.
+// 이 클래스의 모든 공개 메서드는 예외를 밖으로 내보내지 않는다. 지점별로
+// 다르지 않다(SP-026). 삼킨 횟수는 `observationFailures()`로 노출되고
+// terminal 상태 전이 event에 `observationFailureCount`로 실린다.
 //
-// 전파 지점에서 exporter가 던지면 실행이 `FAILED`로 종결된다(`emit`은 더
-// 나아가 `RunResult` 자체를 막는다). 이 비대칭은 의도된 설계가 아니라
-// 누적된 결과이며, 통일 여부는 issue #20에서 판단한다. 이 계층의 목적 중
-// 하나는 **어느 관측이 실행을 죽일 수 있는지를 호출부에서 보이게** 하는 것이다.
+// 이전에는 격리가 비대칭이었다 — `trace` 10곳 중 6곳만 감싸여 있어 나머지
+// 에서 exporter가 던지면 실행이 `FAILED`로 죽었고, `emit`은 `RunResult`
+// 자체를 막았다. 의도된 설계가 아니라 누적된 결과였다(issue #20).
 import type { ReferenceClockSample } from "../../shared/clock.js";
 import type { RunEvent, RunExecutionContext, RunState } from "../../shared/types.js";
 import type { TraceCode } from "../../shared/telemetry/codes.js";
@@ -101,16 +100,31 @@ export class RunObserver {
     private readonly executionContext?: RunExecutionContext,
   ) {}
 
-  /** 범용 격리 헬퍼. 대상마다 fallback이 다르므로 값을 받는다. */
+  /** 삼킨 관측 실패 횟수. 원인·지점은 남기지 않는다(20-design §한계 3). */
+  private failureCount = 0;
+
+  /** terminal 전이가 읽어 `observationFailureCount`로 싣는다. */
+  observationFailures(): number {
+    return this.failureCount;
+  }
+
+  /**
+   * 유일한 격리 지점. 대상마다 fallback이 다르므로 값을 받는다.
+   *
+   * ⚠️ **thunk를 받는 이유**: 인자로 조립된 값을 받으면 `ctx.serverAt()` 같은
+   * 스탬핑이 호출 전에 평가돼 경계 밖에서 던진다. payload 조립까지 전부
+   * 이 안에서 일어나야 한다.
+   */
   private safeCall<T>(fn: () => T, fallback: T): T {
     try {
       return fn();
     } catch {
+      this.failureCount += 1;
       return fallback; // 관측은 예약 결과를 바꾸지 않는다.
     }
   }
 
-  /** 예외를 전파한다. 이동 전 감싸여 있지 않던 지점 전용. */
+  /** 원시 전송. 반드시 `sendSafe` 안에서만 호출한다. */
   private send(
     code: TraceCode,
     severity: TraceSeverity,
@@ -120,11 +134,7 @@ export class RunObserver {
     this.deps.trace?.(code, severity, message, options);
   }
 
-  /**
-   * 예외를 삼킨다. **thunk를 받는 이유**: 인자로 options 객체를 받으면
-   * `ctx.serverAt()`·`ctx.state()`가 호출 전에 평가돼 경계 밖에서 던진다.
-   * 이동 전에는 스탬핑 계산까지 `try` 안에 있었으므로 그 범위를 보존한다.
-   */
+  /** 스탬핑·payload 조립·전송을 하나의 경계 안에서 수행한다. */
   private sendSafe(build: () => void): void {
     this.safeCall(build, undefined);
   }
@@ -132,15 +142,19 @@ export class RunObserver {
   // --- Run event와 breadcrumb ----------------------------------------------
 
   /**
-   * ⚠️ `deps.emit`은 격리하지 않는다. 이동 전에도 감싸여 있지 않았고,
-   * 던지면 `RunResult` 자체가 반환되지 않는다(issue #20). run event는
-   * Side Panel 표시와 telemetry의 필수 경로다.
+   * 격리됨. 이전에는 `deps.emit`이 던지면 `RunResult` 자체가 반환되지 않아
+   * `ATTEMPT_FINISHED` 전달까지 막혔다(SP-026).
    *
-   * 뒤따르는 breadcrumb만 격리된다 — 이동 전 구조와 같다.
+   * `emit`과 breadcrumb은 저장 경로가 다르므로 **별도 경계**다. `emit`이
+   * 실패해도 breadcrumb은 시도된다.
    */
   event(kind: RunEvent["kind"], message: string, data?: RunEvent["data"]): void {
-    const at = this.ctx.now();
-    this.deps.emit({ at, serverAt: this.ctx.serverAt(), runId: this.runId, kind, message, data });
+    // emit과 breadcrumb은 **별도 경계**다. 저장 경로가 다르므로 emit이
+    // 실패해도 breadcrumb은 시도되어야 한다.
+    this.safeCall(() => {
+      const at = this.ctx.now();
+      this.deps.emit({ at, serverAt: this.ctx.serverAt(), runId: this.runId, kind, message, data });
+    }, undefined);
     if (kind === "action") {
       this.safeCall(
         () => this.deps.diagnostics?.breadcrumb(this.ctx.state(), "action", message, data),
@@ -163,18 +177,23 @@ export class RunObserver {
    * 별도 try 블록이었고, snapshot이 실패해도 failure는 실행된다.
    */
   failureData(reason: string, extra?: RunEvent["data"], error?: unknown): RunEvent["data"] {
-    const snapshot = this.safeCall<StageSnapshot | null>(() => this.deps.captureSnapshot?.() ?? null, null);
-    const state = this.ctx.state();
-    const diagnosticSnapshotId = this.safeCall<string | null>(
-      () => this.deps.diagnostics?.failure(state, reason, extra, error) ?? null,
-      null,
-    );
-    return {
-      ...stageSnapshotData(snapshot),
-      snapshotRunState: state,
-      ...(diagnosticSnapshotId === null ? {} : { diagnosticSnapshotId }),
-      ...extra,
-    };
+    // 바깥 경계는 `ctx.state()` 같은 상태 조회까지 감싼다. 이 메서드는
+    // handoff·timeout·`execute()` catch에서 불리므로 여기서 던지면 terminal
+    // 처리 자체가 깨진다. 전부 실패하면 호출자가 준 `extra`만 돌려준다.
+    return this.safeCall<RunEvent["data"]>(() => {
+      const snapshot = this.safeCall<StageSnapshot | null>(() => this.deps.captureSnapshot?.() ?? null, null);
+      const state = this.ctx.state();
+      const diagnosticSnapshotId = this.safeCall<string | null>(
+        () => this.deps.diagnostics?.failure(state, reason, extra, error) ?? null,
+        null,
+      );
+      return {
+        ...stageSnapshotData(snapshot),
+        snapshotRunState: state,
+        ...(diagnosticSnapshotId === null ? {} : { diagnosticSnapshotId }),
+        ...extra,
+      };
+    }, { ...extra });
   }
 
   // --- 준비 단계 -----------------------------------------------------------
@@ -198,9 +217,11 @@ export class RunObserver {
   // --- Availability shadow -------------------------------------------------
 
   /**
-   * 전파한다. 호출자(`onAvailabilityBody`)가 자체 `try/catch`로 감싸고 있으며,
-   * 그 catch가 뒤따르는 late DOM 비교까지 함께 건너뛰는 것이 현재 동작이다.
-   * 여기서 삼키면 그 건너뜀이 사라져 동작이 바뀐다.
+   * 격리됨. 호출자(`onAvailabilityBody`)의 `try/catch`는 비신뢰 bridge
+   * payload로부터 **제어**를 보호하는 것이 목적이며 그대로 둔다.
+   *
+   * 이전에는 이 trace 실패가 호출자 catch에 걸려 **뒤따르는 late DOM 비교까지
+   * 건너뛰게** 만들었다. 이제 두 관측은 독립이다(SP-026).
    */
   availabilityBody(
     event: ReceivedAvailabilityShadowEvent,
@@ -210,21 +231,25 @@ export class RunObserver {
     matchesTarget: boolean,
     wakeAtMonoMs: number,
   ): void {
-    this.send("AVAILABILITY_SHADOW", event.classification === "UNPARSABLE" ? "warn" : "trace",
-      `슬롯 응답 shadow를 ${event.classification}로 분류했습니다.`, {
-        serverAt: this.ctx.serverAt(),
-        state: this.ctx.state(),
-        attributes: availabilityBodyAttributes(
-          event, correlation, decision, selectedMinutes, matchesTarget, wakeAtMonoMs),
-      });
+    this.sendSafe(() => {
+      this.send("AVAILABILITY_SHADOW", event.classification === "UNPARSABLE" ? "warn" : "trace",
+        `슬롯 응답 shadow를 ${event.classification}로 분류했습니다.`, {
+          serverAt: this.ctx.serverAt(),
+          state: this.ctx.state(),
+          attributes: availabilityBodyAttributes(
+            event, correlation, decision, selectedMinutes, matchesTarget, wakeAtMonoMs),
+        });
+    });
   }
 
-  /** 전파한다. 두 호출자 모두 자체 `try/catch` 안에서 부른다. */
+  /** 격리됨. 호출자의 `try/catch`는 제어 보호용이며 그대로 둔다. */
   availabilityDom(correlation: DomCorrelation, phase: "dom_compare" | "dom_compare_late"): void {
-    this.send("AVAILABILITY_SHADOW", "trace", "body와 DOM 슬롯 후보를 비교했습니다.", {
-      serverAt: this.ctx.serverAt(),
-      state: this.ctx.state(),
-      attributes: domCorrelationAttributes(correlation, phase),
+    this.sendSafe(() => {
+      this.send("AVAILABILITY_SHADOW", "trace", "body와 DOM 슬롯 후보를 비교했습니다.", {
+        serverAt: this.ctx.serverAt(),
+        state: this.ctx.state(),
+        attributes: domCorrelationAttributes(correlation, phase),
+      });
     });
   }
 
@@ -293,23 +318,24 @@ export class RunObserver {
   // --- 핫패스 ---------------------------------------------------------------
 
   /**
-   * ⚠️ 전파한다. 이 지점의 exporter 예외는 실행을 `FAILED`로 종결시킨다.
-   * 이동 전에도 감싸여 있지 않았다(issue #20).
+   * 격리됨. 이전에는 이 지점의 exporter 예외가 실행을 `FAILED`로 종결시켰다.
    *
    * `serverAt`·`state`는 호출자가 넘긴 값을 쓴다 — 이동 전에도 컨텍스트가
    * 아니라 명시값(`REFRESHING_SLOTS`)이었다.
    */
   toggleCycle(serverAt: number, trace: ToggleCycleTrace): void {
-    const { result } = trace;
-    this.send(
-      "DATE_TOGGLE_CYCLE",
-      result === "NO_SLOT" || result === "SLOT_FOUND" || result === "EMPTY_EARLY_EXIT" ? "trace" : "warn",
-      `날짜 토글 #${trace.cycle}: ${result}`,
-      { serverAt, state: "REFRESHING_SLOTS", attributes: toggleCycleAttributes(trace) },
-    );
+    this.sendSafe(() => {
+      const { result } = trace;
+      this.send(
+        "DATE_TOGGLE_CYCLE",
+        result === "NO_SLOT" || result === "SLOT_FOUND" || result === "EMPTY_EARLY_EXIT" ? "trace" : "warn",
+        `날짜 토글 #${trace.cycle}: ${result}`,
+        { serverAt, state: "REFRESHING_SLOTS", attributes: toggleCycleAttributes(trace) },
+      );
+    });
   }
 
-  /** ⚠️ 전파한다. 이동 전에도 감싸여 있지 않았다(issue #20). */
+  /** 격리됨. 이전에는 전파해 실행을 `FAILED`로 종결시켰다. */
   slotClicked(
     severity: TraceSeverity,
     message: string,
@@ -317,16 +343,20 @@ export class RunObserver {
     state: RunState,
     attributes: TraceAttributes,
   ): void {
-    this.send("SLOT_CLICKED", severity, message, { serverAt, state, attributes });
+    this.sendSafe(() => {
+      this.send("SLOT_CLICKED", severity, message, { serverAt, state, attributes });
+    });
   }
 
-  /** ⚠️ 전파한다. `execute()`의 catch 안에서 불리며 감싸여 있지 않다(issue #20). */
+  /** 격리됨. `execute()`의 catch 안에서 불리므로 던지면 `start()`가 reject된다. */
   runFailed(message: string, attributes: TraceAttributes, error: unknown): void {
-    this.send("RUN_FAILED", "error", message, {
-      serverAt: this.ctx.serverAt(),
-      state: "FAILED",
-      attributes,
-      error,
+    this.sendSafe(() => {
+      this.send("RUN_FAILED", "error", message, {
+        serverAt: this.ctx.serverAt(),
+        state: "FAILED",
+        attributes,
+        error,
+      });
     });
   }
 }

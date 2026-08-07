@@ -215,13 +215,14 @@ telemetry 소비 지점 5곳이 01 이후 관측 계층 입력으로 바뀌어 �
 
 ## 단계 상태
 
-- HANDOFF blocking backlog: **[#20](https://github.com/ka-MS/catchtable-reservation-assistant/issues/20)
-  관측 예외 격리 비대칭** (2026-08-07 지정). 01 병합 후 02 착수 **전에**
-  처리하거나 명시적으로 해제한다.
+- HANDOFF blocking backlog: **없음.**
+  [#20](https://github.com/ka-MS/catchtable-reservation-assistant/issues/20)
+  관측 예외 격리 비대칭은 [SP-026](../observation-failure-policy/40-verification.md)으로
+  해소했다(2026-08-07).
 - 01 관측 분리: **완료.** 611/611 통과(기존 테스트 540개 무수정),
   실사이트 dry-run 2회로 스탬핑·payload 확인. 성공 기준 8개 전부 충족.
   `orchestrator.ts` 1,630 → 1,190줄.
-- 02 커널·흐름 경계: **미착수.** 설계 미작성. #20 처리 또는 해제가 선행된다.
+- 02 커널·흐름 경계: **미착수.** 설계 미작성. 선행 조건(#20)은 해소됐다.
 - 03 핫패스 전략 추출: 미착수. 설계 미작성.
 - 04 전략 일반화·흐름 선택: **진입 조건 미충족.** 두 번째 흐름의 실측
   근거 없음.
