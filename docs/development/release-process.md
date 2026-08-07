@@ -31,6 +31,22 @@ Release Please는 `main`에 병합된 Conventional Commit을 집계한다.
 기능 PR에서는 사용자가 실제로 받는 변화를 대표하는 제목을 사용한다.
 한 PR 안의 중간 수정 커밋보다 병합 뒤 남을 변경 계약을 우선한다.
 
+### changelog 노출은 버전 영향과 별개다
+
+`release-please-config.json`의 `changelog-sections`가 어떤 타입을 노출할지
+정한다. 현재 노출은 `feat`·`fix`·`refactor`·`perf`·`revert`·`deps`이고
+`docs`·`test`·`chore`·`build`·`ci`·`style`은 숨긴다.
+
+`refactor:`는 **changelog에 나오지만 버전은 올리지 않는다.** 따라서 구조
+변경만 쌓인 구간에서는 릴리스 PR 자체가 생기지 않고, 그 변경들은 다음
+`fix:`·`feat:`가 릴리스를 띄울 때 함께 실린다.
+
+구조 변경을 특정 릴리스에 담고 싶다면 **그 릴리스 PR을 병합하기 전에**
+해당 `refactor:`를 `main`에 넣어야 한다.
+
+`changelog-sections`는 기본값을 병합하지 않고 **대체한다.** 수정할 때는
+남길 타입을 전부 나열한다 — `feat`·`fix`를 빠뜨리면 그것들이 사라진다.
+
 Release Please가 만든 릴리스 PR에서는 다음을 확인한다.
 
 1. `package.json`, `package-lock.json`, `manifest.json` 버전이 같다.
