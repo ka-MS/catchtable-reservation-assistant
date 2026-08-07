@@ -6,31 +6,20 @@ SP-026으로 **해소**했다(2026-08-07).
 
 ## 진행 중 브랜치
 
-`codex/fix-observation-failure-policy` — 관측 실패 정책
-([SP-026](../specs/observation-failure-policy/20-design.md)). issue #20을 해소한다.
+`codex/chore-workflow-guardrails` — 워크플로 가드레일.
 
-**계약: 관측은 예약 실행을 중단시키지 않는다. 대신 실패를 셈해 드러낸다.**
+작업 지침이 7개 문서에 흩어져 있고 그중 `AGENTS.md`만 자동 로드된다는
+점이 드러났다. 워크로그가 2026-07-27 이후 끊긴 이유도 작성 요구가
+`AGENTS.md`에 없었기 때문이다(recon 스킬과 개별 spec 패키지에만 있었다).
 
-`RunObserver`의 모든 공개 메서드가 예외를 밖으로 내보내지 않는다. 이전에는
-`trace` 10곳 중 6곳만 격리돼 있어 나머지에서 exporter가 던지면 실행이
-`FAILED`로 죽었고, `emit`은 `RunResult` 자체를 막아 `ATTEMPT_FINISHED`
-전달까지 차단했다.
+- `AGENTS.md` §7 신설 — 작업 유형별 산출물 표. 워크로그는 색인이지
+  보고서가 아님을 명시했다.
+- `scripts/check-docs.mjs` + `npm run check` 편입 — 문서 링크와 spec
+  카탈로그 등록을 기계가 검사한다. 수동으로 돌리던 것을 CI로 옮겼다.
+- `docs/README.md`에 워크로그 역할 명시.
+- 2026-08-07 세션분 워크로그 소급 작성.
 
-삼킨 횟수는 `observationFailures()`로 노출되고 terminal 상태 전이 event에
-`observationFailureCount`로 실린다. 실패 0이면 attribute가 붙지 않아 기존
-payload는 그대로다. 진단 파이프라인이 죽은 것을 아무도 모르는 상태를 막는다.
-
-이 변경은 **동작 변경**이므로 기존 테스트 10건을 새 계약으로 뒤집었다.
-성공 기준 7개를 전부 충족했다.
-
-실사이트 dry-run 1회(`run-3bec38f4`)로 확인했다. **`observationFailureCount`
-열이 없다 — 실제 환경의 관측 실패 0건이다.** 이 측정은 이 변경으로 처음
-가능해졌다. payload 계약 밖 키도 0건이다.
-
-검증 수치와 상세는
-[SP-026 40-verification](../specs/observation-failure-policy/40-verification.md)에
-있다. **이 문서는 수치를 재기술하지 않는다** — 두 곳에 적으면 반드시
-어긋난다(실제로 이 PR에서 세 번 어긋났다).
+허브 문서는 만들지 않았다. 자동 로드가 안 되면 홉만 늘어난다.
 
 다음은 **SP-025 02 커널·흐름 경계**다. 최신 `main`에서 브랜치를 만든다.
 

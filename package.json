@@ -11,8 +11,9 @@
     "check:version": "node scripts/check-version.mjs",
     "check:dist": "node scripts/check-dist.mjs",
     "check:independence": "node scripts/check-independence.mjs",
+    "check:docs": "node scripts/check-docs.mjs",
     "analyze:rt14": "npm run build && node scripts/analyze-empty-early-exit.mjs",
-    "check": "npm run check:version && npm run typecheck && npm test && npm run check:dist && npm run check:independence"
+    "check": "npm run check:version && npm run typecheck && npm test && npm run check:dist && npm run check:independence && npm run check:docs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.318",
