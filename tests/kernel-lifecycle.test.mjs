@@ -197,12 +197,23 @@ test("PIN은 흐름 cleanup보다 먼저 폐기된다", async () => {
   assert.deepStrictEqual(pinAtCleanup, [undefined]);
 });
 
-test("흐름 cleanup이 던지면 남은 cleanup과 flush가 실행되지 않는다", async () => {
+// #27: cleanup 도중 포트가 던져도 나머지 원복과 flush가 끝나고 RunResult가
+// 돌아온다. 이전에는 `finally`가 그 자리에서 중단돼 flush가 실행되지 않고
+// 예외가 `start()` 밖으로 나갔다(사이드패널이 결과 대신 예외를 봄).
+//
+// 이 테스트가 증명하는 것은 **흐름 cleanup 내부의 복원력**이다.
+// `RunKernel.execute()`의 `try { flow.cleanup(); }` 가드는 이 경로로
+// 도달하지 않는다 — 그 가드를 제거해도 이 테스트는 통과한다. 가드는 훅
+// 경계의 계약이며 두 번째 흐름을 위한 것이라, 현재 흐름만으로는 기계적으로
+// 증명할 수 없다. 근거는 워크로그에 남겼다.
+test("흐름 cleanup이 던져도 커널 정리와 flush는 끝나고 RunResult가 돌아온다", async () => {
   const h = lifecycleHarness({
     onSlotWatchStop: () => { throw new Error("cleanup 실패"); },
   });
 
-  await assert.rejects(() => h.orchestrator.start(config()), /cleanup 실패/);
+  const result = await h.orchestrator.start(config());
+
+  assert.equal(result.state, "DRY_RUN_COMPLETED");
   assert.deepStrictEqual(h.log, [
     "shadow.start",
     "slotWatch.start",
@@ -210,5 +221,9 @@ test("흐름 cleanup이 던지면 남은 cleanup과 flush가 실행되지 않는
     "mutationWatch.start",
     "shadow.stop",
     "slotWatch.stop",
+    // slotWatch.stop이 던졌지만 흐름 cleanup의 나머지도, 커널의 flush도 끝난다.
+    "mutationWatch.stop",
+    "diagnostics.forceFlush",
+    "flushTrace",
   ]);
 });

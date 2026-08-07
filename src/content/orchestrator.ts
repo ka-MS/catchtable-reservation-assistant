@@ -360,7 +360,14 @@ class RunKernel {
       // PIN 참조는 나머지 cleanup(비동기 flush 포함)보다 먼저, 그 안의 예외와 무관하게
       // 즉시 폐기한다 — dispose() 자체는 절대 던지지 않으므로 이 위치가 가장 이르고 안전하다.
       this.authorizationHandle.dispose();
-      flow.cleanup();
+      try {
+        flow.cleanup();
+      } catch {
+        // 훅 경계의 계약(#27): 흐름 원복 실패가 커널의 정리·flush·RunResult를
+        // 무너뜨리지 않는다. 현재 흐름은 내부를 각자 감싸 여기 도달하지
+        // 않지만, 두 번째 흐름은 그 보장이 없다. 커버리지 0을 근거로 지우면
+        // #27이 재발한다 — 근거는 tests/kernel-lifecycle.test.mjs 주석 참조.
+      }
       this.stopReferenceClock("terminal"); // waitForOpen 도달 전 조기 종료 시 안전망
       this.traceFrozenReferenceClockSamples();
       await Promise.allSettled([
@@ -605,7 +612,13 @@ class RunSession implements RunFlowHooks {
       // Shadow 원복 실패도 terminal 결과를 바꾸지 않는다.
     }
     this.availabilityWake.reset();
-    this.deps.slotWatch?.stop();
+    try {
+      this.deps.slotWatch?.stop();
+    } catch {
+      // 감시 원복 실패가 뒤따르는 mutation watch 원복을 막지 않는다(#27).
+      // 커널 경계의 가드만으로는 흐름 cleanup 내부가 중간에 끊기는 것을
+      // 막지 못해 mutation observer가 남는다.
+    }
     try {
       this.deps.slotDomMutationWatch?.stop();
     } catch {

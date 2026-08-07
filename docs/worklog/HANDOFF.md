@@ -6,28 +6,23 @@ SP-026으로 **해소**했다(2026-08-07).
 
 ## 진행 중 브랜치
 
-`codex/refactor-kernel-flow-boundary` — SP-025 02 커널·흐름 경계.
+`codex/fix-kernel-cleanup-guard` — [#27](https://github.com/ka-MS/catchtable-reservation-assistant/issues/27)
+커널 cleanup 가드.
 
-`RunSession`의 안전 계약(PIN 폐기 순서, terminal 단정 금지, cleanup
-순서)을 오픈런 흐름 정의에서 분리했다. 커널이 생명주기 봉투를 소유하고
-흐름은 `start`/`steps`/`cleanup` 훅으로 끼운다.
+흐름 훅이 던져도 커널의 정리·flush가 끝나고 `RunResult`가 반환되도록
+`flow.cleanup()`을 감쌌다. 흐름 내부 `slotWatch.stop()`도 감싸 observer
+누수를 막았다. 결정과 남은 것은
+[워크로그](2026-08-07-04-kernel-cleanup-guard.md)에 있다.
 
-- 설계와 착수 전 재평가:
-  [02/20-design](../specs/orchestrator-extensibility/02-kernel-flow-boundary/20-design.md)
-- 결과:
-  [02/40-verification](../specs/orchestrator-extensibility/02-kernel-flow-boundary/40-verification.md)
-
-수치는 위 문서에만 둔다.
-
-실사이트 dry-run(`run-3f7ecd6b`, mangam)으로 성공 기준 5까지 충족했다.
-`CLOCK_SAMPLE` 17건이 `RUN_TERMINATED` 뒤에 온전히 남아 흐름 cleanup 뒤의
-flush가 정상임을 보였다. droppedCount 0, 관측 실패 0건.
-
-병합을 막는 항목은 없다. 리뷰에서 나온
-[#27](https://github.com/ka-MS/catchtable-reservation-assistant/issues/27)은
-동작 변경이라 02(무변경 조건)에 넣지 않고 별도 `fix:`로 분리했다.
+커널 가드는 현재 흐름만으로는 도달하지 않아 테스트 커버리지가 0이다.
+훅 경계 계약이므로 남긴다. 커버리지를 근거로 지우면 #27이 재발한다.
 
 ## 직전 완료 작업
+
+`codex/refactor-kernel-flow-boundary` (`#25`) — SP-025 02 커널·흐름 경계.
+`RunKernel`(안전 계약)과 `RunSession`(오픈런 흐름)으로 갈랐다. 실사이트
+dry-run으로 확인 완료
+([02/40-verification](../specs/orchestrator-extensibility/02-kernel-flow-boundary/40-verification.md)).
 
 `codex/chore-workflow-guardrails` (`#24`) — 워크플로 가드레일.
 `AGENTS.md` §7(작업 유형별 산출물)과 `scripts/check-docs.mjs`를 추가해
@@ -133,8 +128,6 @@ git diff --check
 - RT-11: 동질 actual-open 공식 p95·wake counterfactual
 - RT-12: 현재 probe-off 구성 actual-open 확인 표본
 - RT-13: `inactive_cycle` 기회비용 분석
-- [#27](https://github.com/ka-MS/catchtable-reservation-assistant/issues/27)
-  흐름 훅 예외가 커널 정리·flush를 막는다 (SP-025/02 리뷰에서 발견)
 - ExecutionPhase control plane Phase 3
 - 사전 점검, DOM drift 대응과 취소 자리 감시
 
