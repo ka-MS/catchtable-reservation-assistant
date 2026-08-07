@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.4](https://github.com/ka-MS/catchtable-reservation-assistant/compare/v1.1.3...v1.1.4) (2026-08-07)
+
+
+### Bug Fixes
+
+* 문서 검사의 미탐 2건·오탐 2건 수정 ([#31](https://github.com/ka-MS/catchtable-reservation-assistant/issues/31)) ([d4290da](https://github.com/ka-MS/catchtable-reservation-assistant/commit/d4290da7322aeebf25a948476b2d8dbc2fce3b78))
+
 ## [1.1.3](https://github.com/ka-MS/catchtable-reservation-assistant/compare/v1.1.2...v1.1.3) (2026-08-07)
 
 

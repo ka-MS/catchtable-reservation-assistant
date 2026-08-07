@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Catchtable Reservation Assistant",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "description": "예약 오픈 시각에 목표 슬롯을 감지하고, 허용한 경우 CatchPay 결제와 최종 예약까지 진행합니다.",
   "permissions": [
     "storage",
