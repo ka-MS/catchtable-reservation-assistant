@@ -248,6 +248,24 @@ test("failureData()는 snapshot 실패 후에도 diagnostics.failure를 부른�
   assert.deepStrictEqual(data, { snapshotRunState: "REFRESHING_SLOTS", diagnosticSnapshotId: "diag-9" });
 });
 
+test("failureData()는 ctx.state()가 던져도 삼키고 extra만 돌려준다", () => {
+  // handoff·timeout·execute() catch에서 불리므로 여기서 던지면 terminal
+  // 처리 자체가 깨진다. 상태 조회까지 경계 안이어야 한다.
+  const { o } = observer({ ctx: { state: () => { throw new Error("state boom"); } } });
+
+  assert.deepStrictEqual(o.failureData("이유", { extra: 1 }), { extra: 1 });
+  assert.equal(o.observationFailures(), 1);
+});
+
+test("failureData()는 captureSnapshot이 던져도 상태·진단 id를 유지한다", () => {
+  const { o } = observer({ deps: { captureSnapshot: () => { throw new Error("snap boom"); } } });
+
+  assert.deepStrictEqual(o.failureData("이유"), {
+    snapshotRunState: "REFRESHING_SLOTS",
+    diagnosticSnapshotId: "diag-1",
+  });
+});
+
 test("failureData()는 diagnostics.failure 실패 시 id를 생략한다", () => {
   const { o } = observer({
     deps: {

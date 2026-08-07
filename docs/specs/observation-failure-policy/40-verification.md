@@ -12,8 +12,8 @@
 | 1 | 예고한 테스트를 새 계약으로 뒤집어 통과, 그 외 무수정 | ✅ 10건 뒤집음 (예고 9 + 1) |
 | 2 | 모든 공개 메서드가 `serverAt`·`state`·`trace`·`emit` 실패에서 안 던짐 | ✅ 12개 × 3조합 |
 | 3 | `observationFailureCount`가 실패 0이면 없고 있으면 terminal에 실림 | ✅ 단위 + 실사이트 |
-| 4 | `availabilityBody` trace 실패 후에도 late DOM 비교 실행 | ⚠️ **구조적으로만** |
-| 5 | `npm run check` | ✅ 618/618 |
+| 4 | `availabilityBody` trace 실패 후에도 late DOM 비교 실행 | ✅ **직접 검증** |
+| 5 | `npm run check` | ✅ 622/622 |
 | 6 | `git diff --check` | ✅ |
 | 7 | 주장 대조 (a)(b)(c) | ✅ |
 
@@ -21,7 +21,7 @@
 
 ```
 npm run check
-  tests 618 / pass 618 / fail 0
+  tests 622 / pass 622 / fail 0
   typecheck · dist · independence 통과
 
 git diff --check    통과
@@ -91,21 +91,46 @@ attr.observationFailureCount   열 자체가 없음 → 관측 실패 0건
 E2E의 역할은 두 가지였다 — (1) 정상 경로에서 payload가 안 바뀌었는지,
 (2) 새 계기가 실환경에서 무엇을 가리키는지.
 
-## 미검증: 기준 4
+## 기준 4 — 직접 검증으로 전환
 
-`availabilityBody`의 trace가 실패해도 late DOM 비교가 실행되는지를
-end-to-end로 확인하지 못했다.
+초안 검증에서는 구조적 추론으로 대체했으나 리뷰 지적에 따라 시나리오
+테스트를 만들었다. **이 PR의 핵심 부수 효과를 추론으로 완료 처리하지
+않는다.**
 
 `lateDomCorrelation`은 DOM 상관관계가 먼저 잡힌 뒤 같은 cycle의 body가
-도착해야 생성된다(`availability-correlation.ts:134`). dry-run 하네스에서 그
-순서를 만들려면 shadow 배선과 타이밍 제어가 필요해 비용이 크다고 판단했다.
+도착해야 생성된다(`availability-correlation.ts:134`). 그 순서를 하네스에서
+만들었다.
 
-**구조적으로는 성립한다.** `availabilityBody()`가 더 이상 던지지 않음이
-`tests/observation-run-observer.test.mjs`로 고정돼 있으므로, 호출자
-(`onAvailabilityBody`)의 catch가 이 경로로 진입할 수 없고 따라서 뒤따르는
-late DOM 분기는 항상 실행된다.
+1. non-dry-run으로 cycle 1에서 슬롯 감지 → `correlateDomCandidate` 실행
+2. 후속 화면 대기(`postSlot.inspect()`) 중에 shadow body 도착
+3. `phase: "body"` trace만 실패시킴
 
-직접 확인은 아니다. shadow 시나리오 테스트가 생기면 그때 덮는다.
+```
+기준선                 dom_compare + dom_compare_late 모두 기록
+body trace 실패 시     body 없음, dom_compare_late 기록됨, 실행은 FAILED 아님
+```
+
+이전 동작에서는 `onAvailabilityBody`의 catch가 body trace 실패를 흡수하며
+late 비교까지 건너뛰었다. 이제 두 관측이 서로를 막지 않는다.
+
+테스트: `tests/orchestrator-observation.test.mjs` §5
+
+## 리뷰 반영
+
+PR #22 리뷰에서 세 건이 지적됐고 전부 사실이었다.
+
+| 지적 | 조치 |
+|---|---|
+| `failureData()`의 `ctx.state()`가 경계 밖 — 계약 위반 | 메서드 전체를 `safeCall`로 감쌌다. 전부 실패하면 호출자의 `extra`만 반환 |
+| 기준 4를 구조적 추론으로 완료 처리 | 시나리오 테스트로 직접 검증 (위) |
+| 주석·인덱스가 새 계약과 충돌 | `event()` JSDoc, `onAvailabilityBody` 주석, `00-index`의 blocking 표시 갱신 |
+
+첫 번째가 중요하다. `failureData()`는 handoff·timeout·`execute()` catch에서
+불리므로 여기서 던지면 terminal 처리 자체가 깨진다. `ctx.state()` 실패를
+주입하면 `state boom`이 그대로 나갔고 `observationFailures()`도 0이었다.
+
+SP-025/01의 `sendSafe` 인자 평가 문제와 **같은 유형**이다 — 한 축
+(`serverAt`)만 확인하고 다른 축(`state`)을 안 봤다.
 
 ## 남은 한계
 

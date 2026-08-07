@@ -142,11 +142,11 @@ export class RunObserver {
   // --- Run event와 breadcrumb ----------------------------------------------
 
   /**
-   * ⚠️ `deps.emit`은 격리하지 않는다. 이동 전에도 감싸여 있지 않았고,
-   * 던지면 `RunResult` 자체가 반환되지 않는다(issue #20). run event는
-   * Side Panel 표시와 telemetry의 필수 경로다.
+   * 격리됨. 이전에는 `deps.emit`이 던지면 `RunResult` 자체가 반환되지 않아
+   * `ATTEMPT_FINISHED` 전달까지 막혔다(SP-026).
    *
-   * 뒤따르는 breadcrumb만 격리된다 — 이동 전 구조와 같다.
+   * `emit`과 breadcrumb은 저장 경로가 다르므로 **별도 경계**다. `emit`이
+   * 실패해도 breadcrumb은 시도된다.
    */
   event(kind: RunEvent["kind"], message: string, data?: RunEvent["data"]): void {
     // emit과 breadcrumb은 **별도 경계**다. 저장 경로가 다르므로 emit이
@@ -177,18 +177,23 @@ export class RunObserver {
    * 별도 try 블록이었고, snapshot이 실패해도 failure는 실행된다.
    */
   failureData(reason: string, extra?: RunEvent["data"], error?: unknown): RunEvent["data"] {
-    const snapshot = this.safeCall<StageSnapshot | null>(() => this.deps.captureSnapshot?.() ?? null, null);
-    const state = this.ctx.state();
-    const diagnosticSnapshotId = this.safeCall<string | null>(
-      () => this.deps.diagnostics?.failure(state, reason, extra, error) ?? null,
-      null,
-    );
-    return {
-      ...stageSnapshotData(snapshot),
-      snapshotRunState: state,
-      ...(diagnosticSnapshotId === null ? {} : { diagnosticSnapshotId }),
-      ...extra,
-    };
+    // 바깥 경계는 `ctx.state()` 같은 상태 조회까지 감싼다. 이 메서드는
+    // handoff·timeout·`execute()` catch에서 불리므로 여기서 던지면 terminal
+    // 처리 자체가 깨진다. 전부 실패하면 호출자가 준 `extra`만 돌려준다.
+    return this.safeCall<RunEvent["data"]>(() => {
+      const snapshot = this.safeCall<StageSnapshot | null>(() => this.deps.captureSnapshot?.() ?? null, null);
+      const state = this.ctx.state();
+      const diagnosticSnapshotId = this.safeCall<string | null>(
+        () => this.deps.diagnostics?.failure(state, reason, extra, error) ?? null,
+        null,
+      );
+      return {
+        ...stageSnapshotData(snapshot),
+        snapshotRunState: state,
+        ...(diagnosticSnapshotId === null ? {} : { diagnosticSnapshotId }),
+        ...extra,
+      };
+    }, { ...extra });
   }
 
   // --- 준비 단계 -----------------------------------------------------------

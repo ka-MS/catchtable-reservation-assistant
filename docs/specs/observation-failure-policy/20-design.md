@@ -229,20 +229,10 @@ git diff --check       통과
   (c) 스캔 루프 매 반복 카운터 참조   0건
 ```
 
-성공 기준 1~3, 5~7 충족. **기준 4는 직접 검증하지 못했다** — 아래 참조.
+**성공 기준 1~7 전부 충족.** 상세는 [40-verification.md](40-verification.md).
 
-실사이트 dry-run 결과는 [40-verification.md](40-verification.md) 참조.
-
-### 미검증: 기준 4 (late DOM 비교 계속 실행)
-
-`lateDomCorrelation`은 DOM 상관관계가 먼저 잡힌 뒤 같은 cycle의 body가
-도착해야 생성된다(`availability-correlation.ts:134`). dry-run 하네스에서
-그 순서를 만들려면 shadow 배선과 타이밍 제어가 필요해 비용이 크다.
-
-**구조적으로는 성립한다.** `availabilityBody()`가 더 이상 던지지 않음이
-테스트로 고정돼 있으므로(`observation-run-observer.test.mjs`), 호출자의
-catch가 이 경로로 진입할 수 없고 따라서 뒤따르는 late DOM 분기는 항상
-실행된다.
-
-직접 확인하지 않았다는 사실을 남긴다. shadow 시나리오 테스트가 생기면
-그때 덮는다.
+기준 4(late DOM 비교 계속 실행)는 초안 검증에서 구조적 추론으로 대체했으나,
+리뷰 지적에 따라 **직접 검증으로 바꿨다.** 슬롯 감지로 DOM 상관관계를 먼저
+만든 뒤 후속 화면 대기 중에 body를 도착시키고, body trace만 실패시켜
+`dom_compare_late`가 계속 기록되는지 확인한다
+(`tests/orchestrator-observation.test.mjs` §5).

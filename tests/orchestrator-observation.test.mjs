@@ -72,6 +72,7 @@ function harness({
   calendarBroken = false,
   throwOn = {},
   configOverrides = {},
+  onPostSlotInspect = null,
 } = {}) {
   let now = 0;
   let monotonicNow = 0;
@@ -79,6 +80,7 @@ function harness({
   const events = [];
   const traces = [];
   const calls = [];
+  const shadow = { listener: null, marker: null };
 
   const boom = (name) => { throw new Error(`${name} boom`); };
 
@@ -113,10 +115,18 @@ function harness({
       clickSlot: () => true,
     },
     postSlot: {
-      inspect: () => ({ kind: "form" }),
+      inspect: () => {
+        onPostSlotInspect?.();
+        return { kind: "form" };
+      },
       advance: () => ({ status: "blocked", message: "미사용" }),
     },
     slotWatch: { start: () => undefined, stop: () => undefined },
+    availabilityShadow: {
+      start: (_expiresAt, listener) => { shadow.listener = listener; },
+      markTargetCycle: (marker) => { shadow.marker = marker; },
+      stop: () => undefined,
+    },
     sleep: async (ms, signal) => {
       if (signal.aborted) return false;
       now += ms;
@@ -129,6 +139,7 @@ function harness({
     },
     trace: (code, severity, message, options) => {
       if (throwOn.trace === true || throwOn.trace === code) boom("trace");
+      if (throwOn.tracePhase && options?.attributes?.phase === throwOn.tracePhase) boom("trace");
       traces.push({ code, severity, message, options });
     },
     flushTrace: async () => undefined,
@@ -172,6 +183,30 @@ function harness({
     events,
     traces,
     calls,
+    /** 목표 cycle이 마킹된 뒤에만 호출한다. DOM 상관관계가 먼저 잡혀 있으면 late 비교가 생성된다. */
+    emitShadowBody() {
+      if (!shadow.listener || !shadow.marker) return false;
+      shadow.listener({
+        source: "ct-reserve-main",
+        type: "AVAILABILITY_SHADOW_EVENT",
+        schemaVersion: 2,
+        channelId: "channel-late",
+        sequence: 1,
+        cycle: shadow.marker.cycle,
+        targetClickMonoMs: shadow.marker.targetClickMonoMs,
+        requestDate: "260730",
+        personCount: 2,
+        classification: "POPULATED",
+        availableMinutes: [1140],
+        responseStatus: 200,
+        requestSentMonoMs: shadow.marker.targetClickMonoMs,
+        responseCompletedMonoMs: shadow.marker.targetClickMonoMs,
+        bodyReadCompletedMonoMs: shadow.marker.targetClickMonoMs,
+        payloadClassifiedMonoMs: shadow.marker.targetClickMonoMs,
+        bridgeReceivedMonoMs: shadow.marker.targetClickMonoMs,
+      });
+      return true;
+    },
     run: () => orchestrator.start(config(configOverrides)),
   };
 }
@@ -494,4 +529,47 @@ test("captureSnapshot이 던지면 snapshot 필드 없이 진단 id만 payload�
     snapshotRunState: "PREPARING_PAGE",
     diagnosticSnapshotId: "diag-1",
   });
+});
+
+// ---------------------------------------------------------------------------
+// 5. body trace 실패가 late DOM 비교를 막지 않는다 (SP-026 성공 기준 4)
+//
+//    이전에는 onAvailabilityBody의 catch가 body trace 실패를 흡수하면서
+//    뒤따르는 late DOM 비교까지 함께 건너뛰었다. 관측을 독립 격리한 뒤로는
+//    두 관측이 서로를 막지 않는다.
+// ---------------------------------------------------------------------------
+
+/** 슬롯 감지(=DOM 상관관계) 이후 후속 화면 대기 중에 body를 도착시킨다. */
+function lateBodyHarness(throwOn = {}) {
+  let fired = false;
+  const h = harness({
+    configOverrides: { dryRun: false },
+    throwOn,
+    onPostSlotInspect: () => {
+      if (!fired) fired = h.emitShadowBody();
+    },
+  });
+  return h;
+}
+
+const shadowPhases = (h) => h.traces
+  .filter((t) => t.code === "AVAILABILITY_SHADOW")
+  .map((t) => t.options.attributes.phase);
+
+test("기준선: body가 늦게 도착하면 dom_compare_late가 기록된다", async () => {
+  const h = lateBodyHarness();
+  await h.run();
+
+  assert.ok(shadowPhases(h).includes("dom_compare"), "DOM 비교가 먼저 있어야 한다");
+  assert.ok(shadowPhases(h).includes("dom_compare_late"), "late 비교가 기록되어야 한다");
+});
+
+test("body trace가 실패해도 late DOM 비교는 계속 기록된다", async () => {
+  const h = lateBodyHarness({ tracePhase: "body" });
+  const result = await h.run();
+
+  assert.equal(shadowPhases(h).includes("body"), false, "body trace는 실패했어야 한다");
+  assert.ok(shadowPhases(h).includes("dom_compare_late"),
+    "body trace 실패가 late DOM 비교를 막으면 안 된다");
+  assert.notEqual(result.state, "FAILED", "관측 실패가 실행을 죽이면 안 된다");
 });
