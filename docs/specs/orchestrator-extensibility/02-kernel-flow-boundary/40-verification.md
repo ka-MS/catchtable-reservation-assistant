@@ -106,12 +106,22 @@ terminal 전이(seq 44)의 attributes가 정확히
 `wakeUsed=true`, `SLOT_FOUND`, body가 DOM보다 23.2ms 앞섰다. 스케줄 드리프트는
 인접 15ms·목표 67ms다. 핫패스 동작에 변화가 없다.
 
-### 이 번들이 답하지 못하는 것
+### 실행 빌드 확인
 
 `extensionVersion`은 `1.1.2`로 `main`과 이 브랜치가 같다(`refactor:`는 버전을
-올리지 않는다). 번들만으로는 어느 빌드인지 구분할 수 없다. 동작 무변경이
-목표이므로 구분 가능한 trace 차이를 두지 않았기 때문이다. **이 브랜치 빌드를
-로드해 실행했다는 전제로 기록한다.**
+올리지 않는다). 동작 무변경이 목표라 구분 가능한 trace도 두지 않았으므로
+**번들만으로는 어느 빌드인지 알 수 없다.**
+
+대신 로드된 산출물을 직접 대조했다. 실행에 쓰인
+`/home/developer/source/catchtable-reserve/dist`가 이 브랜치 워크트리의
+빌드와 내용이 완전히 같다.
+
+- `diff -rq` 차이 없음 (Windows 복사 흔적인 `*:Zone.Identifier` 제외)
+- `dist/content/orchestrator.js` sha256 앞 16자리 `aa696328e5d8d9d6` 일치
+- 그 파일에 `class RunKernel`·`flow.start()`·`flow.steps()`·`flow.cleanup()`이
+  존재한다. `main` 빌드에는 없는 문자열이다
+
+따라서 위 결과는 **이 브랜치 빌드의 실행 결과**다. 전제가 아니다.
 
 ## 03에 넘기는 것
 
